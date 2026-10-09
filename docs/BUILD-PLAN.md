@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c.1–R0c.2 done:** MESClientKit, MESInProcess and the `mes` CLI; 37 tests and the CLI smoke run. Next: MESFormsUI (R0c.3). |
+| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c done** (R0c.1–R0c.3): MESClientKit, MESInProcess, the `mes` CLI and MESFormsUI; 44 tests, the CLI smoke run and form snapshots of every mock descriptor. Next: R0d, the conformance suite. |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -191,6 +191,52 @@ and a MESFormsUI preview renders every mock descriptor.
 - **Exit check:** `tools/smoke-cli.sh` runs a paired loopback mock that approves automatically. The run goes
   discover → pair by name → `generate` → `matte` (on the generated image) → `fill` (image plus the matte's mask)
   → `jobs` → `download` (byte-identical) → `confirm` → `unpair` (afterwards `ops` is refused).
+
+**R0c.3 (done, 2026-10-09): MESFormsUI** (SwiftUI and DesignScaffold 0.25: tokens, `SectionHeader`,
+`cardSurface`, `LabeledSlider`). R0c's exit criteria are met.
+- **Schema to widget.** The `x-mes-ui` hint picks the widget when it fits the schema; otherwise the schema's
+  shape decides. Supported widgets:
+  - picker (segmented when there are ≤ 4 short options with a default; otherwise a menu with an
+    "engine default" entry);
+  - multi-select, toggle, slider, stepper, seed (with a dice button; empty means random), size (W × H with
+    presets), aspect, colour (`#rrggbb`), text and textarea, integer and number;
+  - nested objects; `oneOf` variants (pick one, then edit its fields, which start out valid);
+  - a JSON fallback.
+
+  Without order hints, required properties keep the schema's order.
+- **`OperationFormModel`** (`@Observable`):
+  - values are set by path, and clearing the last nested value removes the object;
+  - only values the person set are sent;
+  - text inputs; a model choice and policy;
+  - extensions, which start from their defaults;
+  - validation issues mapped to the top-level field;
+  - `missingInputs` and `request(media:)`.
+- **Views:**
+  - `OperationForm` and `OperationFormContent`: inputs (text areas, plus host-supplied media slots), model
+    offers each with a `LicenseLine` (SPDX, a commercial-use dot, a Terms link), the commercial-only and
+    remote-allowed toggles, parameters by group, a collapsible Advanced section, and Extensions.
+  - Model rows aren't buttons, so the Terms link works inside them.
+- **`mes-forms-gallery`:** in a window, an operations sidebar, the form, and the live `JobRequest`.
+  `--snapshot <dir>` writes every mock descriptor's form as PNG, light and dark, with advanced fields,
+  extensions and `oneOf` variants open (examples in `docs/images/`).
+- **Mock:** `image.generate` declares an `x-mock.grain` extension (slider, toggle, colour) and records it in
+  `effective.extensions`.
+- **Found and fixed:**
+  - Flexible-height text editors made fitting sizes wrong, so textareas are now a fixed 64 pt.
+  - AppKit clamps windows to the screen, so a taller form was cropped in snapshots; the snapshot window opts
+    out.
+  - `app.run()` inside an async main's main-actor job never services the main queue, so the gallery's
+    top-level code is synchronous.
+  - `cacheDisplay` doesn't draw vibrancy materials. Check the live window with `screencapture -l`.
+- **7 new tests, 44 in all:**
+  - every field of every mock descriptor and of its extension gets a real widget (never the JSON fallback);
+  - hint and schema mapping, order and labels;
+  - paths and issues;
+  - `oneOf` initial values validate;
+  - extension defaults and the policy's model exclusion;
+  - **every mock descriptor's default form makes a request the in-process engine accepts and runs (13 of
+    13)**;
+  - edited values (size, seed, quality, an extension, a canvas variant) reach the engine.
 
 ### R0d: conformance suite v0.1
 

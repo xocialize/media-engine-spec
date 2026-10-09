@@ -60,8 +60,22 @@ public struct MockImageEngine: MediaEngine {
             inputs: inputs,
             params: .object(["type": "object", "additionalProperties": false, "properties": .object(properties)]),
             outputs: outputs, limits: .init(maxWidth: 8192, maxHeight: 8192, maxMegapixels: 16, maxCount: 8),
-            qualityTiers: [.draft, .standard, .best], models: models, remote: .init(possible: false))
+            qualityTiers: [.draft, .standard, .best], models: models,
+            extensions: operation == "image.generate" ? [grainExtension] : nil, remote: .init(possible: false))
     }
+
+    /// A vendor extension (Base §6.2) on `image.generate`, so clients and form renderers have one to exercise. The
+    /// mock records it in `effective.extensions` and otherwise ignores it.
+    static let grainExtension = ExtensionSpec(name: "x-mock.grain", title: "Film grain", schema: [
+        "type": "object", "additionalProperties": false,
+        "properties": [
+            "amount": ["type": "number", "minimum": 0, "maximum": 1, "default": 0.2,
+                       "x-mes-ui": ["label": "Amount", "widget": "slider", "order": 0]],
+            "monochrome": ["type": "boolean", "default": false, "x-mes-ui": ["label": "Monochrome", "order": 1]],
+            "tint": ["type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#d9c7a3",
+                     "x-mes-ui": ["label": "Tint", "widget": "color", "order": 2, "help": "The grain's colour."]],
+        ],
+    ])
 
     static func title(_ op: String) -> String {
         ["image.generate": "Generate", "image.edit": "Edit", "image.fill": "Generative fill", "image.erase": "Erase",
@@ -119,6 +133,7 @@ public struct MockImageEngine: MediaEngine {
         }
         let prompt = context.input("prompt")?.text ?? context.input("instruction")?.text ?? ""
         var effective: [String: JSONValue] = ["model_params": ["mock": true]]
+        if !context.extensions.isEmpty { effective["extensions"] = .object(context.extensions) }
         var outputs: [ProducedOutput] = []
 
         switch context.operation {

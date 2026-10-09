@@ -12,6 +12,8 @@ import PackageDescription
 //   MESClientKit   the client side: discovery, pairing with a pinned certificate, jobs, uploads, downloads, SSE and
 //                  WebSocket events, a grant server. Foundation, CryptoKit and Network only.
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
+//   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
+//                  extensions (DesignScaffold tokens). `mes-forms-gallery` previews every mock descriptor.
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
 //   MESCLI         `mes`, the command-line client on MESClientKit.
@@ -24,9 +26,11 @@ let package = Package(
         .library(name: "MESEngineKit", targets: ["MESEngineKit"]),
         .library(name: "MESClientKit", targets: ["MESClientKit"]),
         .library(name: "MESInProcess", targets: ["MESInProcess"]),
+        .library(name: "MESFormsUI", targets: ["MESFormsUI"]),
         .library(name: "MockEngineCore", targets: ["MockEngineCore"]),
         .executable(name: "mes-mock-engine", targets: ["MockEngine"]),
         .executable(name: "mes", targets: ["MESCLI"]),
+        .executable(name: "mes-forms-gallery", targets: ["MESFormsGallery"]),
     ],
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.27.0"),
@@ -39,6 +43,7 @@ let package = Package(
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        .package(url: "https://github.com/xocialize/DesignScaffold.git", from: "0.25.0"),
     ],
     targets: [
         .target(
@@ -66,12 +71,18 @@ let package = Package(
         ),
         .target(name: "MESClientKit", dependencies: ["MESCore"]),
         .target(name: "MESInProcess", dependencies: ["MESClientKit", "MESEngineCore"]),
+        .target(
+            name: "MESFormsUI",
+            dependencies: ["MESCore", .product(name: "DesignScaffold", package: "DesignScaffold"),
+                           .product(name: "DesignScaffoldControls", package: "DesignScaffold")]
+        ),
         .target(name: "MockEngineCore", dependencies: ["MESEngineCore"]),
         .executableTarget(name: "MockEngine", dependencies: ["MockEngineCore", "MESEngineKit"]),
         .executableTarget(
             name: "MESCLI",
             dependencies: ["MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
+        .executableTarget(name: "MESFormsGallery", dependencies: ["MESFormsUI", "MockEngineCore"]),
         .testTarget(name: "MESCoreTests", dependencies: ["MESCore"]),
         .testTarget(
             name: "MESEngineKitTests",
@@ -82,6 +93,10 @@ let package = Package(
         .testTarget(
             name: "MESClientKitTests",
             dependencies: ["MESClientKit", "MESInProcess", "MESEngineKit", "MockEngineCore"]
+        ),
+        .testTarget(
+            name: "MESFormsUITests",
+            dependencies: ["MESFormsUI", "MESInProcess", "MESEngineCore", "MockEngineCore"]
         ),
     ]
 )
