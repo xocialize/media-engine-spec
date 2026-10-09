@@ -104,9 +104,9 @@ flowchart LR
 - **Known gaps:**
   - swift-sdk 0.12.1 routes every server notification to the standalone GET stream, so progress reaches only
     clients that open it (Claude Code and the swift-sdk client with `streaming: true` do).
-  - hummingbird-websocket adds its idle timer only after the upgrade decision, which needs a complete request
-    head. A client that never finishes its head (or sends a malformed one) holds its connection until it gives up.
-    That matters for paired engines on a LAN; it needs a first-head deadline handler at the front of the pipeline.
+  - ~~hummingbird-websocket adds its idle timer only after the upgrade decision, which needs a complete request
+    head, so a client that never finishes its head holds its connection.~~ **Fixed 2026-10-09 (AB-T-0211):**
+    `requestHeadTimeout` (default 10 s). See the hardening note below R0c.3.
   - A refused upgrade answers 400 (hummingbird-websocket's failed-upgrade path), not the 403 a plain request gets.
 
 One Swift package, `MESKit`, in this repo. Its products:
@@ -237,6 +237,24 @@ and a MESFormsUI preview renders every mock descriptor.
   - **every mock descriptor's default form makes a request the in-process engine accepts and runs (13 of
     13)**;
   - edited values (size, seed, quality, an extension, a canvas variant) reach the engine.
+
+**Hardening (done, 2026-10-09, AB-T-0211): the first-request-head deadline.**
+- **The fix:** `HeadDeadlineHandler` sits at the front of every connection's pipeline. It closes the connection
+  `requestHeadTimeout` (default 10 s) after it opens, unless the pipeline has made its decision by then: either
+  Hummingbird's `HTTPConnectionStateHandler` is present (a head was parsed, and the idle timeout takes over) or
+  NIO's `WebSocketFrameEncoder` is (the connection upgraded, and pings take over).
+- **What it covers:** silent clients, slowloris, malformed heads that stop the parser, and TLS handshakes that
+  never start or finish.
+- **How it's built:** the server channel is now composed from public types (`HTTP1WebSocketUpgradeChannel`, then
+  `TLSChannel`, then `HeadDeadlineChannel`). Hummingbird keeps `HTTPServerBuilder.buildChildChannel`
+  package-internal, so an existing builder can't be wrapped.
+- **Verified:**
+  - 2 new tests, 46 in all. With a 1 s deadline: a silent connection, half a head, and a malformed head with a
+    body all close in under 3 s, while an upgraded socket answers pings after 1.6 s and a 3 s long poll
+    completes. In paired mode, a connection that never starts TLS closes, and a real client still connects.
+  - Live on `mes-mock-engine`: the silent, half-head and malformed connections closed at 10.0 s; a clean
+    keep-alive connection stays open under the 60 s idle timeout. Before the fix, all of them were open
+    indefinitely.
 
 ### R0d: conformance suite v0.1
 

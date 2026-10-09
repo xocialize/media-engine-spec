@@ -42,8 +42,11 @@ public struct EngineConfiguration: Sendable {
     public var grants: Bool = true
     public var sweepInterval: Duration = .seconds(5)
     /// Closes keep-alive connections idle between requests. A request in flight (a long poll, an SSE stream, an MCP
-    /// call waiting `wait_s`) isn't idle. Not yet enforced before a connection's first complete request head.
+    /// call waiting `wait_s`) isn't idle.
     public var idleTimeout: Duration = .seconds(60)
+    /// Closes a connection that hasn't sent a complete first request head (or finished a WebSocket upgrade, or its TLS
+    /// handshake) this long after opening: slow or malformed clients can't hold connections.
+    public var requestHeadTimeout: Duration = .seconds(10)
     public var heartbeat: Duration = .seconds(15)
     /// Progress events are coalesced to at most this rate (Base §11: SHOULD ≤ 10/s).
     public var minProgressInterval: Duration = .milliseconds(100)

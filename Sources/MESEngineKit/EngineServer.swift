@@ -41,11 +41,9 @@ public final class MESEngineServer: Sendable {
         await registry.start(tlsFingerprint: identity?.fingerprintHex)
         let router = Routes.router(registry: registry, pairings: pairings, config: config, spool: spool)
         // The same router answers WebSocket upgrades, so `{path}/ws` runs the guard and auth middleware first.
-        let idle = TimeAmount.nanoseconds(Int64(config.idleTimeout.components.seconds) * 1_000_000_000
-            + config.idleTimeout.components.attoseconds / 1_000_000_000)
-        var server: HTTPServerBuilder = .http1WebSocketUpgrade(
-            webSocketRouter: router, configuration: .init(http1: .init(idleTimeout: idle), ws: .init()))
-        if let identity { server = try .tls(server, tlsConfiguration: try identity.tlsConfiguration()) }
+        let server: HTTPServerBuilder = .mesEngine(router: router, idleTimeout: TimeAmount(config.idleTimeout),
+                                                   tls: try identity?.tlsConfiguration(),
+                                                   headDeadline: TimeAmount(config.requestHeadTimeout))
         let advertiser = self.advertiser
         let profiles = await registry.engineInfo().profiles
         return Application(

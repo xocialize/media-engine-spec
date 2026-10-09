@@ -309,8 +309,6 @@ struct ConnectionTests {
             let raw = "GET /mes/v0/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
             let closed = await Task.detached { secondsUntilClosed(port: port, sending: raw, limit: 5) }.value
             #expect(closed != nil && closed! < 3, "closed after \(closed.map { "\($0)s" } ?? "never")")
-            // Known gap (BUILD-PLAN): before a complete request head the WebSocket-upgrade pipeline has no idle timer,
-            // so a client that never finishes its head (or sends a malformed one) holds the connection.
 
             let j = try await submit(port: port, JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")]))
             let start = Date()
@@ -318,6 +316,52 @@ struct ConnectionTests {
             #expect((response as? HTTPURLResponse)?.statusCode == 200 && !data.isEmpty)
             let polled = try MESJSON.decoder.decode(Job.self, from: data)
             #expect(polled.state != .received || Date().timeIntervalSince(start) < 1, "a wait in flight isn't idle")
+        }
+    }
+
+    @Test("Connections that never complete a first request head are closed by the deadline (AB-T-0211); upgraded sockets and long polls aren't")
+    func headDeadline() async throws {
+        let config = freshConfig { $0.requestHeadTimeout = .seconds(1) }
+        try await withEngine(config, engine: MockImageEngine(stepDelay: .milliseconds(300), steps: 8)) { port in
+            let cases = [
+                ("silent", ""),
+                ("half a head", "GET /mes/v0/health HTTP/1.1\r\nHost: 127.0.0.1\r\n"),
+                ("a malformed head with a body", "POST /mes/v0/jobs HTTP/1.1\r\nHost: 127.0.0.1\r\n folded:header\r\nContent-Length: 2\r\n\r\n{}"),
+            ]
+            for (name, raw) in cases {
+                let closed = await Task.detached { secondsUntilClosed(port: port, sending: raw, limit: 5) }.value
+                #expect(closed != nil && closed! < 3, "\(name): closed after \(closed.map { "\($0)s" } ?? "never")")
+            }
+
+            let ws = Socket("ws://127.0.0.1:\(port)/mes/v0/ws")
+            defer { ws.close() }
+            try await ws.send(#"{"type":"ping"}"#)
+            #expect(try await ws.receive()["type"] as? String == "pong")
+            try await Task.sleep(for: .milliseconds(1600))
+            try await ws.send(#"{"type":"ping"}"#)
+            #expect(try await ws.receive()["type"] as? String == "pong", "an upgraded socket outlives the head deadline")
+
+            let j = try await submit(port: port, JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")]))
+            let start = Date()
+            let url = URL(string: "http://127.0.0.1:\(port)/mes/v0/jobs/\(j.id)?wait=3")!
+            var polled = try MESJSON.decoder.decode(Job.self, from: try await URLSession.shared.data(from: url).0)
+            while polled.state != .holding, Date().timeIntervalSince(start) < 10 {
+                polled = try MESJSON.decoder.decode(Job.self, from: try await URLSession.shared.data(from: url).0)
+            }
+            #expect(polled.state == .holding && Date().timeIntervalSince(start) > 1.5, "long polls past the deadline complete")
+        }
+    }
+
+    @Test("Paired mode: a connection that never starts its TLS handshake is closed by the deadline")
+    func headDeadlineTLS() async throws {
+        var config = pairedConfig(operator: Operator())
+        config.requestHeadTimeout = .seconds(1)
+        try await withEngine(config) { port in
+            let closed = await Task.detached { secondsUntilClosed(port: port, sending: "", limit: 5) }.value
+            #expect(closed != nil && closed! < 3, "closed after \(closed.map { "\($0)s" } ?? "never")")
+            let client = TLSClient(port: port)
+            let (status, _) = try await client.send("GET", "/engine")
+            #expect(status == 200, "a real client still connects")
         }
     }
 }
