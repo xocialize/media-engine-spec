@@ -221,7 +221,7 @@ struct ModelRow: View {
         .opacity(excluded ? 0.6 : 1)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(named: "Choose", choose)
+        .accessibilityAction(.default, choose)                    // VoiceOver and AXPress choose it
     }
 
     static func detail(_ offer: ModelOffer) -> String {
