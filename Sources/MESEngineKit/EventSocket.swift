@@ -1,6 +1,7 @@
 import Foundation
 import HummingbirdWebSocket
 import MESCore
+import MESEngineCore
 
 /// The WebSocket channel (Base §11, `websocket` feature): one connection carries the events of any number of the
 /// client's jobs. Client messages are `subscribe`, `unsubscribe`, `cancel` and `ping`; the engine sends events,

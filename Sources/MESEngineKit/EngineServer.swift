@@ -6,6 +6,7 @@ import HummingbirdCore
 import HummingbirdTLS
 import HummingbirdWebSocket
 import MESCore
+@_exported import MESEngineCore
 import NIOCore
 
 /// Serves a `MediaEngine` over MES Base 0.1: HTTP, SSE, the WebSocket channel and the MCP binding, in open or

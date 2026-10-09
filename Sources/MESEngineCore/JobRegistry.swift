@@ -3,14 +3,14 @@ import MESCore
 
 /// Owns every job, upload and event (Base §7–§13). One actor, so state transitions are serial; engine runs happen
 /// outside it (the actor is reentrant while `run` is awaited).
-actor JobRegistry {
-    struct UploadRecord {
+package actor JobRegistry {
+    package struct UploadRecord {
         var upload: Upload
         var owner: String
         var file: URL
     }
 
-    struct Record {
+    package struct Record {
         var job: Job
         var owner: String
         var clientHost: String?
@@ -31,11 +31,11 @@ actor JobRegistry {
         var lastProgressAt: ContinuousClock.Instant?
     }
 
-    let engine: any MediaEngine
-    let config: EngineConfiguration
-    let spool: Spool
-    private(set) var descriptors: [String: Descriptor] = [:]
-    private(set) var operationsList = OperationsList(operations: [], etag: "\"empty\"")
+    package let engine: any MediaEngine
+    package let config: EngineConfiguration
+    package let spool: Spool
+    package private(set) var descriptors: [String: Descriptor] = [:]
+    package private(set) var operationsList = OperationsList(operations: [], etag: "\"empty\"")
     private var records: [String: Record] = [:]
     private var uploads: [String: UploadRecord] = [:]
     private var idempotency: [String: (job: String, expires: Date)] = [:]
@@ -45,9 +45,9 @@ actor JobRegistry {
     /// Owner-wide subscriptions (WebSocket `"*"`): every event of every job the owner has, from now on.
     private var ownerSubscribers: [UUID: (owner: String, continuation: AsyncStream<Event>.Continuation)] = [:]
     /// The pinned certificate's fingerprint, in paired mode.
-    var tlsFingerprint: String?
+    package var tlsFingerprint: String?
 
-    init(engine: any MediaEngine, config: EngineConfiguration, spool: Spool) {
+    package init(engine: any MediaEngine, config: EngineConfiguration, spool: Spool) {
         self.engine = engine
         self.config = config
         self.spool = spool
@@ -55,7 +55,7 @@ actor JobRegistry {
 
     // MARK: - Lifecycle
 
-    func start(tlsFingerprint: String? = nil) async {
+    package func start(tlsFingerprint: String? = nil) async {
         self.tlsFingerprint = tlsFingerprint
         let list = await engine.descriptors()
         descriptors = Dictionary(list.map { ($0.operation, $0) }, uniquingKeysWith: { first, _ in first })
@@ -71,7 +71,7 @@ actor JobRegistry {
         }
     }
 
-    func stop() {
+    package func stop() {
         sweeper?.cancel()
         sweeper = nil
         for sub in ownerSubscribers.values { sub.continuation.finish() }
@@ -81,7 +81,7 @@ actor JobRegistry {
 
     // MARK: - Engine information
 
-    func engineInfo() -> EngineInfo {
+    package func engineInfo() -> EngineInfo {
         let profiles = Dictionary(grouping: descriptors.values, by: \.profile)
             .map { EngineInfo.ProfileVersions(id: $0.key, versions: Array(Set($0.value.map(\.profileVersion))).sorted()) }
             .sorted { $0.id < $1.id }
@@ -97,7 +97,7 @@ actor JobRegistry {
             retention: .init(outputsTTLSeconds: config.outputsTTLSeconds, jobRecordTTLSeconds: config.jobRecordTTLSeconds))
     }
 
-    func health() async -> Health {
+    package func health() async -> Health {
         let active = records.values.filter { [.received, .fetching, .waiting].contains($0.job.state) }
         let running = records.values.first { $0.job.state == .running }?.job.id
         return Health(status: .ok, queueDepth: active.count, running: running,
@@ -106,7 +106,7 @@ actor JobRegistry {
 
     // MARK: - Uploads (§8)
 
-    func createUpload(owner: String, mediaType: String, file: URL, bytes: Int, sha256: String) -> Upload {
+    package func createUpload(owner: String, mediaType: String, file: URL, bytes: Int, sha256: String) -> Upload {
         let id = file.lastPathComponent
         let upload = Upload(uploadID: id, mediaType: mediaType, bytes: bytes, sha256: sha256,
                             expiresAt: Date().addingTimeInterval(TimeInterval(config.uploadTTLSeconds)))
@@ -116,7 +116,7 @@ actor JobRegistry {
 
     // MARK: - Submit (§7.1)
 
-    func submit(_ request: JobRequest, owner: String, clientHost: String?, idempotencyKey: String?) throws -> Job {
+    package func submit(_ request: JobRequest, owner: String, clientHost: String?, idempotencyKey: String?) throws -> Job {
         if let key = idempotencyKey, let hit = idempotency["\(owner)\u{0}\(key)"], hit.expires > Date(),
            let record = records[hit.job], record.owner == owner {
             return record.job
@@ -470,15 +470,15 @@ actor JobRegistry {
 
     // MARK: - Client actions (§7.3)
 
-    func job(_ id: String, owner: String) throws -> Job { try record(id, owner: owner).job }
+    package func job(_ id: String, owner: String) throws -> Job { try record(id, owner: owner).job }
 
-    func list(owner: String, state: JobState?) -> [Job] {
+    package func list(owner: String, state: JobState?) -> [Job] {
         records.values.filter { $0.owner == owner && (state == nil || $0.job.state == state) }
             .map(\.job).sorted { $0.createdAt < $1.createdAt }
     }
 
     /// Long-poll: returns when the state changes or `seconds` pass.
-    func waitForChange(_ id: String, owner: String, seconds: Int) async throws -> Job {
+    package func waitForChange(_ id: String, owner: String, seconds: Int) async throws -> Job {
         let current = try record(id, owner: owner)
         guard seconds > 0, current.job.state != .purged else { return current.job }
         let stream = try subscribe(id, owner: owner, after: current.seq)
@@ -494,7 +494,7 @@ actor JobRegistry {
         return try record(id, owner: owner).job
     }
 
-    func release(_ id: String, owner: String) throws -> Job {
+    package func release(_ id: String, owner: String) throws -> Job {
         var record = try record(id, owner: owner)
         switch record.job.state {
         case .purged:
@@ -519,7 +519,7 @@ actor JobRegistry {
         return records[id]!.job
     }
 
-    func confirm(_ id: String, owner: String) throws -> Job {
+    package func confirm(_ id: String, owner: String) throws -> Job {
         let record = try record(id, owner: owner)
         switch record.job.state {
         case .holding:
@@ -535,7 +535,7 @@ actor JobRegistry {
         }
     }
 
-    func output(_ id: String, index: Int, owner: String) throws -> (URL, Output) {
+    package func output(_ id: String, index: Int, owner: String) throws -> (URL, Output) {
         let record = try record(id, owner: owner)
         switch record.job.state {
         case .holding:
@@ -552,7 +552,7 @@ actor JobRegistry {
     }
 
     /// Events after `seq`, then live ones; the stream finishes after `job.ended`.
-    func subscribe(_ id: String, owner: String, after seq: Int) throws -> AsyncStream<Event> {
+    package func subscribe(_ id: String, owner: String, after seq: Int) throws -> AsyncStream<Event> {
         let record = try record(id, owner: owner)
         let (stream, continuation) = AsyncStream<Event>.makeStream(bufferingPolicy: .bufferingNewest(1024))
         for event in record.events where event.seq > seq { continuation.yield(event) }
@@ -569,7 +569,7 @@ actor JobRegistry {
     private func unsubscribe(_ id: String, _ token: UUID) { records[id]?.subscribers[token] = nil }
 
     /// Every future event of the owner's jobs (Base §11, WebSocket `"*"`).
-    func subscribeAll(owner: String) -> AsyncStream<Event> {
+    package func subscribeAll(owner: String) -> AsyncStream<Event> {
         let (stream, continuation) = AsyncStream<Event>.makeStream(bufferingPolicy: .bufferingNewest(4096))
         let token = UUID()
         ownerSubscribers[token] = (owner, continuation)
@@ -581,7 +581,7 @@ actor JobRegistry {
 
     // MARK: - Retention (§13)
 
-    func sweep(now: Date) {
+    package func sweep(now: Date) {
         for (id, record) in records {
             if record.job.state == .holding, let expires = record.job.retention.outputsExpireAt, expires <= now {
                 discardOutputs(id, outcome: .expired)

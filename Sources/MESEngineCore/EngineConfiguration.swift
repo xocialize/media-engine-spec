@@ -62,7 +62,18 @@ public struct EngineConfiguration: Sendable {
     /// An operator policy that pre-approves every pairing (for development and unattended hosts).
     public static let approveAll: @Sendable (PairingPrompt) async -> Bool = { _ in true }
 
-    var features: [Feature] {
+    package var features: [Feature] {
         [.uploads, .sse] + (grants ? [.grants] : []) + [.previews, .websocket, .mcp] + (mode == .paired ? [.pairing] : [])
+    }
+}
+
+/// What a person sees on the engine side of a pairing (Base §5 step 4): who is asking, and the code their screen
+/// should show too.
+public struct PairingPrompt: Sendable, Equatable {
+    public let clientID: String
+    public let clientName: String
+    public let code: String
+    package init(clientID: String, clientName: String, code: String) {
+        self.clientID = clientID; self.clientName = clientName; self.code = code
     }
 }

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine; 28 tests. R0c (client SDKs, `mes` CLI) next. |
+| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c.1 done:** MESClientKit and MESInProcess; 37 tests. Next: the `mes` CLI (R0c.2), then MESFormsUI (R0c.3). |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -132,6 +132,46 @@ One Swift package, `MESKit`, in this repo. Its products:
 
 **Exit:** `mes run image.fill` against the mock engine works end to end, from discovery and pairing through confirm,
 and a MESFormsUI preview renders every mock descriptor.
+
+**R0c.1 (done, 2026-10-09): MESClientKit and MESInProcess.**
+- **`MESEngineCore` split out of MESEngineKit.** It holds `MediaEngine`, the job registry, the spool and
+  retention, grant fetching and `EngineConfiguration`, with no networking stack. Cross-module internals are
+  `package`. MESEngineKit re-exports it, and MockEngineCore now depends only on it.
+- **MESClientKit** (Foundation, CryptoKit and Network only, so Lite stays light):
+  - `EngineConnection`, the transport-neutral client protocol, with `run`, `follow`, `input(contentsOf:)`
+    (inline under the engine's limit, else upload) and `downloadAll`.
+  - `HTTPEngineConnection`:
+    - open mode, or paired with the engine certificate pinned (SHA-256 of the DER) and a bearer token;
+    - `MES-Version` on every request;
+    - retries `busy` and `no_capacity` per `Retry-After`;
+    - an `operations` ETag cache;
+    - uploads carry `Content-Digest`, and downloads are checked against the output's SHA-256;
+    - SSE parsed byte by byte (`AsyncBytes.lines` drops the blank lines that end events), resuming with
+      `Last-Event-ID`;
+    - errors are `MESClientError.engine(MESError, status, retryAfter)`.
+  - `EventChannel`: the WebSocket client, with subscribe, unsubscribe, cancel, ping, and messages as events,
+    pong or error.
+  - `Pairing`: `begin` trusts the certificate on first use, checks it against `tls.fingerprint_sha256`, sends
+    the key and nonce, and computes the code. `confirm(wait:)` returns approved or awaiting. `unpair`.
+    `ClientIdentity` and the persistable `PairedEngine` support it.
+  - `EngineBrowser` and `DiscoveredEngine`: NWBrowser with TXT parsing; `resolve()` returns a base URL.
+  - `GrantServer`: a GET-only HTTP listener on Network.framework, with a random bearer token per grant, the
+    SHA-256 and size in the grant, and `revoke`.
+- **MESInProcess:** `InProcessEngine`, the same `EngineConnection` over the job registry with no sockets, for
+  Desktop's built-in ForgeCore (DESK:RUN-9). Errors map to the same `MESClientError` statuses.
+- **Found and fixed:**
+  - NWBrowser doesn't report services on the DNS-SD local-only pseudo-interface. Loopback engines now register
+    on `lo0` (still this machine only), and base.md §3.1 says SHOULD.
+  - Resolved addresses describe themselves as `127.0.0.1%lo0`, so URL hosts are now formatted from raw bytes.
+- **9 new tests, 37 in all.** They cover:
+  - fill end to end (upload and inline inputs, events, a checked download, confirm, then 410);
+  - §12 errors, `busy` with `Retry-After`, and idempotency;
+  - SSE resume after a given seq;
+  - the event channel;
+  - a grant served and fetched, with a wrong token (401) and revocation (404);
+  - DNS-SD discovery and resolve;
+  - pairing (the same code, the pinned connection, `wss`, a wrong pin, unpair, decline);
+  - in-process generate, upscale and errors.
 
 ### R0d: conformance suite v0.1
 

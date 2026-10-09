@@ -3,6 +3,7 @@ import Foundation
 import ImageIO
 import MCP
 import MESCore
+import MESEngineCore
 import UniformTypeIdentifiers
 
 // The MCP binding (Base §15). This file imports MCP but not Hummingbird/HTTPTypes: both declare HTTPRequest and

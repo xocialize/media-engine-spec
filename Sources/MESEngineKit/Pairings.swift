@@ -1,14 +1,7 @@
 import Crypto
 import Foundation
 import MESCore
-
-/// What a person sees on the engine side of a pairing (Base §5 step 4): who is asking, and the code their screen
-/// should show too.
-public struct PairingPrompt: Sendable, Equatable {
-    public let clientID: String
-    public let clientName: String
-    public let code: String
-}
+import MESEngineCore
 
 /// A client the engine trusts (persisted). Only the token's hash is stored.
 public struct PairedClient: Codable, Sendable, Equatable {

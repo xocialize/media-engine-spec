@@ -5,8 +5,13 @@ import PackageDescription
 //
 //   MESCore        wire types for every schema, the JSON value type, a JSON Schema (subset) validator, the
 //                  Image profile's operations table, the pairing code. Foundation (+ CryptoKit) only.
-//   MESEngineKit   the engine side of Base 0.1 on Hummingbird 2: routes, jobs, uploads, grants, SSE, retention,
-//                  the origin guard. Engine authors implement `MediaEngine` (descriptors + run).
+//   MESEngineCore  the engine core with no networking stack: `MediaEngine` (what engine authors implement), the job
+//                  registry, spool and retention, grant fetching, configuration.
+//   MESEngineKit   the engine side of Base 0.1 on Hummingbird 2: routes, uploads, SSE, WebSocket, MCP, TLS and
+//                  pairing, DNS-SD, the origin guard. Re-exports MESEngineCore.
+//   MESClientKit   the client side: discovery, pairing with a pinned certificate, jobs, uploads, downloads, SSE and
+//                  WebSocket events, a grant server. Foundation, CryptoKit and Network only.
+//   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
 let package = Package(
@@ -14,7 +19,10 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "MESCore", targets: ["MESCore"]),
+        .library(name: "MESEngineCore", targets: ["MESEngineCore"]),
         .library(name: "MESEngineKit", targets: ["MESEngineKit"]),
+        .library(name: "MESClientKit", targets: ["MESClientKit"]),
+        .library(name: "MESInProcess", targets: ["MESInProcess"]),
         .library(name: "MockEngineCore", targets: ["MockEngineCore"]),
         .executable(name: "mes-mock-engine", targets: ["MockEngine"]),
     ],
@@ -34,10 +42,12 @@ let package = Package(
             name: "MESCore",
             resources: [.copy("Resources/image-operations.json"), .copy("Resources/image-vocabulary.json")]
         ),
+        .target(name: "MESEngineCore", dependencies: ["MESCore"]),
         .target(
             name: "MESEngineKit",
             dependencies: [
                 "MESCore",
+                "MESEngineCore",
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "HummingbirdCore", package: "hummingbird"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
@@ -51,14 +61,20 @@ let package = Package(
                 .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
             ]
         ),
-        .target(name: "MockEngineCore", dependencies: ["MESEngineKit"]),
-        .executableTarget(name: "MockEngine", dependencies: ["MockEngineCore"]),
+        .target(name: "MESClientKit", dependencies: ["MESCore"]),
+        .target(name: "MESInProcess", dependencies: ["MESClientKit", "MESEngineCore"]),
+        .target(name: "MockEngineCore", dependencies: ["MESEngineCore"]),
+        .executableTarget(name: "MockEngine", dependencies: ["MockEngineCore", "MESEngineKit"]),
         .testTarget(name: "MESCoreTests", dependencies: ["MESCore"]),
         .testTarget(
             name: "MESEngineKitTests",
-            dependencies: ["MESEngineKit", "MockEngineCore", .product(name: "HummingbirdTesting", package: "hummingbird"),
+            dependencies: ["MESEngineKit", "MESEngineCore", "MockEngineCore", .product(name: "HummingbirdTesting", package: "hummingbird"),
                            .product(name: "Crypto", package: "swift-crypto"),
                            .product(name: "MCP", package: "swift-sdk")]
+        ),
+        .testTarget(
+            name: "MESClientKitTests",
+            dependencies: ["MESClientKit", "MESInProcess", "MESEngineKit", "MockEngineCore"]
         ),
     ]
 )

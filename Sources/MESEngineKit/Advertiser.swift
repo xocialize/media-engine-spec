@@ -1,10 +1,11 @@
 import dnssd
 import Foundation
 import MESCore
+import MESEngineCore
 
 /// Advertises the engine as `_mes-engine._tcp` (Base §3.1) with the spec's TXT keys. Built on `dns_sd` with a
 /// dispatch queue, so it works in headless processes (adapted from ML[X] Image Server's Bonjour advertiser, same
-/// author). Open mode advertises on this machine only; paired mode on every interface.
+/// author). Open mode advertises on this machine only (the loopback interface); paired mode on every interface.
 final class EngineAdvertiser: @unchecked Sendable {
     static let serviceType = "_mes-engine._tcp"
     private var ref: DNSServiceRef?
@@ -15,7 +16,10 @@ final class EngineAdvertiser: @unchecked Sendable {
         queue.async { [self] in
             guard ref == nil else { return }
             var service: DNSServiceRef?
-            let interface = localOnly ? UInt32(bitPattern: Int32(-1)) : 0           // kDNSServiceInterfaceIndexLocalOnly
+            // This machine only: the loopback interface, which NWBrowser reports (it ignores the local-only
+            // pseudo-interface, kDNSServiceInterfaceIndexLocalOnly, used when there is no lo0).
+            let loopback = if_nametoindex("lo0")
+            let interface = localOnly ? (loopback != 0 ? loopback : UInt32(bitPattern: Int32(-1))) : 0
             let error = record.withUnsafeBytes { bytes in
                 DNSServiceRegister(&service, 0, interface, name, Self.serviceType, nil, nil, UInt16(port).bigEndian,
                                    UInt16(record.count), bytes.baseAddress, nil, nil)

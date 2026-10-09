@@ -3,8 +3,8 @@ import MESCore
 
 /// Pulls a granted input from the client's media server (Base §9): bearer token, no redirects, checksum verified,
 /// and only from the host that submitted the job, so an engine can't be used to reach other hosts.
-enum GrantFetcher {
-    static func fetch(_ grant: Grant, to file: URL, clientHost: String?, maxBytes: Int) async throws {
+package enum GrantFetcher {
+    package static func fetch(_ grant: Grant, to file: URL, clientHost: String?, maxBytes: Int) async throws {
         guard let url = URL(string: grant.url), let host = url.host, let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             throw MESError(.inputInvalid, "Grant URL \(grant.url) is not an http(s) URL.")
@@ -34,7 +34,7 @@ enum GrantFetcher {
         try data.write(to: file)
     }
 
-    static func hostAllowed(_ host: String, clientHost: String?) -> Bool {
+    package static func hostAllowed(_ host: String, clientHost: String?) -> Bool {
         guard let client = clientHost?.lowercased() else { return false }
         let h = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
         let clientIsLoopback = client.hasPrefix("127.") || client == "::1" || client.hasPrefix("::ffff:127.")
@@ -43,8 +43,8 @@ enum GrantFetcher {
     }
 }
 
-final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+package final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    package func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(nil)
     }

@@ -1,6 +1,6 @@
 import Foundation
 import MESCore
-import MESEngineKit
+import MESEngineCore
 
 /// A mock Image-profile engine (MES R0b). It offers all 13 operations with synthetic results that obey the profile's
 /// rules: fill and erase keep black-mask pixels byte-identical, upscale is exactly ×scale, mattes are 8-bit grey,

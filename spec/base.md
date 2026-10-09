@@ -101,8 +101,10 @@ Bonjour on Apple platforms, Avahi on Linux, and the built-in resolver on Windows
 TXT values are hints. A client MUST confirm them with `GET {path}/engine` before relying on them. Engines MAY also
 be reached by address, without DNS-SD.
 
-An engine reachable only from its own machine (`open` mode, or bound to loopback) MAY advertise on that machine only
-(the DNS-SD local-only interface), so local clients can find it without it being announced on the LAN.
+An engine reachable only from its own machine (`open` mode, or bound to loopback) MAY advertise on that machine only,
+so local clients can find it without it being announced on the LAN. It SHOULD register on the loopback interface
+rather than the DNS-SD local-only pseudo-interface, which some browsing APIs (Network.framework's `NWBrowser`) don't
+report.
 
 ### 3.2 HTTP
 
