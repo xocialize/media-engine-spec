@@ -1,0 +1,306 @@
+{
+  "profile": "image",
+  "version": "0.1",
+  "operations": {
+    "image.generate": {
+      "inputs": {
+        "prompt": {
+          "kind": "text",
+          "required": true
+        },
+        "references": {
+          "kind": "image",
+          "required": false
+        }
+      },
+      "outputs": {
+        "images": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "negative_prompt",
+        "size",
+        "aspect",
+        "megapixels",
+        "quality",
+        "seed",
+        "count",
+        "output"
+      ],
+      "keeps_input_size": false
+    },
+    "image.edit": {
+      "inputs": {
+        "images": {
+          "kind": "image",
+          "required": true
+        },
+        "instruction": {
+          "kind": "text",
+          "required": true
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "strength",
+        "quality",
+        "seed",
+        "size",
+        "output"
+      ],
+      "keeps_input_size": true
+    },
+    "image.fill": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "mask": {
+          "kind": "mask",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "negative_prompt",
+        "strength",
+        "quality",
+        "seed",
+        "output"
+      ],
+      "keeps_input_size": true,
+      "preserves_unmasked": true
+    },
+    "image.erase": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "mask": {
+          "kind": "mask",
+          "required": true
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "quality",
+        "output"
+      ],
+      "keeps_input_size": true,
+      "preserves_unmasked": true
+    },
+    "image.extend": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "canvas",
+        "quality",
+        "seed",
+        "output"
+      ],
+      "keeps_input_size": false
+    },
+    "image.upscale": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "scale",
+        "content",
+        "quality",
+        "output"
+      ],
+      "keeps_input_size": false,
+      "exact_scale": true
+    },
+    "image.restore": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "kind",
+        "quality",
+        "output"
+      ],
+      "keeps_input_size": true,
+      "vocabulary_defs": {
+        "kind": "restore_kind"
+      }
+    },
+    "image.relight": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "strength",
+        "quality",
+        "seed",
+        "output"
+      ],
+      "keeps_input_size": true
+    },
+    "image.colorize": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "image": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "quality",
+        "seed",
+        "output"
+      ],
+      "keeps_input_size": true
+    },
+    "image.matte": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "mask": {
+          "kind": "mask"
+        },
+        "extract": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "outputs"
+      ],
+      "keeps_input_size": true,
+      "vocabulary_defs": {
+        "outputs": "matte_outputs"
+      }
+    },
+    "image.segment": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": false
+        },
+        "points": {
+          "kind": "data",
+          "required": false
+        }
+      },
+      "outputs": {
+        "masks": {
+          "kind": "mask"
+        }
+      },
+      "vocabulary": [
+        "count"
+      ],
+      "keeps_input_size": true,
+      "requires_one_of": [
+        "prompt",
+        "points"
+      ]
+    },
+    "image.describe": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "description": {
+          "kind": "data",
+          "value_schema": "vocabulary.schema.json#/$defs/description"
+        }
+      },
+      "vocabulary": [
+        "language"
+      ]
+    },
+    "image.score": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "score": {
+          "kind": "data",
+          "value_schema": "vocabulary.schema.json#/$defs/score"
+        }
+      },
+      "vocabulary": []
+    }
+  }
+}

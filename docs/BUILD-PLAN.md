@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review); R0b to R0d planned |
+| **Status** | R0a done (drafts in review). **R0b.1 done:** MESCore, MESEngineKit (open mode) and the mock engine, 16 tests. R0b.2 next. |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -31,6 +31,38 @@ flowchart LR
 **Exit:** your review of the two documents. Changes are made in place while the version is 0.1.
 
 ### R0b: MESCore, MESEngineKit, mock engine
+
+**R0b.1 (done, 2026-10-09):**
+- **MESCore:**
+  - Codable types for every schema.
+  - A Swift JSON Schema subset validator, matching `tools/validate.py`.
+  - The bundled Image operations table and vocabulary, kept identical to `schemas/v0` by a test.
+  - The pairing code, matching an independent Python computation.
+- **MESEngineKit** serves open mode (loopback only):
+  - engine info, operations (with ETag), descriptors and health;
+  - uploads: streamed, hashed, `Content-Digest` checked, single-use;
+  - jobs: validation against descriptors, model choice by policy and tier, the run slot, wait, release, confirm;
+  - ranged outputs, SSE with `Last-Event-ID` replay and heartbeat;
+  - grants: same-host, no redirects, checksum checked;
+  - the spool with the §13 rules: inputs gone after the run, outputs gone on confirm, release or TTL, crash sweep at
+    start;
+  - the origin guard, version negotiation, and §12 error bodies.
+- **MockEngineCore / `mes-mock-engine`:** all 13 Image operations, with descriptors generated from the profile's own
+  tables.
+
+**R0b.1 tests:** 16 in all.
+- **MESCore (6):** examples round-trip and validate in Swift, and the code agrees with the profile tables.
+- **Engine (10):** every response is validated against the schemas, over live HTTP:
+  - IMAGE-001 to IMAGE-004;
+  - policy and validation refusals;
+  - cancellation and slot hand-off;
+  - TTL expiry, the crash sweep;
+  - grants: good, wrong token, bad checksum, host rule.
+
+**R0b.2 (next):**
+- `paired` mode: TLS with a self-signed certificate, the pairing endpoints, bearer tokens and per-client ownership.
+- DNS-SD advertisement and the WebSocket channel.
+- The MCP binding (swift-sdk).
 
 One Swift package, `MESKit`, in this repo. Its products:
 

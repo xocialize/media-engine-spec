@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Image profile 0.1 — vocabulary (§2)",
+  "description": "Descriptors MUST use these names and shapes whenever an operation exposes the concept. Engines MAY narrow ranges (e.g. a smaller max size), never widen or rename them.",
+  "$defs": {
+    "prompt": { "type": "string", "maxLength": 4000 },
+    "negative_prompt": { "type": "string", "maxLength": 4000 },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "quality": { "enum": ["draft", "standard", "best"], "default": "standard" },
+    "size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 16 },
+        "height": { "type": "integer", "minimum": 16 }
+      }
+    },
+    "aspect": { "type": "string", "pattern": "^[1-9][0-9]*:[1-9][0-9]*$" },
+    "megapixels": { "type": "number", "minimum": 0.25, "maximum": 16, "default": 1 },
+    "strength": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.75 },
+    "count": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 },
+    "scale": { "enum": [2, 4] },
+    "content": { "enum": ["photo", "drawn"], "default": "photo" },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_type": { "enum": ["image/png", "image/jpeg", "image/heic", "image/webp", "image/tiff"] },
+        "bit_depth": { "enum": [8, 16] }
+      }
+    },
+    "canvas": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["left", "top", "right", "bottom"],
+          "additionalProperties": false,
+          "properties": {
+            "left": { "type": "integer", "minimum": 0 },
+            "top": { "type": "integer", "minimum": 0 },
+            "right": { "type": "integer", "minimum": 0 },
+            "bottom": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["size", "anchor"],
+          "additionalProperties": false,
+          "properties": {
+            "size": { "$ref": "#/$defs/size" },
+            "anchor": { "enum": ["center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"] }
+          }
+        }
+      ]
+    },
+    "restore_kind": { "enum": ["general", "denoise", "deblur", "faces", "scratches"], "default": "general" },
+    "matte_outputs": { "type": "array", "minItems": 1, "items": { "enum": ["mask", "extract"] } },
+    "language": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$", "default": "en" },
+    "points": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["x", "y", "label"],
+        "additionalProperties": false,
+        "properties": {
+          "x": { "type": "number", "minimum": 0, "maximum": 1 },
+          "y": { "type": "number", "minimum": 0, "maximum": 1 },
+          "label": { "enum": ["include", "exclude"] }
+        }
+      }
+    },
+    "description": {
+      "type": "object",
+      "required": ["caption", "alt_text", "tags"],
+      "additionalProperties": false,
+      "properties": {
+        "caption": { "type": "string" },
+        "alt_text": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string", "pattern": "^[^A-Z]*$" } },
+        "language": { "type": "string" }
+      }
+    },
+    "score": {
+      "type": "object",
+      "required": ["score", "scale"],
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scale": { "type": "string" },
+        "raw": { "type": "number" }
+      }
+    }
+  }
+}

@@ -5,8 +5,10 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). The SDKs, mock engine and conformance
-> suite follow ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
+> **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit R0b.1 works:** MESCore, the
+> engine kit in open mode, and a mock Image engine, with 16 passing tests. Paired mode, WebSocket, DNS-SD and MCP come
+> next, then the client SDKs and the conformance suite ([build plan](docs/BUILD-PLAN.md)). Nothing here is published
+> yet.
 
 ## Contents
 
@@ -17,6 +19,7 @@ compliant engine, on any platform.
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
 | [`rfcs/`](rfcs/) | How changes are proposed |
 
@@ -28,6 +31,20 @@ python3 tools/validate.py
 
 ```bash
 python3 tools/test_validator.py
+```
+
+## Running the mock engine
+
+```bash
+swift run mes-mock-engine --port 17600
+```
+
+```bash
+curl -s http://127.0.0.1:17600/mes/v0/operations
+```
+
+```bash
+swift test
 ```
 
 ## Licences
