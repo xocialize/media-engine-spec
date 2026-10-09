@@ -205,6 +205,9 @@ struct ModelRow: View {
                     Text(title).lineLimit(1)
                     if offer?.isDefault == true {
                         Text("default").font(Tokens.Font.caption).foregroundStyle(Tokens.Color.secondaryLabel)
+                    } else if offer?.namedOnly == true {
+                        Text("only when chosen").font(Tokens.Font.caption).foregroundStyle(Tokens.Color.secondaryLabel)
+                            .help("The engine never picks this model on its own; it runs only when you choose it.")
                     }
                 }
                 if let offer { LicenseLine(license: offer.license) }

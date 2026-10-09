@@ -207,6 +207,8 @@ public struct ModelOffer: Codable, Sendable, Equatable {
     public var speedClass: SpeedClass?
     public var qualityTiers: [QualityTier]
     public var isDefault: Bool?
+    /// Never chosen by default: runs only when a request names it (Base §6 rule 2), e.g. research-licensed models.
+    public var namedOnly: Bool?
     public var remoteProvider: RemoteProvider?
     enum CodingKeys: String, CodingKey {
         case id, title, license
@@ -214,13 +216,14 @@ public struct ModelOffer: Codable, Sendable, Equatable {
         case speedClass = "speed_class"
         case qualityTiers = "quality_tiers"
         case isDefault = "default"
+        case namedOnly = "named_only"
         case remoteProvider = "remote_provider"
     }
     public init(id: String, title: String, license: License, memoryClass: MemoryClass? = nil, speedClass: SpeedClass? = nil,
-                qualityTiers: [QualityTier], isDefault: Bool? = nil, remoteProvider: RemoteProvider? = nil) {
+                qualityTiers: [QualityTier], isDefault: Bool? = nil, namedOnly: Bool? = nil, remoteProvider: RemoteProvider? = nil) {
         self.id = id; self.title = title; self.license = license; self.memoryClass = memoryClass
         self.speedClass = speedClass; self.qualityTiers = qualityTiers; self.isDefault = isDefault
-        self.remoteProvider = remoteProvider
+        self.namedOnly = namedOnly; self.remoteProvider = remoteProvider
     }
     public var ref: ModelRef { ModelRef(id: id, title: title, license: license) }
 }

@@ -278,6 +278,20 @@ struct EngineTests {
         }
     }
 
+    @Test("A named-only model (research) never runs by default, at any tier; named, it runs")
+    func namedOnly() async throws {
+        try await app(freshConfig()).test(.live) { client in
+            let generate = try decode(Descriptor.self, try await client.get("/operations/image.generate").body)
+            #expect(generate.models.first { $0.id == "mock-research" }?.namedOnly == true)
+            let best = try await client.run(JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")],
+                                                       params: ["quality": "best", "size": ["width": 16, "height": 16]]))
+            #expect(best.plan?.model.id == "mock", "an unnamed best-tier request takes the default, not the research model")
+            let named = try await client.run(JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")],
+                                                        params: ["size": ["width": 16, "height": 16]], model: "mock-research"))
+            #expect(named.plan?.model.id == "mock-research" && named.plan?.model.license.commercialUse == .no)
+        }
+    }
+
     @Test("Release cancels a running job, frees the slot and cleans the spool")
     func cancellation() async throws {
         let config = freshConfig()

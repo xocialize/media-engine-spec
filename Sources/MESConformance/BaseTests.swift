@@ -76,6 +76,8 @@ enum BaseTests {
                 try check(profiles.contains(d.profile), "\(d.operation) names profile \(d.profile), which engine info doesn't list")
                 try check(!d.models.isEmpty, "\(d.operation) offers no model")
                 try check(d.models.filter { $0.isDefault == true }.count <= 1, "\(d.operation) has several default models")
+                try check(!d.models.contains { $0.isDefault == true && $0.namedOnly == true },
+                          "\(d.operation) has a model that is both default and named_only (§6 rule 2)")
                 try check(d.params["type"]?.stringValue == "object", "\(d.operation)'s params isn't an object schema")
             }
             return nil

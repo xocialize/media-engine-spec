@@ -188,7 +188,7 @@ A descriptor states:
 | `outputs` | Each named output: `kind`, `media_types`, count range |
 | `limits` | E.g. `max_width`, `max_height`, `max_megapixels`, `max_duration_s` |
 | `quality_tiers` | The tiers this operation offers: a non-empty subset of `draft`, `standard`, `best` |
-| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `remote_provider?` |
+| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `named_only?`, `remote_provider?` |
 | `extensions` | Optional, namespaced extra parameters (§6.2) |
 | `remote` | Whether this operation may run at a remote provider, and which providers |
 | `retention` | `outputs_ttl_s` for this operation, if different from the engine's |
@@ -197,7 +197,8 @@ Rules:
 1. **Vocabulary.** `params` MUST use the profile's vocabulary names for the concepts the profile defines (e.g.
    `seed`, `quality`), and MUST NOT require model-specific parameters.
 2. **Model choice.** Model choice is optional for clients. An engine MUST pick a default when the request names no
-   model.
+   model. An offer marked `named_only` (typically research-licensed or otherwise opt-in) MUST NOT be chosen that way:
+   it runs only when a request names it. An offer can't be both `default` and `named_only`.
 3. **Stability.** A descriptor MUST be stable for an engine version, except that `models` and `remote` may change at
    runtime. Such changes are announced with `engine.operations_changed` (§11).
 4. **No surprises.** Limits a model cannot honour (sizes, durations, unsupported vocabulary such as

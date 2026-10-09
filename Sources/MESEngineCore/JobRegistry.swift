@@ -268,7 +268,8 @@ package actor JobRegistry {
             }
             return (model, model.qualityTiers.contains(quality) ? quality : (model.qualityTiers.first ?? quality))
         }
-        let forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) }
+        // Named-only offers (research, opt-in) never run by default (Base §6 rule 2).
+        let forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) && $0.namedOnly != true }
         let allowed = forTier.filter(satisfies)
         guard let model = allowed.first(where: { $0.isDefault == true }) ?? allowed.first else {
             if forTier.isEmpty {
