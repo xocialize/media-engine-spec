@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c done** (R0c.1–R0c.3): MESClientKit, MESInProcess, the `mes` CLI and MESFormsUI. **R0d.1 done:** the engine conformance suite (`mes-conformance engine`); the mock conforms in open and paired mode. 51 tests. Next: R0d.2, client conformance. |
+| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c done** (R0c.1–R0c.3): MESClientKit, MESInProcess, the `mes` CLI and MESFormsUI. **R0d done:** the conformance suite: engines (`mes-conformance engine`; the mock conforms) and clients (`mes-conformance client`; the `mes` CLI conforms). 53 tests. **R0 is complete:** Lite (L1) and the Image Engine (ENG R1) can start. |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -312,6 +312,33 @@ and a MESFormsUI preview renders every mock descriptor.
     - the bundled schemas are the repo's.
   - Live CLI against `mes-mock-engine`: open mode 34 passed, 0 failed, 4 skipped; paired with `--pair` 37 passed,
     0 failed, 1 skipped (BASE-071, at a 3600 s TTL).
+
+**R0d.2 (done, 2026-10-09): client conformance. R0 is complete.**
+- **Scenario mode:** `EngineConfiguration.interceptor` sees every request first, with its body, and may answer it
+  instead of the engine. `responseObserver` sees every final status. Both are documented as being for conformance
+  scenarios and debugging, and are nil in production. `logLevel` quiets short-lived engines.
+- **`mes-conformance client`:** seven scenarios, each a fresh mock engine on loopback:
+  - `normal` (about a second, with progress);
+  - `busy` (429, Retry-After: 2) and `no-capacity` (503, Retry-After: 2);
+  - `failed`, and `cancelled` (the suite, acting as the engine's operator, cancels the job while it runs);
+  - `unknown-error` (a 422 with a code from a future spec);
+  - `gone` (outputs answer 410).
+
+  The client does one task per scenario and is judged from the engine's side: the recorded requests and their
+  timing, the jobs it left holding, its exit status. That gives eleven checks, CLIENT-001 to CLIENT-023 (see
+  [CONFORMANCE.md](CONFORMANCE.md)). SHOULDs, such as sending `MES-Version` or reusing an Idempotency-Key, are
+  reported as notes, not failures.
+- **Clients under test:** the default is `mes`, the executable beside `mes-conformance`. `--command` takes any
+  command-line client as a shell template with `{url}`, `{prompt}` and `{out}`. The run writes
+  `client-report.json` and `client-report.md`.
+- **BASE-002 tightened:** the engine MUST echo `MES-Version` on responses (§2 rule 4), and now the test requires it.
+  `MES-Request-Id` is a SHOULD, reported as a note.
+- **Verified:**
+  - 2 new tests, 53 in all. **The `mes` CLI passes all 11 client checks** in about 9 s, which is the R0d exit.
+  - A naive curl client (polls in a tight loop, never confirms, ignores Retry-After, always exits 0) fails
+    CLIENT-003, 004, 010, 011, 020, 021 and 022, and still passes 002 and 005 (its request is valid and it does
+    fetch the output).
+  - The client test needs `mes` built (`swift build --product mes`).
 
 ## Platforms and versions
 

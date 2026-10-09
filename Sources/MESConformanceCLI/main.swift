@@ -8,9 +8,9 @@ import MESCore
 struct ConformanceCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mes-conformance",
-        abstract: "The MES conformance suite: tests an engine against Base 0.1 and the profiles it offers.",
+        abstract: "The MES conformance suite: tests engines against Base 0.1 and their profiles, and clients against Base 0.1.",
         version: Catalogue.version,
-        subcommands: [EngineCommand.self, ListCommand.self])
+        subcommands: [EngineCommand.self, ClientCommand.self, ListCommand.self])
 }
 
 struct EngineCommand: AsyncParsableCommand {
@@ -85,6 +85,53 @@ struct EngineCommand: AsyncParsableCommand {
             bytes.append(byte)
         }
         return bytes.count == 32 ? Data(bytes) : nil
+    }
+}
+
+struct ClientCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "client",
+        abstract: "Run the CLIENT tests: a scenario-mode mock engine judges a client by what it sends.",
+        discussion: """
+            Each scenario starts a fresh mock engine on loopback and runs the client once, to generate an image from \
+            a prompt and save it. By default the client is `mes` (next to this executable). Any other command-line \
+            client can be tested with --command, a shell template with {url}, {prompt} and {out}. Exits 0 when the \
+            client conforms.
+            """)
+
+    @Option(help: "The `mes` executable to test (default: the one beside mes-conformance).") var mes: String?
+    @Option(help: "Test another client: a shell command with {url}, {prompt} and {out}.") var command: String?
+    @Option(help: "Only these tests, comma-separated (e.g. CLIENT-010,CLIENT-020).") var only: String?
+    @Option(name: .shortAndLong, help: "Directory for client-report.json and client-report.md.") var out = "mes-conformance-report"
+
+    func run() async throws {
+        let client: ClientUnderTest
+        if let command {
+            client = .command(command)
+        } else {
+            let beside = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
+                .appendingPathComponent("mes").path
+            let path = mes ?? beside
+            guard FileManager.default.isExecutableFile(atPath: path) else {
+                throw ValidationError("No mes at \(path); pass --mes or --command.")
+            }
+            client = .mes(path)
+        }
+        print("Client: \(client.name)")
+        let ids = only.map { Set($0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
+        let report = await ClientSuite.run(client: client, only: ids) { r in
+            print("\(r.status == .fail ? "❌" : "✅") \(r.id)  \(r.title)\(r.detail.map { "\n     \($0)" } ?? "")")
+        }
+        let directory = URL(fileURLWithPath: (out as NSString).expandingTildeInPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(report).write(to: directory.appendingPathComponent("client-report.json"))
+        try report.markdown.write(to: directory.appendingPathComponent("client-report.md"), atomically: true, encoding: .utf8)
+        print("\n\(report.passed) passed · \(report.failed) failed — Base 0.1 (client): \(report.conforms ? "conforms" : "does not conform")")
+        print("Report: \(directory.path)/client-report.md")
+        if !report.conforms { throw ExitCode.failure }
     }
 }
 

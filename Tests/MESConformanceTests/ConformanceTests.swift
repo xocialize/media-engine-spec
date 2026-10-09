@@ -145,3 +145,35 @@ struct BrokenEngine: MediaEngine {
         return output
     }
 }
+
+@Suite("Client conformance", .serialized)
+struct ClientConformanceTests {
+    static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    @Test("The mes CLI passes every client test (R0d exit)")
+    func mesConforms() async throws {
+        let mes = Self.repo.appendingPathComponent(".build/debug/mes").path
+        try #require(FileManager.default.isExecutableFile(atPath: mes), "build mes first (swift build --product mes)")
+        let report = await ClientSuite.run(client: .mes(mes))
+        #expect(report.results.count == 11)
+        #expect(report.conforms, "\(report.results.filter { $0.status == .fail }.map { "\($0.id): \($0.detail ?? "")" })")
+    }
+
+    @Test("A naive client fails what it gets wrong: busy-polling, never confirming, ignoring Retry-After, exiting 0 on failure")
+    func naiveClientFails() async throws {
+        // Submits with curl, polls in a tight loop, downloads, never confirms, never retries, always exits 0.
+        let naive = """
+            url={url}; out={out}
+            id=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"operation":"image.generate","inputs":{"prompt":"x"}}' "$url/jobs" | grep -o '"id":"job_[a-z0-9]*"' | head -1 | cut -d'"' -f4)
+            for i in $(seq 1 60); do curl -s "$url/jobs/$id" | grep -q '"state":"holding"' && break; sleep 0.05; done
+            curl -s -o "$out/out.png" "$url/jobs/$id/outputs/0"
+            exit 0
+            """
+        let report = await ClientSuite.run(client: .command(naive))
+        let failed = Set(report.results.filter { $0.status == .fail }.map(\.id))
+        #expect(failed.isSuperset(of: ["CLIENT-003", "CLIENT-004", "CLIENT-010", "CLIENT-011", "CLIENT-020", "CLIENT-021", "CLIENT-022"]),
+                "failed: \(failed.sorted())")
+        #expect(!failed.contains("CLIENT-002") && !failed.contains("CLIENT-005"), "it does submit a valid request and fetch the output")
+        #expect(!report.conforms && report.markdown.contains("❌ does not conform"))
+    }
+}

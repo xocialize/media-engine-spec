@@ -8,8 +8,8 @@ compliant engine, on any platform.
 > **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
-> from descriptors); the engine conformance suite; and a mock Image engine, which conforms. 51 tests pass. Client
-> conformance comes next ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
+> from descriptors); the conformance suite for engines and clients; and a mock Image engine. The mock and `mes` both
+> conform. 53 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
 
 ## Contents
 
@@ -84,6 +84,12 @@ Test an engine against the spec (the report lands in `mes-conformance-report/`):
 
 ```bash
 swift run mes-conformance engine http://127.0.0.1:17600/mes/v0
+```
+
+Test a client against a scenario-mode mock engine (`mes` by default, or any CLI with `--command`):
+
+```bash
+swift run mes-conformance client
 ```
 
 ```bash

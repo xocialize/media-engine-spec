@@ -472,7 +472,8 @@ An engine **conforms to Base 0.1** when it passes the Base tests of the conforma
 claims. Required features: engine information, descriptors, jobs, uploads, SSE events, errors, retention and health.
 Pairing is required in `paired` mode.
 
-A client conforms when it passes the client tests against the mock engine. These check that it:
+A client conforms when it passes the client tests against the mock engine, which plays scenarios (busy, no
+capacity, failed and cancelled jobs, unknown error codes, expired outputs). These check that it:
 - sends only described parameters;
 - handles every state, outcome and error class;
 - honours `Retry-After`;

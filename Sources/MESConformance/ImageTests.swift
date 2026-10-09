@@ -176,10 +176,13 @@ public enum Catalogue {
         return base.filter { $0.id != "BASE-090" } + ImageTests.all + base.filter { $0.id == "BASE-090" }
     }
 
-    /// The catalogue as Markdown (docs/CONFORMANCE.md).
+    /// The catalogue as Markdown (docs/CONFORMANCE.md): engine tests, then client tests.
     public static var markdown: String {
-        var lines = ["| Test | Checks | Spec |", "|---|---|---|"]
+        var lines = ["## Engine tests", "", "| Test | Checks | Spec |", "|---|---|---|"]
         for t in all.sorted(by: { $0.id < $1.id }) { lines.append("| \(t.id) | \(t.title) | \(t.spec) |") }
+        lines += ["", "## Client tests", "",
+                  "Each runs against a scenario-mode mock engine; the scenario is what the engine does to the client.", "",
+                  "| Test | Checks | Spec | Scenario |", "|---|---|---|---|", ClientChecks.markdown]
         return lines.joined(separator: "\n") + "\n"
     }
 }

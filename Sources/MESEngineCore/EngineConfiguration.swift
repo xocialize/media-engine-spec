@@ -51,6 +51,17 @@ public struct EngineConfiguration: Sendable {
     /// Progress events are coalesced to at most this rate (Base §11: SHOULD ≤ 10/s).
     public var minProgressInterval: Duration = .milliseconds(100)
 
+    /// How much the server logs (`trace` … `critical`). Embedders running short-lived engines (tests, the client
+    /// conformance scenarios) use `critical`.
+    public var logLevel: LogLevel = .info
+    public enum LogLevel: String, Sendable { case trace, debug, info, notice, warning, error, critical }
+
+    /// Sees every request first and may answer it instead of the engine: for conformance scenarios (the client
+    /// suite injects `busy`, failures and unknown errors this way) and for debugging. Nil in production.
+    public var interceptor: (@Sendable (InterceptedRequest) async -> InjectedResponse?)?
+    /// Sees every request's final status, whoever answered it.
+    public var responseObserver: (@Sendable (InterceptedRequest, Int) async -> Void)?
+
     public static let baseVersions = ["0.1"]
 
     public init(id: String, name: String, implementationName: String, implementationVersion: String,
@@ -78,5 +89,37 @@ public struct PairingPrompt: Sendable, Equatable {
     public let code: String
     package init(clientID: String, clientName: String, code: String) {
         self.clientID = clientID; self.clientName = clientName; self.code = code
+    }
+}
+
+/// A request as `EngineConfiguration.interceptor` sees it: the path below the base path, and the body when it has one.
+public struct InterceptedRequest: Sendable {
+    public let method: String
+    /// Below the base path: `jobs`, `jobs/job_…/outputs/0`.
+    public let path: String
+    public let query: String?
+    /// Lower-cased names.
+    public let headers: [String: String]
+    public let body: Data?
+    public let receivedAt: Date
+    package init(method: String, path: String, query: String?, headers: [String: String], body: Data?, receivedAt: Date) {
+        self.method = method; self.path = path; self.query = query; self.headers = headers; self.body = body
+        self.receivedAt = receivedAt
+    }
+}
+
+/// A response an interceptor sends instead of the engine's.
+public struct InjectedResponse: Sendable {
+    public var status: Int
+    public var headers: [String: String]
+    public var body: Data
+    public init(status: Int, headers: [String: String] = [:], body: Data = Data()) {
+        self.status = status; self.headers = headers; self.body = body
+    }
+
+    /// A §12 error body with `Content-Type: application/json`, plus `headers`.
+    public static func error(_ status: Int, code: String, message: String, headers: [String: String] = [:]) -> InjectedResponse {
+        let body = (try? MESJSON.encoder.encode(ErrorBody(error: MESError(code: code, message: message)))) ?? Data()
+        return InjectedResponse(status: status, headers: headers.merging(["Content-Type": "application/json"]) { a, _ in a }, body: body)
     }
 }

@@ -87,7 +87,11 @@ let package = Package(
             dependencies: ["MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
         .executableTarget(name: "MESFormsGallery", dependencies: ["MESFormsUI", "MockEngineCore"]),
-        .target(name: "MESConformance", dependencies: ["MESCore", "MESClientKit"], resources: [.copy("Resources/schemas")]),
+        .target(
+            name: "MESConformance",
+            dependencies: ["MESCore", "MESClientKit", "MESEngineKit", "MockEngineCore"],
+            resources: [.copy("Resources/schemas")]
+        ),
         .executableTarget(
             name: "MESConformanceCLI",
             dependencies: ["MESConformance", "MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]

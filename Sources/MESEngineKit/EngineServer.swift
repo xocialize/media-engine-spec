@@ -5,6 +5,7 @@ import Hummingbird
 import HummingbirdCore
 import HummingbirdTLS
 import HummingbirdWebSocket
+import Logging
 import MESCore
 @_exported import MESEngineCore
 import NIOCore
@@ -46,6 +47,8 @@ public final class MESEngineServer: Sendable {
                                                    headDeadline: TimeAmount(config.requestHeadTimeout))
         let advertiser = self.advertiser
         let profiles = await registry.engineInfo().profiles
+        var logger = Logger(label: "mes-engine")
+        logger.logLevel = Logger.Level(rawValue: config.logLevel.rawValue) ?? .info
         return Application(
             router: router,
             server: server,
@@ -57,7 +60,8 @@ public final class MESEngineServer: Sendable {
                                      localOnly: config.mode == .open || ["127.0.0.1", "localhost", "::1"].contains(config.host))
                 }
                 await onRunning(port)
-            })
+            },
+            logger: logger)
     }
 
     public func run(onRunning: @escaping @Sendable (Int) async -> Void = { _ in }) async throws {
@@ -170,6 +174,45 @@ struct ErrorMiddleware: RouterMiddleware {
     }
 }
 
+/// Hands every request to `EngineConfiguration.interceptor` (which may answer it) and every final status to the
+/// observer. Bodies are buffered so both the hook and the engine can read them.
+struct InterceptMiddleware: RouterMiddleware {
+    typealias Context = MESRequestContext
+    let basePath: String
+    let interceptor: (@Sendable (InterceptedRequest) async -> InjectedResponse?)?
+    let observer: (@Sendable (InterceptedRequest, Int) async -> Void)?
+    let maxBody: Int
+
+    func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
+        var request = request
+        let buffer = try await request.body.collect(upTo: maxBody)
+        request.body = .init(buffer: buffer)
+        var headers: [String: String] = [:]
+        for field in request.headers { headers[field.name.canonicalName] = field.value }
+        let fullPath = request.uri.path
+        let path = fullPath.hasPrefix(basePath) ? String(fullPath.dropFirst(basePath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/")) : fullPath
+        let intercepted = InterceptedRequest(method: request.method.rawValue, path: path, query: request.uri.query, headers: headers,
+                                             body: buffer.readableBytes > 0 ? Data(buffer.readableBytesView) : nil, receivedAt: Date())
+        if let interceptor, let injected = await interceptor(intercepted) {
+            var fields = HTTPFields()
+            for (name, value) in injected.headers { if let n = HTTPField.Name(name) { fields[n] = value } }
+            await observer?(intercepted, injected.status)
+            return Response(status: .init(code: injected.status), headers: fields, body: ResponseBody(byteBuffer: ByteBuffer(bytes: injected.body)))
+        }
+        do {
+            let response = try await next(request, context)
+            await observer?(intercepted, response.status.code)
+            return response
+        } catch let error as MESError {
+            await observer?(intercepted, error.status)
+            throw error
+        } catch {
+            await observer?(intercepted, (error as? HTTPError)?.status.code ?? 500)
+            throw error
+        }
+    }
+}
+
 /// Origin allowlist (§3.2), open-mode loopback rule (§3.3), version negotiation (§2).
 struct GuardMiddleware: RouterMiddleware {
     typealias Context = MESRequestContext
@@ -221,6 +264,10 @@ enum Routes {
                        spool: Spool) -> Router<MESRequestContext> {
         let router = Router(context: MESRequestContext.self)
         router.add(middleware: ErrorMiddleware())
+        if config.interceptor != nil || config.responseObserver != nil {
+            router.add(middleware: InterceptMiddleware(basePath: config.basePath, interceptor: config.interceptor,
+                                                       observer: config.responseObserver, maxBody: config.maxUploadBytes))
+        }
         router.add(middleware: GuardMiddleware(config: config))
         if let pairings { router.add(middleware: PairedAuthMiddleware(pairings: pairings, basePath: config.basePath)) }
         let api = router.group(RouterPath(config.basePath))

@@ -23,12 +23,15 @@ enum BaseTests {
             try check(p.info.retention.outputsTTLSeconds <= 86_400, "outputs_ttl_s \(p.info.retention.outputsTTLSeconds) exceeds 86400 (§13 rule 2)")
             return nil
         },
-        ConformanceTest("BASE-002", "Responses carry MES-Request-Id, on success and on error", spec: "§3.2") { p in
+        ConformanceTest("BASE-002", "Responses echo MES-Version and carry MES-Request-Id, on success and on error", spec: "§2, §3.2") { p in
             let ok = try await p.wire.send("GET", "health")
             let bad = try await p.wire.send("GET", "jobs/job_conformance_missing")
-            try check(ok.header("MES-Request-Id") != nil, "GET health has no MES-Request-Id")
-            try check(bad.header("MES-Request-Id") != nil, "an error response has no MES-Request-Id")
-            return ok.header("MES-Version") == nil ? Note("No MES-Version on responses (allowed).") : nil
+            for (reply, what) in [(ok, "GET health"), (bad, "an error response")] {
+                try check(reply.header("MES-Version") == "0.1", "\(what) has MES-Version \(reply.header("MES-Version") ?? "missing"), not 0.1 (§2 rule 4)")
+            }
+            let note = ok.header("MES-Request-Id") == nil || bad.header("MES-Request-Id") == nil
+                ? Note("Some responses lack MES-Request-Id (SHOULD, §3.2).") : nil
+            return note
         },
         ConformanceTest("BASE-003", "An unsupported MES-Version is refused with 400 unsupported_version", spec: "§2") { p in
             let reply = try await p.wire.send("GET", "operations", headers: ["MES-Version": "9.9"])
