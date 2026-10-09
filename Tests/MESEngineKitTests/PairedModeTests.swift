@@ -83,8 +83,9 @@ func pairedConfig(state: URL? = nil, operator op: Operator) -> EngineConfigurati
     return c
 }
 
-func withEngine(_ config: EngineConfiguration, _ body: (Int) async throws -> Void) async throws {
-    let server = MESEngineServer(engine: MockImageEngine(), configuration: config)
+func withEngine(_ config: EngineConfiguration, engine: MockImageEngine = MockImageEngine(),
+                _ body: (Int) async throws -> Void) async throws {
+    let server = MESEngineServer(engine: engine, configuration: config)
     let (ports, continuation) = AsyncStream<Int>.makeStream()
     let app = try await server.makeApplication { port in continuation.yield(port) }
     try await withThrowingTaskGroup(of: Void.self) { group in

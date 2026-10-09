@@ -383,8 +383,16 @@ Event schema: [`event.schema.json`](../schemas/v0/base/event.schema.json). Every
 header.
 - **Client messages:** `{"type":"subscribe","jobs":["<id>"]|"*"}`, `{"type":"unsubscribe","jobs":[…]}`,
   `{"type":"cancel","job":"<id>"}` and `{"type":"ping"}`.
-- **Engine messages:** events, and `{"type":"pong"}`.
+- **Engine messages:** events, `{"type":"pong"}`, and `{"type":"error","error":{…}}` (a §12 error object) for a
+  message the engine can't act on, such as a malformed message, an unknown job, or a cancel that is refused. The
+  connection stays open after an error.
 - **Scope:** a subscription to `"*"` covers the client's own jobs and engine events.
+- **Subscribing to a job** replays its events from the first, as SSE does without `Last-Event-ID`. Events can arrive
+  twice when subscriptions overlap (`"*"` and the job's id); `(job, seq)` identifies an event.
+- **Engine events** (no `job`) carry a `seq` that is monotonic per connection. `engine.health` is sent when `"*"` is
+  subscribed, and then periodically.
+- **Refused upgrades:** origin and authorization rules apply to the upgrade request. An engine that refuses answers
+  with a 4xx status, with the §12 body when its stack allows; clients learn the reason with an ordinary request.
 
 ## 12. Errors
 
@@ -447,7 +455,8 @@ Dispatchers use it to choose between engines.
   - an image preview, for image outputs of at most 1 MB;
   - a `resource_link` to each output's `href`;
   - `structuredContent`: the Job snapshot.
-- **Progress:** `notifications/progress` while waiting.
+- **Progress:** `notifications/progress` while waiting, from 0 to 100. Engines MAY send them on the session's
+  standalone GET stream rather than on the call's own response stream, so clients that want progress SHOULD open it.
 - **Long jobs:** a job not finished by `wait_s` returns the snapshot with its state, and the agent continues with
   `mes_get_job`.
 - **Helper tools:** `mes_list_operations`, `mes_get_job`, `mes_cancel_job` and `mes_confirm_job`.

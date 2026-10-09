@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b.1 and R0b.2 done:** open and paired modes, pairing, DNS-SD, mock engine; 20 tests. R0b.3 (MCP, WebSocket) next. |
+| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine; 28 tests. R0c (client SDKs, `mes` CLI) next. |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -76,7 +76,38 @@ flowchart LR
   - the TXT record.
 - **Live:** `dns-sd -L` shows the TXT record, and the served certificate's fingerprint equals `tls.fingerprint_sha256`.
 
-**R0b.3 (next):** the MCP binding (swift-sdk, tools generated from descriptors) and the WebSocket channel.
+**R0b.3 (done, 2026-10-09):**
+- **MCP binding (§15)** at `{path}/mcp`: swift-sdk 0.12.1 `Server` + `StatefulHTTPServerTransport`, one session per
+  `Mcp-Session-Id`, bound to the client that opened it (paired tokens apply).
+  - One tool per descriptor (`image.fill` → `image_fill`). The input schema is the descriptor's `params` with
+    `x-` hints stripped, the inputs as data: URLs or `upload:<id>` (`data` inputs take the vocabulary's JSON),
+    and `model` (an enum, each model's licence in the description), `wait_s` (0–300, default 50) and `policy`.
+  - A call submits, waits with `notifications/progress` (0–100), and returns a text summary (model, licence,
+    warnings, output URLs, expiry), an image preview (the output itself if PNG/JPEG ≤ 1 MB, else a ≤ 1024 px
+    JPEG), a `resource_link` per output, and the Job as `structuredContent`. Failures are `isError` results
+    carrying the §12 code.
+  - Helpers `mes_list_operations`, `mes_get_job` (waits up to `wait_s` for the job to finish),
+    `mes_cancel_job`, `mes_confirm_job`. Nothing is confirmed automatically.
+- **WebSocket channel (§11)** at `{path}/ws`: subscribe to job ids (replayed from the first event) or `"*"`
+  (the client's jobs plus `engine.health`, sent on subscribe and every heartbeat); unsubscribe; cancel; ping/pong;
+  `error` frames. The upgrade runs through the same router, so the origin guard and paired auth apply.
+- **`idleTimeout`** (default 60 s) closes keep-alive connections idle between requests.
+- **Fixed:** `JobRegistry.waitForChange` awaited an unstructured deadline task inside its task group, so every
+  long poll (`GET jobs/{id}?wait=`) ran to its full deadline even after the job changed.
+- **Spec clarifications** (base.md §11, §15): `error` frames; replay on subscribe; duplicate delivery and
+  `(job, seq)`; per-connection `seq` for engine events; refused upgrades are a 4xx; progress may arrive on the
+  standalone GET stream.
+- **8 new tests,** 28 in all: MCP through the swift-sdk client (tools from descriptors, generate with progress,
+  preview and link, data-URL fill, tool errors, a job outliving `wait_s`, cancel); WebSocket through
+  URLSessionWebSocketTask (`"*"`, replay and cancel, origin refused, paired tokens and ownership); idle timeout.
+- **Live:** `curl` MCP handshake → 17 tools → `image_generate` result; `101 Switching Protocols` on `{path}/ws`.
+- **Known gaps:**
+  - swift-sdk 0.12.1 routes every server notification to the standalone GET stream, so progress reaches only
+    clients that open it (Claude Code and the swift-sdk client with `streaming: true` do).
+  - hummingbird-websocket adds its idle timer only after the upgrade decision, which needs a complete request
+    head. A client that never finishes its head (or sends a malformed one) holds its connection until it gives up.
+    That matters for paired engines on a LAN; it needs a first-head deadline handler at the front of the pipeline.
+  - A refused upgrade answers 400 (hummingbird-websocket's failed-upgrade path), not the 403 a plain request gets.
 
 One Swift package, `MESKit`, in this repo. Its products:
 

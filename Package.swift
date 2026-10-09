@@ -26,6 +26,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
     ],
     targets: [
         .target(
@@ -45,6 +47,8 @@ let package = Package(
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
+                .product(name: "MCP", package: "swift-sdk"),
+                .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
             ]
         ),
         .target(name: "MockEngineCore", dependencies: ["MESEngineKit"]),
@@ -53,7 +57,8 @@ let package = Package(
         .testTarget(
             name: "MESEngineKitTests",
             dependencies: ["MESEngineKit", "MockEngineCore", .product(name: "HummingbirdTesting", package: "hummingbird"),
-                           .product(name: "Crypto", package: "swift-crypto")]
+                           .product(name: "Crypto", package: "swift-crypto"),
+                           .product(name: "MCP", package: "swift-sdk")]
         ),
     ]
 )

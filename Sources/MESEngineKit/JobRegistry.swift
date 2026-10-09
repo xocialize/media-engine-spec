@@ -42,6 +42,8 @@ actor JobRegistry {
     private var runningCount = 0
     private var slotWaiters: [(id: String, continuation: CheckedContinuation<Bool, Never>)] = []
     private var sweeper: Task<Void, Never>?
+    /// Owner-wide subscriptions (WebSocket `"*"`): every event of every job the owner has, from now on.
+    private var ownerSubscribers: [UUID: (owner: String, continuation: AsyncStream<Event>.Continuation)] = [:]
     /// The pinned certificate's fingerprint, in paired mode.
     var tlsFingerprint: String?
 
@@ -72,6 +74,8 @@ actor JobRegistry {
     func stop() {
         sweeper?.cancel()
         sweeper = nil
+        for sub in ownerSubscribers.values { sub.continuation.finish() }
+        ownerSubscribers = [:]
         for id in records.keys { records[id]?.task?.cancel() }
     }
 
@@ -478,16 +482,15 @@ actor JobRegistry {
         let current = try record(id, owner: owner)
         guard seconds > 0, current.job.state != .purged else { return current.job }
         let stream = try subscribe(id, owner: owner, after: current.seq)
-        let deadline = Task { try? await Task.sleep(for: .seconds(seconds)) }
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 for await event in stream where event.type == .state || event.type == .ended { return }
             }
-            group.addTask { await deadline.value }
+            // A child task, so cancelAll() ends it: awaiting an unstructured Task here kept every wait open to its deadline.
+            group.addTask { try? await Task.sleep(for: .seconds(seconds)) }
             await group.next()
             group.cancelAll()
         }
-        deadline.cancel()
         return try record(id, owner: owner).job
     }
 
@@ -565,6 +568,17 @@ actor JobRegistry {
 
     private func unsubscribe(_ id: String, _ token: UUID) { records[id]?.subscribers[token] = nil }
 
+    /// Every future event of the owner's jobs (Base §11, WebSocket `"*"`).
+    func subscribeAll(owner: String) -> AsyncStream<Event> {
+        let (stream, continuation) = AsyncStream<Event>.makeStream(bufferingPolicy: .bufferingNewest(4096))
+        let token = UUID()
+        ownerSubscribers[token] = (owner, continuation)
+        continuation.onTermination = { [weak self] _ in Task { await self?.unsubscribeAll(token) } }
+        return stream
+    }
+
+    private func unsubscribeAll(_ token: UUID) { ownerSubscribers[token] = nil }
+
     // MARK: - Retention (§13)
 
     func sweep(now: Date) {
@@ -632,6 +646,7 @@ actor JobRegistry {
         record.events.append(event)
         records[id] = record
         for continuation in record.subscribers.values { continuation.yield(event) }
+        for sub in ownerSubscribers.values where sub.owner == record.owner { sub.continuation.yield(event) }
     }
 
     private func finishSubscribers(_ id: String) {

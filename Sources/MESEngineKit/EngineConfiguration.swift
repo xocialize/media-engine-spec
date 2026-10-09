@@ -41,6 +41,9 @@ public struct EngineConfiguration: Sendable {
     public var allowedOrigins: Set<String> = []
     public var grants: Bool = true
     public var sweepInterval: Duration = .seconds(5)
+    /// Closes keep-alive connections idle between requests. A request in flight (a long poll, an SSE stream, an MCP
+    /// call waiting `wait_s`) isn't idle. Not yet enforced before a connection's first complete request head.
+    public var idleTimeout: Duration = .seconds(60)
     public var heartbeat: Duration = .seconds(15)
     /// Progress events are coalesced to at most this rate (Base §11: SHOULD ≤ 10/s).
     public var minProgressInterval: Duration = .milliseconds(100)
@@ -60,6 +63,6 @@ public struct EngineConfiguration: Sendable {
     public static let approveAll: @Sendable (PairingPrompt) async -> Bool = { _ in true }
 
     var features: [Feature] {
-        [.uploads, .sse] + (grants ? [.grants] : []) + [.previews] + (mode == .paired ? [.pairing] : [])
+        [.uploads, .sse] + (grants ? [.grants] : []) + [.previews, .websocket, .mcp] + (mode == .paired ? [.pairing] : [])
     }
 }

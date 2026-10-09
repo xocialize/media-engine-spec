@@ -4,10 +4,12 @@ import HTTPTypes
 import Hummingbird
 import HummingbirdCore
 import HummingbirdTLS
+import HummingbirdWebSocket
 import MESCore
 import NIOCore
 
-/// Serves a `MediaEngine` over MES Base 0.1 (open mode in R0b.1).
+/// Serves a `MediaEngine` over MES Base 0.1: HTTP, SSE, the WebSocket channel and the MCP binding, in open or
+/// paired mode.
 ///
 ///     let server = MESEngineServer(engine: MyEngine(), configuration: config)
 ///     try await server.run { port in print("listening on \(port)") }
@@ -28,17 +30,21 @@ public final class MESEngineServer: Sendable {
         let config = configuration
         let (spool, _) = try Spool.prepare(at: config.spoolDirectory)
         let registry = JobRegistry(engine: engine, config: config, spool: spool)
-        var server: HTTPServerBuilder = .http1()
+        var identity: EngineIdentity?
         var pairings: PairingRegistry?
         if config.mode == .paired {
-            let identity = try EngineIdentity.loadOrCreate(in: config.stateDirectory, commonName: "MES engine \(config.id)")
-            server = try .tls(.http1(), tlsConfiguration: try identity.tlsConfiguration())
-            pairings = PairingRegistry(stateDirectory: config.stateDirectory, identity: identity, approve: config.pairingApproval)
-            await registry.start(tlsFingerprint: identity.fingerprintHex)
-        } else {
-            await registry.start()
+            let id = try EngineIdentity.loadOrCreate(in: config.stateDirectory, commonName: "MES engine \(config.id)")
+            pairings = PairingRegistry(stateDirectory: config.stateDirectory, identity: id, approve: config.pairingApproval)
+            identity = id
         }
+        await registry.start(tlsFingerprint: identity?.fingerprintHex)
         let router = Routes.router(registry: registry, pairings: pairings, config: config, spool: spool)
+        // The same router answers WebSocket upgrades, so `{path}/ws` runs the guard and auth middleware first.
+        let idle = TimeAmount.nanoseconds(Int64(config.idleTimeout.components.seconds) * 1_000_000_000
+            + config.idleTimeout.components.attoseconds / 1_000_000_000)
+        var server: HTTPServerBuilder = .http1WebSocketUpgrade(
+            webSocketRouter: router, configuration: .init(http1: .init(idleTimeout: idle), ws: .init()))
+        if let identity { server = try .tls(server, tlsConfiguration: try identity.tlsConfiguration()) }
         let advertiser = self.advertiser
         let profiles = await registry.engineInfo().profiles
         return Application(
@@ -66,16 +72,18 @@ public final class MESEngineServer: Sendable {
 
 // MARK: - Context and headers
 
-public struct MESRequestContext: RequestContext, RemoteAddressRequestContext {
+public struct MESRequestContext: RequestContext, RemoteAddressRequestContext, WebSocketRequestContext {
     public var coreContext: CoreRequestContextStorage
     public let remoteAddress: SocketAddress?
+    public let webSocket: WebSocketHandlerReference<MESRequestContext>
     public var requestID: String = IDs.make("req_", length: 12)
-    /// Who owns the jobs this request sees. Open mode has one local client; paired mode (R0b.2) uses the pairing.
+    /// Who owns the jobs this request sees. Open mode has one local client; paired mode uses the pairing.
     public var clientID: String = "local"
 
     public init(source: Source) {
         coreContext = .init(source: source)
         remoteAddress = source.channel.remoteAddress
+        webSocket = .init()
     }
 
     public var peerHost: String? { remoteAddress?.ipAddress }
@@ -342,6 +350,28 @@ enum Routes {
             return SSE.response(events: events, heartbeat: config.heartbeat)
         }
 
+        api.ws("ws") { inbound, outbound, wsContext in
+            await EventSocket.serve(inbound: inbound, outbound: outbound, client: wsContext.requestContext.clientID,
+                                        registry: registry, healthInterval: config.heartbeat)
+        }
+
+        let sessions = MCPSessions(toolbox: MCPToolbox(registry: registry, config: config))
+        let scheme = config.mode == .paired ? "https" : "http"
+        let mcp: @Sendable (Request, MESRequestContext) async throws -> Response = { request, context in
+            let body = try await request.body.collect(upTo: config.maxJSONBodyBytes)
+            var headers: [String: String] = [:]
+            for field in request.headers { headers[field.name.rawName] = field.value }
+            let authority = request.head.authority ?? "\(config.host):\(config.port)"
+            let reply = await sessions.handle(method: request.method.rawValue, headers: headers,
+                                              body: body.readableBytes > 0 ? Data(body.readableBytesView) : nil,
+                                              path: request.uri.path, client: context.clientID, clientHost: context.peerHost,
+                                              baseURL: "\(scheme)://\(authority)")
+            return MCPResponses.response(reply)
+        }
+        api.post("mcp", use: mcp)
+        api.get("mcp", use: mcp)
+        api.delete("mcp", use: mcp)
+
         return router
     }
 
@@ -365,6 +395,31 @@ enum Routes {
             return data.map { String(format: "%02x", $0) }.joined()
         }
         return nil
+    }
+}
+
+// MARK: - MCP (§15)
+
+enum MCPResponses {
+    static func response(_ reply: MCPReply) -> Response {
+        var fields = HTTPFields()
+        for (name, value) in reply.headers {
+            if let field = HTTPField.Name(name) { fields[field] = value }
+        }
+        let status = HTTPResponse.Status(code: reply.status)
+        switch reply.body {
+        case .empty:
+            return Response(status: status, headers: fields, body: ResponseBody(byteBuffer: ByteBuffer()))
+        case .data(let data):
+            return Response(status: status, headers: fields, body: ResponseBody(byteBuffer: ByteBuffer(bytes: data)))
+        case .stream(let stream):
+            return Response(status: status, headers: fields, body: ResponseBody { writer in
+                do {
+                    for try await chunk in stream { try await writer.write(ByteBuffer(bytes: chunk)) }
+                } catch {}
+                try await writer.finish(nil)
+            })
+        }
     }
 }
 

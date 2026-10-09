@@ -6,9 +6,9 @@ normalizes how a specific model is used, and reports what it actually did. Any c
 compliant engine, on any platform.
 
 > **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
-> open and paired modes (TLS, pairing, tokens, DNS-SD); and a mock Image engine. 20 tests pass. MCP and WebSocket come
-> next, then the client SDKs and the conformance suite ([build plan](docs/BUILD-PLAN.md)). Nothing here is published
-> yet.
+> open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; and a mock
+> Image engine. 28 tests pass. The client SDKs and the conformance suite come next ([build plan](docs/BUILD-PLAN.md)).
+> Nothing here is published yet.
 
 ## Contents
 
@@ -41,6 +41,12 @@ swift run mes-mock-engine --port 17600
 
 ```bash
 curl -s http://127.0.0.1:17600/mes/v0/operations
+```
+
+Use it from an agent over MCP. Each operation is a tool (`image_generate`, `image_fill`, …):
+
+```bash
+claude mcp add --transport http mes-mock http://127.0.0.1:17600/mes/v0/mcp
 ```
 
 Paired mode (TLS and pairing), approving each pairing at the prompt:
