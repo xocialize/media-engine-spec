@@ -14,6 +14,7 @@ import PackageDescription
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
+//   MESCLI         `mes`, the command-line client on MESClientKit.
 let package = Package(
     name: "MESKit",
     platforms: [.macOS(.v26)],
@@ -25,6 +26,7 @@ let package = Package(
         .library(name: "MESInProcess", targets: ["MESInProcess"]),
         .library(name: "MockEngineCore", targets: ["MockEngineCore"]),
         .executable(name: "mes-mock-engine", targets: ["MockEngine"]),
+        .executable(name: "mes", targets: ["MESCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.27.0"),
@@ -36,6 +38,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
         .target(
@@ -65,6 +68,10 @@ let package = Package(
         .target(name: "MESInProcess", dependencies: ["MESClientKit", "MESEngineCore"]),
         .target(name: "MockEngineCore", dependencies: ["MESEngineCore"]),
         .executableTarget(name: "MockEngine", dependencies: ["MockEngineCore", "MESEngineKit"]),
+        .executableTarget(
+            name: "MESCLI",
+            dependencies: ["MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
+        ),
         .testTarget(name: "MESCoreTests", dependencies: ["MESCore"]),
         .testTarget(
             name: "MESEngineKitTests",

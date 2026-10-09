@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c.1 done:** MESClientKit and MESInProcess; 37 tests. Next: the `mes` CLI (R0c.2), then MESFormsUI (R0c.3). |
+| **Status** | R0a done (drafts in review). **R0b done** (R0b.1–R0b.3): open and paired modes, pairing, DNS-SD, the WebSocket channel, the MCP binding, mock engine. **R0c.1–R0c.2 done:** MESClientKit, MESInProcess and the `mes` CLI; 37 tests and the CLI smoke run. Next: MESFormsUI (R0c.3). |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -172,6 +172,25 @@ and a MESFormsUI preview renders every mock descriptor.
   - DNS-SD discovery and resolve;
   - pairing (the same code, the pinned connection, `wss`, a wrong pin, unpair, decline);
   - in-process generate, upscale and errors.
+
+**R0c.2 (done, 2026-10-09): the `mes` CLI** (swift-argument-parser, on MESClientKit only).
+- **Commands:**
+  - `discover`, `pair`, `unpair`, `engines`;
+  - `info`, `ops`, `describe <operation>`;
+  - `run <operation> -i name=value… -p name=value…` with `--model`, `--commercial-only`, `--allow-remote`,
+    `-o`, `--no-confirm` and `--json`;
+  - `jobs`, `get`, `download`, `confirm`, `release`.
+- **Engine choice:** `--engine` takes a URL, or a paired or discovered engine's id or name. The default is
+  `$MES_ENGINE`, then the only paired engine, then the only engine discovered. A paired engine found by discovery
+  keeps its pin at its new address.
+- **Inputs follow the descriptor.** Text is taken as is, media as file paths (inline under the engine's limit, else
+  uploaded), and data as JSON. Repeating a name gives several values. Parameters are JSON when they parse, and
+  `size` also takes `WxH`.
+- **State:** the client identity (P-256 key, 0600) and pairings live in `--state-dir`, `$MES_HOME` or
+  `~/Library/Application Support/mes`.
+- **Exit check:** `tools/smoke-cli.sh` runs a paired loopback mock that approves automatically. The run goes
+  discover → pair by name → `generate` → `matte` (on the generated image) → `fill` (image plus the matte's mask)
+  → `jobs` → `download` (byte-identical) → `confirm` → `unpair` (afterwards `ops` is refused).
 
 ### R0d: conformance suite v0.1
 

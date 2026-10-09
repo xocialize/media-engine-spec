@@ -7,8 +7,8 @@ compliant engine, on any platform.
 
 > **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
-> kit (discovery, pairing, jobs, events, grants) and an in-process transport; and a mock Image engine. 37 tests pass.
-> The `mes` CLI, MESFormsUI and the conformance suite come next ([build plan](docs/BUILD-PLAN.md)). Nothing here is
+> kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; and a mock Image engine.
+> 37 tests pass. MESFormsUI and the conformance suite come next ([build plan](docs/BUILD-PLAN.md)). Nothing here is
 > published yet.
 
 ## Contents
@@ -20,7 +20,7 @@ compliant engine, on any platform.
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
-| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
 | [`rfcs/`](rfcs/) | How changes are proposed |
 
@@ -54,6 +54,20 @@ Paired mode (TLS and pairing), approving each pairing at the prompt:
 
 ```bash
 swift run mes-mock-engine --paired --approve prompt
+```
+
+The `mes` command-line client finds, pairs with and drives any engine:
+
+```bash
+swift run mes discover
+```
+
+```bash
+swift run mes run image.generate -i prompt="a lighthouse at dusk" -p size=1024x768
+```
+
+```bash
+tools/smoke-cli.sh
 ```
 
 ```bash
