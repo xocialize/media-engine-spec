@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — capability descriptor (§6)",
+  "type": "object",
+  "required": ["operation", "profile", "profile_version", "title", "inputs", "params", "outputs", "quality_tiers", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "operation": { "$ref": "common.schema.json#/$defs/OperationId" },
+    "profile": { "type": "string", "pattern": "^[a-z][a-z0-9]*$" },
+    "profile_version": { "$ref": "common.schema.json#/$defs/Version" },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "inputs": { "type": "array", "items": { "$ref": "#/$defs/InputSpec" } },
+    "params": { "$ref": "#/$defs/ParamsSchema" },
+    "outputs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/OutputSpec" } },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_width": { "type": "integer", "minimum": 1 },
+        "max_height": { "type": "integer", "minimum": 1 },
+        "max_megapixels": { "type": "number", "exclusiveMinimum": 0 },
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_inputs": { "type": "integer", "minimum": 1 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "quality_tiers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/QualityTier" } },
+    "models": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ModelOffer" } },
+    "extensions": { "type": "array", "items": { "$ref": "#/$defs/Extension" } },
+    "remote": {
+      "type": "object",
+      "required": ["possible"],
+      "additionalProperties": false,
+      "properties": {
+        "possible": { "type": "boolean" },
+        "providers": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/RemoteProvider" } }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "outputs_ttl_s": { "type": "integer", "minimum": 60, "maximum": 86400 } }
+    }
+  },
+  "$defs": {
+    "InputSpec": {
+      "type": "object",
+      "required": ["name", "kind", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "kind": { "$ref": "common.schema.json#/$defs/Kind" },
+        "required": { "type": "boolean" },
+        "min": { "type": "integer", "minimum": 0 },
+        "max": { "type": "integer", "minimum": 1 },
+        "media_types": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/MediaType" } },
+        "notes": { "type": "string" }
+      }
+    },
+    "OutputSpec": {
+      "type": "object",
+      "required": ["name", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "kind": { "$ref": "common.schema.json#/$defs/Kind" },
+        "media_types": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/MediaType" } },
+        "min": { "type": "integer", "minimum": 0 },
+        "max": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ParamsSchema": {
+      "type": "object",
+      "required": ["type", "properties"],
+      "properties": {
+        "type": { "const": "object" },
+        "properties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/ParamProperty" } },
+        "required": { "type": "array", "items": { "type": "string" } },
+        "additionalProperties": { "const": false }
+      }
+    },
+    "ParamProperty": {
+      "type": "object",
+      "properties": { "x-mes-ui": { "$ref": "#/$defs/UiHints" } }
+    },
+    "UiHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "help": { "type": "string" },
+        "group": { "type": "string" },
+        "order": { "type": "integer" },
+        "advanced": { "type": "boolean" },
+        "widget": { "enum": ["text", "textarea", "slider", "stepper", "picker", "toggle", "seed", "size", "aspect", "color"] }
+      }
+    },
+    "ModelOffer": {
+      "type": "object",
+      "required": ["id", "title", "license", "quality_tiers"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Id" },
+        "title": { "type": "string" },
+        "license": { "$ref": "common.schema.json#/$defs/License" },
+        "memory_class": { "enum": ["small", "medium", "large", "xlarge"] },
+        "speed_class": { "enum": ["fast", "standard", "slow"] },
+        "quality_tiers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/QualityTier" } },
+        "default": { "type": "boolean" },
+        "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" }
+      }
+    },
+    "Extension": {
+      "type": "object",
+      "required": ["name", "title", "schema"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^x-[a-z0-9]+\\.[a-z0-9_]+$" },
+        "title": { "type": "string" },
+        "schema": { "type": "object" }
+      }
+    }
+  }
+}

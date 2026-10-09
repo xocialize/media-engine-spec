@@ -14,6 +14,7 @@ import PackageDescription
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
 //                  extensions (DesignScaffold tokens). `mes-forms-gallery` previews every mock descriptor.
+//   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn) and `mes-conformance`, its CLI.
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
 //   MESCLI         `mes`, the command-line client on MESClientKit.
@@ -27,10 +28,12 @@ let package = Package(
         .library(name: "MESClientKit", targets: ["MESClientKit"]),
         .library(name: "MESInProcess", targets: ["MESInProcess"]),
         .library(name: "MESFormsUI", targets: ["MESFormsUI"]),
+        .library(name: "MESConformance", targets: ["MESConformance"]),
         .library(name: "MockEngineCore", targets: ["MockEngineCore"]),
         .executable(name: "mes-mock-engine", targets: ["MockEngine"]),
         .executable(name: "mes", targets: ["MESCLI"]),
         .executable(name: "mes-forms-gallery", targets: ["MESFormsGallery"]),
+        .executable(name: "mes-conformance", targets: ["MESConformanceCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.27.0"),
@@ -84,6 +87,11 @@ let package = Package(
             dependencies: ["MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
         .executableTarget(name: "MESFormsGallery", dependencies: ["MESFormsUI", "MockEngineCore"]),
+        .target(name: "MESConformance", dependencies: ["MESCore", "MESClientKit"], resources: [.copy("Resources/schemas")]),
+        .executableTarget(
+            name: "MESConformanceCLI",
+            dependencies: ["MESConformance", "MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
+        ),
         .testTarget(name: "MESCoreTests", dependencies: ["MESCore"]),
         .testTarget(
             name: "MESEngineKitTests",
@@ -98,6 +106,10 @@ let package = Package(
         .testTarget(
             name: "MESFormsUITests",
             dependencies: ["MESFormsUI", "MESInProcess", "MESEngineCore", "MockEngineCore"]
+        ),
+        .testTarget(
+            name: "MESConformanceTests",
+            dependencies: ["MESConformance", "MESEngineKit", "MESEngineCore", "MockEngineCore"]
         ),
     ]
 )

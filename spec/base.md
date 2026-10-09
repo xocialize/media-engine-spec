@@ -238,8 +238,10 @@ An extension is a named, optional parameter group, `{name, title, schema}`.
 
 **Responses:**
 - **201,** with the Job snapshot and `Location: {path}/jobs/{id}`.
-- **400** for a malformed request, or **422** for a valid but unacceptable one. Codes: `out_of_limits`,
-  `unsupported_parameter`, `policy_unmet`, `input_invalid` (§12).
+- **400** `invalid_request` for a malformed request, including one that breaks its descriptor's structure: a
+  required input missing, fewer values than an input's `min`, or parameters the profile makes mutually exclusive.
+- **422** for a well-formed request the engine can't accept. Codes: `out_of_limits`, `unsupported_parameter`,
+  `policy_unmet`, `input_invalid` (§12).
 - **429** `busy`, with `Retry-After`, when the client's queue limit is reached.
 
 **Idempotency.** An engine SHOULD honour `Idempotency-Key` for 24 hours per paired client, returning the original
@@ -283,7 +285,7 @@ The Job snapshot is defined in [`job.schema.json`](../schemas/v0/base/job.schema
 
 | Request | Effect |
 |---|---|
-| `GET {path}/jobs/{id}` | The snapshot. `?wait=<s>` (≤ 60) long-polls until the state changes. |
+| `GET {path}/jobs/{id}` | The snapshot. `?wait=<s>` (≤ 60) long-polls while the job is active (`received`, `fetching`, `waiting`, `running`): it answers when the state changes. A job already `holding` or `purged` answers at once. |
 | `GET {path}/jobs?state=…` | The caller's own jobs. A client never sees another client's jobs. |
 | `GET {path}/jobs/{id}/outputs/{index}` | The output's bytes, with its `Content-Type` and `ETag: "sha256:<hex>"`. Byte ranges MUST be supported. After purge: 410 `gone`. |
 | `POST {path}/jobs/{id}/confirm` | The client has what it needs. The engine purges the outputs; the state becomes `purged` and the outcome stays `succeeded`. |
@@ -476,7 +478,7 @@ A client conforms when it passes the client tests against the mock engine. These
 - honours `Retry-After`;
 - confirms or releases what it collects.
 
-Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles).
+Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is [`docs/CONFORMANCE.md`](../docs/CONFORMANCE.md).
 
 ## 17. Security and privacy considerations
 

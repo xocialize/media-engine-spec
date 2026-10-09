@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — GET {path}/operations (§6)",
+  "type": "object",
+  "required": ["operations", "etag"],
+  "additionalProperties": false,
+  "properties": {
+    "operations": { "type": "array", "items": { "$ref": "descriptor.schema.json" } },
+    "etag": { "type": "string", "minLength": 1 }
+  }
+}

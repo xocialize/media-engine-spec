@@ -112,3 +112,4 @@ An engine conforms to Image 0.1 for the operations it offers when:
 | IMAGE-006 | A non-sRGB input yields `color_converted` and an sRGB output |
 | IMAGE-007 | `seed` is reported, and the same seed reproduces the result where the model is deterministic |
 | IMAGE-008 | `size` and `aspect` together → 400 |
+| IMAGE-009 | Each descriptor matches the operations table: its required inputs and its outputs exist with the right kinds, and it requires no parameter outside the operation's vocabulary |

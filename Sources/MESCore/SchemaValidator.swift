@@ -13,6 +13,7 @@ public struct SchemaValidator: Sendable {
         public var path: String
         public var message: String
         public var description: String { "\(path): \(message)" }
+        public init(path: String, message: String) { self.path = path; self.message = message }
     }
 
     static let assertions: Set<String> = ["type", "enum", "const", "properties", "required", "additionalProperties",

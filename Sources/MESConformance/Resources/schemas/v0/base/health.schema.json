@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — GET {path}/health (§14)",
+  "type": "object",
+  "required": ["status", "queue_depth", "resident_models"],
+  "additionalProperties": false,
+  "properties": {
+    "status": { "enum": ["ok", "degraded", "unavailable"] },
+    "queue_depth": { "type": "integer", "minimum": 0 },
+    "running": { "$ref": "common.schema.json#/$defs/Id" },
+    "resident_models": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/Id" } },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headroom_bytes": { "type": "integer", "minimum": 0 },
+        "class": { "enum": ["small", "medium", "large", "xlarge"] }
+      }
+    },
+    "estimated_wait_s": { "type": "number", "minimum": 0 }
+  }
+}

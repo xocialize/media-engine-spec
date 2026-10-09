@@ -8,8 +8,8 @@ compliant engine, on any platform.
 > **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
-> from descriptors); and a mock Image engine. 44 tests pass. The conformance suite comes next
-> ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
+> from descriptors); the engine conformance suite; and a mock Image engine, which conforms. 51 tests pass. Client
+> conformance comes next ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
 
 ## Contents
 
@@ -20,8 +20,9 @@ compliant engine, on any platform.
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
-| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
+| [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE and IMAGE test, and how to run them |
 | [`rfcs/`](rfcs/) | How changes are proposed |
 
 ## Checking the documents
@@ -78,6 +79,12 @@ swift run mes-forms-gallery
 ```
 
 ![Generate, rendered from its descriptor](docs/images/forms-image.generate-light.png)
+
+Test an engine against the spec (the report lands in `mes-conformance-report/`):
+
+```bash
+swift run mes-conformance engine http://127.0.0.1:17600/mes/v0
+```
 
 ```bash
 swift test

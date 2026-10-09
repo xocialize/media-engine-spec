@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shape of a profile's operations.json",
+  "type": "object",
+  "required": [
+    "profile",
+    "version",
+    "operations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "operations": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*\\.[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "inputs",
+          "outputs",
+          "vocabulary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "kind",
+                "required"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "mask",
+                    "video",
+                    "audio",
+                    "data"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "mask",
+                    "video",
+                    "audio",
+                    "data"
+                  ]
+                },
+                "value_schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "vocabulary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keeps_input_size": {
+            "type": "boolean"
+          },
+          "preserves_unmasked": {
+            "type": "boolean"
+          },
+          "exact_scale": {
+            "type": "boolean"
+          },
+          "requires_one_of": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vocabulary_defs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

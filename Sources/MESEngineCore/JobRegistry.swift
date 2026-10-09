@@ -477,10 +477,12 @@ package actor JobRegistry {
             .map(\.job).sorted { $0.createdAt < $1.createdAt }
     }
 
-    /// Long-poll: returns when the state changes or `seconds` pass.
+    /// Long-poll (Base §7.3): while the job is active, returns when its state changes or `seconds` pass; a job already
+    /// holding or purged answers at once, so a client that polls just after completion doesn't wait for the next
+    /// change (which, for a held job, is its expiry).
     package func waitForChange(_ id: String, owner: String, seconds: Int) async throws -> Job {
         let current = try record(id, owner: owner)
-        guard seconds > 0, current.job.state != .purged else { return current.job }
+        guard seconds > 0, [.received, .fetching, .waiting, .running].contains(current.job.state) else { return current.job }
         let stream = try subscribe(id, owner: owner, after: current.seq)
         await withTaskGroup(of: Void.self) { group in
             group.addTask {

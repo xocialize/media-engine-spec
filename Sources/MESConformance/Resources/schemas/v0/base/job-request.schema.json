@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — POST {path}/jobs (§7.1)",
+  "type": "object",
+  "required": ["operation"],
+  "additionalProperties": false,
+  "properties": {
+    "operation": { "$ref": "common.schema.json#/$defs/OperationId" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "$ref": "#/$defs/InputValue" },
+          { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/InputValue" } }
+        ]
+      }
+    },
+    "params": { "type": "object" },
+    "model": { "$ref": "common.schema.json#/$defs/Id" },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "license": { "enum": ["any", "commercial-use"] },
+        "remote": { "enum": ["forbid", "allow"] }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^x-[a-z0-9]+\\.[a-z0-9_]+$" }
+    },
+    "client_ref": { "type": "string", "maxLength": 128 }
+  },
+  "$defs": {
+    "InputValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["inline"],
+          "additionalProperties": false,
+          "properties": {
+            "inline": {
+              "type": "object",
+              "required": ["media_type", "data"],
+              "additionalProperties": false,
+              "properties": {
+                "media_type": { "$ref": "common.schema.json#/$defs/MediaType" },
+                "data": { "type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["upload"],
+          "additionalProperties": false,
+          "properties": { "upload": { "$ref": "common.schema.json#/$defs/Id" } }
+        },
+        {
+          "type": "object",
+          "required": ["grant"],
+          "additionalProperties": false,
+          "properties": {
+            "grant": {
+              "type": "object",
+              "required": ["url", "token", "media_type"],
+              "additionalProperties": false,
+              "properties": {
+                "url": { "type": "string", "pattern": "^https?://" },
+                "token": { "type": "string", "minLength": 16 },
+                "media_type": { "$ref": "common.schema.json#/$defs/MediaType" },
+                "bytes": { "type": "integer", "minimum": 0 },
+                "sha256": { "$ref": "common.schema.json#/$defs/Sha256" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["data"],
+          "additionalProperties": false,
+          "properties": { "data": {} }
+        }
+      ]
+    }
+  }
+}

@@ -30,6 +30,10 @@ public final class HTTPEngineConnection: EngineConnection, @unchecked Sendable {
         self.maxRetries = maxRetries
         self.maxRetryDelay = maxRetryDelay
         trust = EngineTrust(pinned: pinnedFingerprint, trustOnFirstUse: trustOnFirstUse)
+        // The ETag cache is ours: URLSession's would turn the engine's 304 into a cached 200.
+        let configuration = configuration.copy() as! URLSessionConfiguration
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: configuration, delegate: trust, delegateQueue: nil)
     }
 
