@@ -366,7 +366,7 @@ Event schema: [`event.schema.json`](../schemas/v0/base/event.schema.json). Every
 | `job.preview` | `{media_type, href}`, or inline `data` (≤ 256 KiB base64) |
 | `job.warning` | A Warning |
 | `job.output_ready` | `{outputs}`; the job is now `holding` |
-| `job.ended` | `{outcome, error?}` |
+| `job.ended` | `{outcome, error?}`, when the job reaches `purged`. For a succeeded job that is after confirm, release or expiry, so a client that only needs the outputs can stop reading at `job.output_ready`. |
 | `engine.health` | Health (§14); WebSocket only |
 | `engine.operations_changed` | `{etag}`; WebSocket only |
 
