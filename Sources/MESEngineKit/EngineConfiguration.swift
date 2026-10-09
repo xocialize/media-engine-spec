@@ -13,8 +13,16 @@ public struct EngineConfiguration: Sendable {
     /// 0 picks a free port (reported by `MESEngineServer.onRunning`).
     public var port: Int = 0
     public var basePath: String = "/mes/v0"
-    /// R0b.1 serves `open` mode (loopback only). `paired` mode arrives with TLS and pairing (R0b.2).
+    /// `open`: HTTP, loopback only, one local client. `paired`: TLS with a self-signed certificate, pairing, bearer
+    /// tokens, and per-client job ownership (Base §3.3, §5). Paired engines usually bind "0.0.0.0".
     public var mode: AuthMode = .open
+    /// Where the TLS identity and pairings persist. Never the spool, which is wiped at start.
+    public var stateDirectory: URL
+    /// Asked for every pairing request (Base §5: a local person approves, unless an operator policy pre-approves).
+    /// The default declines everything; `EngineConfiguration.approveAll` pre-approves.
+    public var pairingApproval: @Sendable (PairingPrompt) async -> Bool = { _ in false }
+    /// Advertise `_mes-engine._tcp` over DNS-SD. Open mode advertises on this machine only.
+    public var advertise: Bool = true
 
     /// The engine's private spool. Wiped at start (Base §13 rule 3).
     public var spoolDirectory: URL
@@ -44,7 +52,14 @@ public struct EngineConfiguration: Sendable {
         self.id = id; self.name = name; self.implementationName = implementationName
         self.implementationVersion = implementationVersion; self.implementationURL = implementationURL
         self.spoolDirectory = spoolDirectory
+        stateDirectory = spoolDirectory.deletingLastPathComponent()
+            .appendingPathComponent(spoolDirectory.lastPathComponent + "-state", isDirectory: true)
     }
 
-    var features: [Feature] { [.uploads, .sse] + (grants ? [.grants] : []) + [.previews] }
+    /// An operator policy that pre-approves every pairing (for development and unattended hosts).
+    public static let approveAll: @Sendable (PairingPrompt) async -> Bool = { _ in true }
+
+    var features: [Feature] {
+        [.uploads, .sse] + (grants ? [.grants] : []) + [.previews] + (mode == .paired ? [.pairing] : [])
+    }
 }

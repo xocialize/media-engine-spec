@@ -5,8 +5,8 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit R0b.1 works:** MESCore, the
-> engine kit in open mode, and a mock Image engine, with 16 passing tests. Paired mode, WebSocket, DNS-SD and MCP come
+> **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
+> open and paired modes (TLS, pairing, tokens, DNS-SD); and a mock Image engine. 20 tests pass. MCP and WebSocket come
 > next, then the client SDKs and the conformance suite ([build plan](docs/BUILD-PLAN.md)). Nothing here is published
 > yet.
 
@@ -41,6 +41,12 @@ swift run mes-mock-engine --port 17600
 
 ```bash
 curl -s http://127.0.0.1:17600/mes/v0/operations
+```
+
+Paired mode (TLS and pairing), approving each pairing at the prompt:
+
+```bash
+swift run mes-mock-engine --paired --approve prompt
 ```
 
 ```bash

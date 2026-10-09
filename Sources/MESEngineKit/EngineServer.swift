@@ -2,6 +2,8 @@ import CryptoKit
 import Foundation
 import HTTPTypes
 import Hummingbird
+import HummingbirdCore
+import HummingbirdTLS
 import MESCore
 import NIOCore
 
@@ -12,29 +14,54 @@ import NIOCore
 public final class MESEngineServer: Sendable {
     public let configuration: EngineConfiguration
     let engine: any MediaEngine
+    private let advertiser = EngineAdvertiser()
 
     public init(engine: any MediaEngine, configuration: EngineConfiguration) {
         self.engine = engine
         self.configuration = configuration
     }
 
-    /// Prepares the spool (wiping leftovers, Base §13 rule 3), loads descriptors, starts the retention sweeper and
-    /// returns the Hummingbird application.
+    /// Prepares the spool (wiping leftovers, Base §13 rule 3), loads descriptors, starts the retention sweeper and,
+    /// in paired mode, the TLS identity and pairings. Returns the Hummingbird application.
     public func makeApplication(onRunning: @escaping @Sendable (Int) async -> Void = { _ in }) async throws
         -> some ApplicationProtocol {
-        let (spool, _) = try Spool.prepare(at: configuration.spoolDirectory)
-        let registry = JobRegistry(engine: engine, config: configuration, spool: spool)
-        await registry.start()
-        let router = Routes.router(registry: registry, config: configuration, spool: spool)
+        let config = configuration
+        let (spool, _) = try Spool.prepare(at: config.spoolDirectory)
+        let registry = JobRegistry(engine: engine, config: config, spool: spool)
+        var server: HTTPServerBuilder = .http1()
+        var pairings: PairingRegistry?
+        if config.mode == .paired {
+            let identity = try EngineIdentity.loadOrCreate(in: config.stateDirectory, commonName: "MES engine \(config.id)")
+            server = try .tls(.http1(), tlsConfiguration: try identity.tlsConfiguration())
+            pairings = PairingRegistry(stateDirectory: config.stateDirectory, identity: identity, approve: config.pairingApproval)
+            await registry.start(tlsFingerprint: identity.fingerprintHex)
+        } else {
+            await registry.start()
+        }
+        let router = Routes.router(registry: registry, pairings: pairings, config: config, spool: spool)
+        let advertiser = self.advertiser
+        let profiles = await registry.engineInfo().profiles
         return Application(
             router: router,
-            configuration: .init(address: .hostname(configuration.host, port: configuration.port), serverName: "mes-engine"),
-            onServerRunning: { channel in await onRunning(channel.localAddress?.port ?? 0) })
+            server: server,
+            configuration: .init(address: .hostname(config.host, port: config.port), serverName: "mes-engine"),
+            onServerRunning: { channel in
+                let port = channel.localAddress?.port ?? 0
+                if config.advertise {
+                    advertiser.start(name: config.name, port: port, txt: EngineAdvertiser.txt(config: config, profiles: profiles),
+                                     localOnly: config.mode == .open || ["127.0.0.1", "localhost", "::1"].contains(config.host))
+                }
+                await onRunning(port)
+            })
     }
 
     public func run(onRunning: @escaping @Sendable (Int) async -> Void = { _ in }) async throws {
+        defer { advertiser.stop() }
         try await makeApplication(onRunning: onRunning).runService()
     }
+
+    /// Stops advertising (the listener stops with the application's service).
+    public func stopAdvertising() { advertiser.stop() }
 }
 
 // MARK: - Context and headers
@@ -69,6 +96,7 @@ extension HTTPField.Name {
     static let lastEventID = Self("Last-Event-ID")!
     static let idempotencyKey = Self("Idempotency-Key")!
     static let contentDigest = Self("Content-Digest")!
+    static let prefer = Self("Prefer")!
 }
 
 // MARK: - Responses
@@ -156,15 +184,59 @@ struct GuardMiddleware: RouterMiddleware {
     }
 }
 
+/// Paired mode (Base §3.3): every endpoint except the handshake and the pairing exchange needs a bearer token, which
+/// names the client that owns the jobs it sees.
+struct PairedAuthMiddleware: RouterMiddleware {
+    typealias Context = MESRequestContext
+    let pairings: PairingRegistry
+    let basePath: String
+
+    func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
+        let path = request.uri.path
+        let open = (request.method == .get && path == basePath + "/engine")
+            || (request.method == .post && path == basePath + "/pairings")
+            || (request.method == .post && path.hasPrefix(basePath + "/pairings/") && path.hasSuffix("/confirm"))
+        if open { return try await next(request, context) }
+        guard let header = request.headers[.authorization], header.hasPrefix("Bearer "),
+              let client = await pairings.client(forToken: String(header.dropFirst("Bearer ".count))) else {
+            throw MESError(.unauthorized, "Pair with this engine first, then send Authorization: Bearer <token>.")
+        }
+        var paired = context
+        paired.clientID = client
+        return try await next(request, paired)
+    }
+}
+
 // MARK: - Routes
 
 enum Routes {
-    static func router(registry: JobRegistry, config: EngineConfiguration, spool: Spool) -> Router<MESRequestContext> {
+    static func router(registry: JobRegistry, pairings: PairingRegistry?, config: EngineConfiguration,
+                       spool: Spool) -> Router<MESRequestContext> {
         let router = Router(context: MESRequestContext.self)
         router.add(middleware: ErrorMiddleware())
         router.add(middleware: GuardMiddleware(config: config))
+        if let pairings { router.add(middleware: PairedAuthMiddleware(pairings: pairings, basePath: config.basePath)) }
         let api = router.group(RouterPath(config.basePath))
         let fileIO = FileIO()
+
+        if let pairings {
+            api.post("pairings") { request, _ in
+                let body = try await request.body.collect(upTo: 64 << 10)
+                let pairingRequest = try MESJSON.decoder.decode(PairingRequest.self, from: Data(body.readableBytesView))
+                return try Responses.json(try await pairings.create(pairingRequest), status: .created)
+            }
+            api.post("pairings/:id/confirm") { request, context in
+                let wait = min(60, max(0, Self.preferWait(request.headers[.prefer]) ?? 0))
+                switch try await pairings.confirm(try context.parameters.require("id"), wait: wait) {
+                case .awaiting: return try Responses.json(["state": "awaiting_approval"], status: .accepted)
+                case .approved(let approved): return try Responses.json(approved)
+                }
+            }
+            api.delete("pairings/self") { _, context in
+                await pairings.unpair(context.clientID)
+                return Response(status: .noContent)
+            }
+        }
 
         api.get("engine") { _, _ in try Responses.json(await registry.engineInfo()) }
 
@@ -271,6 +343,16 @@ enum Routes {
         }
 
         return router
+    }
+
+    /// `Prefer: wait=30` → 30.
+    static func preferWait(_ header: String?) -> Int? {
+        guard let header else { return nil }
+        for part in header.split(separator: ",") {
+            let kv = part.trimmingCharacters(in: .whitespaces)
+            if kv.lowercased().hasPrefix("wait=") { return Int(kv.dropFirst(5)) }
+        }
+        return nil
     }
 
     /// `sha-256=:<base64>:` → hex.

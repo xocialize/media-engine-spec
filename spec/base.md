@@ -101,6 +101,9 @@ Bonjour on Apple platforms, Avahi on Linux, and the built-in resolver on Windows
 TXT values are hints. A client MUST confirm them with `GET {path}/engine` before relying on them. Engines MAY also
 be reached by address, without DNS-SD.
 
+An engine reachable only from its own machine (`open` mode, or bound to loopback) MAY advertise on that machine only
+(the DNS-SD local-only interface), so local clients can find it without it being announced on the LAN.
+
 ### 3.2 HTTP
 
 - **Protocol:** engines MUST support HTTP/1.1 and MAY support HTTP/2.
@@ -154,13 +157,13 @@ certificate and the client's key to a **6-digit code** that a person compares on
    - The client shows the code to its user.
 5. **Confirm.** The client calls `POST {path}/pairings/{pairing_id}/confirm`:
    - **202** `{state: "awaiting_approval"}` while the engine waits; the client MAY send `Prefer: wait=<s>`.
-   - **200** `{token, client_id}` once approved.
+   - **200** `{token, client_id}` once approved. The token is returned once; a later confirm answers 404.
    - **403** `pairing_rejected` if declined.
    - **410** `gone` if expired.
 6. **Afterwards.** The client pins `FE` and keeps the token. The engine stores only a hash of the token, bound to
    `FC`.
-7. **Unpairing.** `DELETE {path}/pairings/self` removes the caller's pairing. An engine MAY revoke a pairing at any
-   time, after which the token yields 401.
+7. **Unpairing.** `DELETE {path}/pairings/self` removes the caller's pairing and answers 204. An engine MAY revoke a
+   pairing at any time, after which the token yields 401.
 
 A man in the middle substitutes either `FE` or `FC`, which changes the code. Pairing pages expire within 5 minutes.
 

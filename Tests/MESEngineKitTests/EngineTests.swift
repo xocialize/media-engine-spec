@@ -38,6 +38,7 @@ func freshConfig(_ tweak: (inout EngineConfiguration) -> Void = { _ in }) -> Eng
     var c = EngineConfiguration(id: "eng_test", name: "Test", implementationName: "mes-mock-engine",
                                 implementationVersion: "0.1.0", spoolDirectory: spool)
     c.sweepInterval = .milliseconds(100)
+    c.advertise = false
     tweak(&c)
     return c
 }

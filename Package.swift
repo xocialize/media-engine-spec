@@ -22,6 +22,10 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.27.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.80.0"),
         .package(url: "https://github.com/apple/swift-http-types.git", from: "1.3.0"),
+        .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
+        .package(url: "https://github.com/apple/swift-certificates.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -33,8 +37,14 @@ let package = Package(
             dependencies: [
                 "MESCore",
                 .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "HummingbirdCore", package: "hummingbird"),
+                .product(name: "HummingbirdTLS", package: "hummingbird"),
                 .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "HTTPTypes", package: "swift-http-types"),
+                .product(name: "X509", package: "swift-certificates"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "SwiftASN1", package: "swift-asn1"),
             ]
         ),
         .target(name: "MockEngineCore", dependencies: ["MESEngineKit"]),
@@ -42,7 +52,8 @@ let package = Package(
         .testTarget(name: "MESCoreTests", dependencies: ["MESCore"]),
         .testTarget(
             name: "MESEngineKitTests",
-            dependencies: ["MESEngineKit", "MockEngineCore", .product(name: "HummingbirdTesting", package: "hummingbird")]
+            dependencies: ["MESEngineKit", "MockEngineCore", .product(name: "HummingbirdTesting", package: "hummingbird"),
+                           .product(name: "Crypto", package: "swift-crypto")]
         ),
     ]
 )

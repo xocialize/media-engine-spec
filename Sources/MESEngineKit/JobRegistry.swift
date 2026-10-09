@@ -42,6 +42,8 @@ actor JobRegistry {
     private var runningCount = 0
     private var slotWaiters: [(id: String, continuation: CheckedContinuation<Bool, Never>)] = []
     private var sweeper: Task<Void, Never>?
+    /// The pinned certificate's fingerprint, in paired mode.
+    var tlsFingerprint: String?
 
     init(engine: any MediaEngine, config: EngineConfiguration, spool: Spool) {
         self.engine = engine
@@ -51,7 +53,8 @@ actor JobRegistry {
 
     // MARK: - Lifecycle
 
-    func start() async {
+    func start(tlsFingerprint: String? = nil) async {
+        self.tlsFingerprint = tlsFingerprint
         let list = await engine.descriptors()
         descriptors = Dictionary(list.map { ($0.operation, $0) }, uniquingKeysWith: { first, _ in first })
         let data = (try? MESJSON.encoder.encode(list)) ?? Data()
@@ -82,7 +85,8 @@ actor JobRegistry {
             id: config.id, name: config.name,
             implementation: .init(name: config.implementationName, version: config.implementationVersion,
                                   url: config.implementationURL),
-            baseVersions: EngineConfiguration.baseVersions, profiles: profiles, auth: config.mode, tls: nil,
+            baseVersions: EngineConfiguration.baseVersions, profiles: profiles, auth: config.mode,
+            tls: tlsFingerprint.map { EngineInfo.TLS(fingerprintSHA256: $0) },
             features: config.features,
             limits: .init(maxUploadBytes: config.maxUploadBytes, maxInlineBytes: config.maxInlineBytes,
                           maxQueuedJobsPerClient: config.maxQueuedJobsPerClient),

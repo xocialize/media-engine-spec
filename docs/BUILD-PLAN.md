@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
-| **Status** | R0a done (drafts in review). **R0b.1 done:** MESCore, MESEngineKit (open mode) and the mock engine, 16 tests. R0b.2 next. |
+| **Status** | R0a done (drafts in review). **R0b.1 and R0b.2 done:** open and paired modes, pairing, DNS-SD, mock engine; 20 tests. R0b.3 (MCP, WebSocket) next. |
 | **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
 
 ## Steps
@@ -59,10 +59,24 @@ flowchart LR
   - TTL expiry, the crash sweep;
   - grants: good, wrong token, bad checksum, host rule.
 
-**R0b.2 (next):**
-- `paired` mode: TLS with a self-signed certificate, the pairing endpoints, bearer tokens and per-client ownership.
-- DNS-SD advertisement and the WebSocket channel.
-- The MCP binding (swift-sdk).
+**R0b.2 (done, 2026-10-09):**
+- **`paired` mode:**
+  - a self-signed P-256 TLS identity, kept in the state directory (never the spool);
+  - the pairing endpoints (`POST pairings`, `POST pairings/{id}/confirm` with `Prefer: wait`, `DELETE pairings/self`);
+  - the 6-digit code from both fingerprints, with operator approval through `pairingApproval`;
+  - bearer tokens stored only as hashes, and per-client job ownership.
+- **DNS-SD:** `_mes-engine._tcp` with the §3.1 TXT keys, advertised on the local machine only when the engine is
+  loopback-bound.
+- **`mes-mock-engine`:** `--paired`, `--approve prompt|auto`, `--state`, `--no-advertise`.
+- **4 new tests,** 20 in all, over real TLS with a pinning URLSession client:
+  - the same code on both screens, then tokens and ownership;
+  - a declined pairing (403) and an undecided one (202);
+  - unpairing (401);
+  - a restart keeps the certificate and pairings, and a wrong pin is refused;
+  - the TXT record.
+- **Live:** `dns-sd -L` shows the TXT record, and the served certificate's fingerprint equals `tls.fingerprint_sha256`.
+
+**R0b.3 (next):** the MCP binding (swift-sdk, tools generated from descriptors) and the WebSocket channel.
 
 One Swift package, `MESKit`, in this repo. Its products:
 
