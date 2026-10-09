@@ -1,0 +1,29 @@
+{
+  "operation": "image.fill",
+  "inputs": {
+    "image": {
+      "grant": {
+        "url": "https://sams-mac.local:51234/grants/g_77/0",
+        "token": "gr_f21b0ef89d8ee5daf6ba6cd441652a64",
+        "media_type": "image/png",
+        "bytes": 2483021,
+        "sha256": "55c64d0fcd6f9d5f7c828093857e3fdfda68478bb4e9bd24d481ef391c7804e8"
+      }
+    },
+    "mask": {
+      "grant": {
+        "url": "https://sams-mac.local:51234/grants/g_77/1",
+        "token": "gr_711430f6164e93803d93428bc1fab80f",
+        "media_type": "image/png",
+        "bytes": 40211,
+        "sha256": "48bf9b4f142ab45cac6f33cf99415bca6ca8e07608a031237aa76560fec2204b"
+      }
+    },
+    "prompt": "a red umbrella"
+  },
+  "params": {
+    "quality": "best",
+    "seed": 7
+  },
+  "client_ref": "ticket_8813"
+}

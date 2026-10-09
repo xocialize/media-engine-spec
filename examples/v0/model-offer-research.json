@@ -1,0 +1,16 @@
+{
+  "id": "qwen-image-2.1",
+  "title": "Qwen-Image 2.1",
+  "license": {
+    "spdx": "LicenseRef-Qwen-Research",
+    "commercial_use": false,
+    "terms_url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
+    "notice": "Research or evaluation use only.",
+    "accepted_required": true
+  },
+  "memory_class": "large",
+  "speed_class": "standard",
+  "quality_tiers": [
+    "best"
+  ]
+}

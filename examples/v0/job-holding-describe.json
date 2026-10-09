@@ -1,0 +1,77 @@
+{
+  "id": "job_01J9ZM",
+  "operation": "image.describe",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "mage-vl",
+      "title": "Mage-VL",
+      "license": {
+        "spdx": "Apache-2.0",
+        "commercial_use": true,
+        "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+      }
+    },
+    "effective": {
+      "language": "en"
+    }
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "description",
+        "kind": "data",
+        "media_type": "application/json",
+        "bytes": 182,
+        "sha256": "97864e878fe129a3d4c35681c3ad4b12743f04f7cd705643f2fa1142dfede601",
+        "href": "/mes/v0/jobs/job_01J9ZM/outputs/0",
+        "value": {
+          "caption": "A white lighthouse on a rocky cliff at sunset.",
+          "alt_text": "Lighthouse on a cliff under an orange sky",
+          "tags": [
+            "lighthouse",
+            "cliff",
+            "sunset",
+            "coast"
+          ],
+          "language": "en"
+        }
+      }
+    ],
+    "effective": {
+      "language": "en"
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_6f1c2a",
+        "name": "Studio Image Engine",
+        "implementation": "pixel-agency-image-engine",
+        "version": "0.1.0"
+      },
+      "operation": "image.describe",
+      "profile_version": "0.1",
+      "model": {
+        "id": "mage-vl",
+        "title": "Mage-VL",
+        "license": {
+          "spdx": "Apache-2.0",
+          "commercial_use": true,
+          "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+        }
+      },
+      "timings": {
+        "received_at": "2026-10-09T17:02:00Z",
+        "run_ms": 1400
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-09T18:02:02Z",
+    "record_expires_at": "2026-10-10T17:02:02Z"
+  },
+  "created_at": "2026-10-09T17:02:00Z",
+  "updated_at": "2026-10-09T17:02:02Z"
+}

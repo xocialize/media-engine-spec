@@ -1,0 +1,42 @@
+{
+  "id": "eng_6f1c2a",
+  "name": "Studio Image Engine",
+  "implementation": {
+    "name": "pixel-agency-image-engine",
+    "version": "0.1.0",
+    "url": "https://github.com/xocialize/pixel-agency-image-engine"
+  },
+  "base_versions": [
+    "0.1"
+  ],
+  "profiles": [
+    {
+      "id": "image",
+      "versions": [
+        "0.1"
+      ]
+    }
+  ],
+  "auth": "paired",
+  "tls": {
+    "fingerprint_sha256": "a3003623fc27cd15cd77c5a4c7db1c069ef51500124152c2f1918e077608a213"
+  },
+  "features": [
+    "uploads",
+    "grants",
+    "sse",
+    "websocket",
+    "mcp",
+    "previews",
+    "pairing"
+  ],
+  "limits": {
+    "max_upload_bytes": 268435456,
+    "max_inline_bytes": 8388608,
+    "max_queued_jobs_per_client": 32
+  },
+  "retention": {
+    "outputs_ttl_s": 3600,
+    "job_record_ttl_s": 86400
+  }
+}

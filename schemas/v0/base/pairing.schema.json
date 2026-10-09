@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — pairing messages (§5)",
+  "$defs": {
+    "Base64Url": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "Request": {
+      "type": "object",
+      "required": ["client_id", "client_name", "client_key", "client_nonce"],
+      "additionalProperties": false,
+      "properties": {
+        "client_id": { "$ref": "common.schema.json#/$defs/Id" },
+        "client_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "client_key": { "$ref": "#/$defs/Base64Url" },
+        "client_nonce": { "$ref": "#/$defs/Base64Url" }
+      }
+    },
+    "Created": {
+      "type": "object",
+      "required": ["pairing_id", "engine_nonce", "expires_at"],
+      "additionalProperties": false,
+      "properties": {
+        "pairing_id": { "$ref": "common.schema.json#/$defs/Id" },
+        "engine_nonce": { "$ref": "#/$defs/Base64Url" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "Awaiting": {
+      "type": "object",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": { "state": { "const": "awaiting_approval" } }
+    },
+    "Approved": {
+      "type": "object",
+      "required": ["token", "client_id"],
+      "additionalProperties": false,
+      "properties": {
+        "token": { "type": "string", "minLength": 32 },
+        "client_id": { "$ref": "common.schema.json#/$defs/Id" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/Request" },
+    { "$ref": "#/$defs/Created" },
+    { "$ref": "#/$defs/Awaiting" },
+    { "$ref": "#/$defs/Approved" }
+  ]
+}

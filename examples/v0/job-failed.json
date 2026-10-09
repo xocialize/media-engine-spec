@@ -1,0 +1,19 @@
+{
+  "id": "job_01J9ZP",
+  "operation": "image.fill",
+  "client_ref": "ticket_8813",
+  "state": "purged",
+  "outcome": "failed",
+  "warnings": [],
+  "error": {
+    "code": "input_fetch_failed",
+    "message": "The grant for input 'image' was refused (401).",
+    "param": "image",
+    "job": "job_01J9ZP"
+  },
+  "retention": {
+    "record_expires_at": "2026-10-10T17:05:00Z"
+  },
+  "created_at": "2026-10-09T17:04:58Z",
+  "updated_at": "2026-10-09T17:05:00Z"
+}

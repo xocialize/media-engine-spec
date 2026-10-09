@@ -1,0 +1,18 @@
+{
+  "operation": "image.fill",
+  "inputs": {
+    "image": {
+      "upload": "upl_a1"
+    },
+    "mask": {
+      "upload": "upl_a2"
+    },
+    "prompt": "a red umbrella"
+  },
+  "params": {
+    "quality": "standard"
+  },
+  "policy": {
+    "license": "commercial-use"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "type": "job.output_ready",
+  "job": "job_01J9ZK",
+  "seq": 22,
+  "time": "2026-10-09T17:00:13Z",
+  "data": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 1893340,
+        "sha256": "990179ec5064cf7956be1bf2364843b0a58b519e5d88a398f6027970ddeb0eb1",
+        "href": "/mes/v0/jobs/job_01J9ZK/outputs/0",
+        "width": 1008,
+        "height": 752
+      }
+    ]
+  }
+}

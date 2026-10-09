@@ -1,0 +1,102 @@
+{
+  "id": "job_01J9ZK",
+  "operation": "image.generate",
+  "client_ref": "ticket_8812",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "z-image-turbo",
+      "title": "Z-Image Turbo",
+      "license": {
+        "spdx": "Apache-2.0",
+        "commercial_use": true,
+        "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+      }
+    },
+    "effective": {
+      "quality": "standard",
+      "size": {
+        "width": 1008,
+        "height": 752
+      },
+      "seed": 42,
+      "model_params": {
+        "steps": 8,
+        "guidance": 0.0
+      }
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "fraction": 1.0
+  },
+  "warnings": [
+    {
+      "code": "size_snapped",
+      "message": "1000×750 → 1008×752 (model grid)",
+      "param": "size"
+    }
+  ],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 1893340,
+        "sha256": "990179ec5064cf7956be1bf2364843b0a58b519e5d88a398f6027970ddeb0eb1",
+        "href": "/mes/v0/jobs/job_01J9ZK/outputs/0",
+        "width": 1008,
+        "height": 752
+      }
+    ],
+    "effective": {
+      "quality": "standard",
+      "size": {
+        "width": 1008,
+        "height": 752
+      },
+      "seed": 42,
+      "model_params": {
+        "steps": 8,
+        "guidance": 0.0
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_6f1c2a",
+        "name": "Studio Image Engine",
+        "implementation": "pixel-agency-image-engine",
+        "version": "0.1.0"
+      },
+      "operation": "image.generate",
+      "profile_version": "0.1",
+      "model": {
+        "id": "z-image-turbo",
+        "title": "Z-Image Turbo",
+        "license": {
+          "spdx": "Apache-2.0",
+          "commercial_use": true,
+          "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+        }
+      },
+      "seed": 42,
+      "timings": {
+        "received_at": "2026-10-09T17:00:00Z",
+        "started_at": "2026-10-09T17:00:01Z",
+        "finished_at": "2026-10-09T17:00:13Z",
+        "queue_ms": 900,
+        "prepare_ms": 0,
+        "run_ms": 12100
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-09T18:00:13Z",
+    "record_expires_at": "2026-10-10T17:00:13Z"
+  },
+  "created_at": "2026-10-09T17:00:00Z",
+  "updated_at": "2026-10-09T17:00:13Z"
+}

@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "policy_unmet",
+    "message": "No model for image.generate permits commercial use with the requested size.",
+    "reason": "qwen-image-2.1 is LicenseRef-Qwen-Research (commercial_use: false)",
+    "request_id": "req_5d2"
+  }
+}

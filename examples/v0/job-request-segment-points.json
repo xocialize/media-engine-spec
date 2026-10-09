@@ -1,0 +1,25 @@
+{
+  "operation": "image.segment",
+  "inputs": {
+    "image": {
+      "upload": "upl_b1"
+    },
+    "points": {
+      "data": [
+        {
+          "x": 0.42,
+          "y": 0.55,
+          "label": "include"
+        },
+        {
+          "x": 0.9,
+          "y": 0.1,
+          "label": "exclude"
+        }
+      ]
+    }
+  },
+  "params": {
+    "count": 1
+  }
+}

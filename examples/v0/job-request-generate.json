@@ -1,0 +1,19 @@
+{
+  "operation": "image.generate",
+  "inputs": {
+    "prompt": "a lighthouse on a cliff at dusk, oil painting"
+  },
+  "params": {
+    "size": {
+      "width": 1000,
+      "height": 750
+    },
+    "quality": "standard",
+    "seed": 42
+  },
+  "policy": {
+    "license": "commercial-use",
+    "remote": "forbid"
+  },
+  "client_ref": "ticket_8812"
+}

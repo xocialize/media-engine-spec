@@ -1,0 +1,79 @@
+# MES R0 — build plan
+
+| | |
+|---|---|
+| **Goal** | MES-PRD R0: a client written only from the spec documents drives an engine with no other knowledge of it |
+| **Status** | R0a done (drafts in review); R0b to R0d planned |
+| **Source** | `ml(x)/PixelAgency/Docs/MES-PRD.md` §7.3 (deliverables DLV-1 to DLV-9) and §13 (phasing) |
+
+## Steps
+
+```mermaid
+flowchart LR
+  A["R0a · Spec drafts<br/>Base 0.1 · Image 0.1<br/>schemas · examples · validator"] --> REV{{"Your review"}}
+  REV --> B["R0b · MESCore + MESEngineKit<br/>+ mock engine"]
+  B --> C["R0c · MESClientKit + MESFormsUI<br/>+ mes CLI"]
+  C --> D["R0d · Conformance suite v0.1"]
+  D --> X["Exit: Lite (L1) and the<br/>Image Engine (ENG R1) start"]
+```
+
+### R0a: specification drafts (done, in review)
+
+| Deliverable | Where | Check |
+|---|---|---|
+| Base 0.1 | `spec/base.md` | Review |
+| Image profile 0.1 | `spec/profiles/image.md` | Review |
+| JSON Schemas | `schemas/v0/` (13 files) | `tools/validate.py`: every `$ref` resolves |
+| Examples | `examples/v0/` (19 messages) | Each validates against its schema |
+| Profile rules | `operations.json` + vocabulary | Descriptors may use only vocabulary parameters |
+| Negative tests | `tools/test_validator.py` | 24 mutations, all rejected |
+
+**Exit:** your review of the two documents. Changes are made in place while the version is 0.1.
+
+### R0b: MESCore, MESEngineKit, mock engine
+
+One Swift package, `MESKit`, in this repo. Its products:
+
+| Product | Contents | Builds on |
+|---|---|---|
+| **MESCore** | `Codable` types for every schema; the vocabulary; the operations table; validation helpers. No networking. | Foundation |
+| **MESEngineKit** | The engine side of Base:<br/>• HTTP routes (engine info, operations, jobs, uploads, outputs, confirm, health);<br/>• SSE with `Last-Event-ID` and a 15 s heartbeat; WebSocket;<br/>• spool and retention sweeper (§13), including the crash sweep;<br/>• pairing (P-256 keys, the HMAC code); `open` mode, loopback only;<br/>• the origin guard; DNS-SD advertisement; the MCP binding.<br/>Engine authors implement one protocol: `operations` plus `run(job)`. | Hummingbird 2 (the ML[X] Image Server runs 2.27) and hummingbird-websocket; swift-sdk (MCP) 0.12.x; CryptoKit; `dns_sd` (the Image Server's `Bonjour.swift` approach) |
+| **MockEngine** (executable) | Offers all 13 Image operations with synthetic but rule-abiding results. For example, `fill` changes only the white-mask pixels, `upscale` is exactly ×scale, and `describe` returns canned JSON. Deterministic per seed. | MESEngineKit |
+
+**Exit:**
+1. The mock engine passes the Base and Image rules it can be tested on with `curl` and SSE.
+2. Its descriptors and messages validate against `schemas/v0` (a test in the package runs the same examples).
+3. A crash test (kill during `running`) leaves no spooled media after relaunch.
+
+### R0c: MESClientKit, MESFormsUI, `mes` CLI
+
+| Product | Contents | Builds on |
+|---|---|---|
+| **MESClientKit** | The client side of Base:<br/>• discovery (NWBrowser) and pairing, with pinned TLS through the URLSession delegate;<br/>• descriptors (with ETag), jobs, uploads, outputs, confirm and release;<br/>• SSE and WebSocket events as `AsyncSequence`s;<br/>• `Retry-After`, idempotency keys, and an optional grant server for custody-keeping clients;<br/>• a pluggable transport, so an app can register an **in-process engine** (Desktop's built-in ForgeCore, DESK:RUN-9). | Foundation, Network |
+| **MESFormsUI** | SwiftUI forms from descriptor `params`, following the `x-mes-ui` hints:<br/>• widgets: enum → picker, bounded number → slider or stepper, seed → seed field, `size` → size field, string → text or textarea, boolean → toggle;<br/>• groups, order and advanced sections;<br/>• model offers shown with their licence;<br/>• extensions shown as an optional section. | SwiftUI, DesignScaffold tokens |
+| **`mes` CLI** | `discover`, `pair`, `ops`, `run <operation> --input name=file --param k=v`, `jobs`, `get`, `confirm`, `release` | MESClientKit, swift-argument-parser |
+
+**Exit:** `mes run image.fill` against the mock engine works end to end, from discovery and pairing through confirm,
+and a MESFormsUI preview renders every mock descriptor.
+
+### R0d: conformance suite v0.1
+
+| Product | Contents |
+|---|---|
+| **`mes-conformance engine <url>`** | Runs the BASE-nnn and IMAGE-nnn tests, for the features and operations the engine claims, and writes a JSON + Markdown report. Retention is checked by observation: for example, 410 after confirm, and nothing reachable after TTL. |
+| **`mes-conformance client`** | Runs the mock engine in scenario mode (errors, `Retry-After`, slow jobs, expiries) and checks a client's behaviour from its requests. |
+
+**Exit:** the mock engine passes all its tests, and the `mes` CLI passes the client tests. R0 is then done, and Lite
+(L1) and the Image Engine (ENG R1) can start.
+
+## Platforms and versions
+
+- **Platform:** macOS 26+ and Swift 6 strict concurrency, matching the fleet. MESCore stays Foundation-only so a Linux
+  build is possible later (MES-PRD OQ-5: Python kits come next for other platforms).
+- **Dependencies:** pinned by tag, never by local path. The versions start from what the ML[X] Image Server proved:
+  Hummingbird 2.27, swift-sdk 0.12.1, swift-argument-parser 1.5+.
+
+## Before anything is public
+
+The repo stays local until you approve publishing it. Publishing means a public GitHub repository (MES-PRD OQ-1
+default: under xocialize) and the first tagged draft.

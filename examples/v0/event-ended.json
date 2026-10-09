@@ -1,0 +1,13 @@
+{
+  "type": "job.ended",
+  "job": "job_01J9ZP",
+  "seq": 3,
+  "time": "2026-10-09T17:05:00Z",
+  "data": {
+    "outcome": "failed",
+    "error": {
+      "code": "input_fetch_failed",
+      "message": "The grant for input 'image' was refused (401)."
+    }
+  }
+}

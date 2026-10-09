@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — GET {path}/engine",
+  "type": "object",
+  "required": ["id", "name", "implementation", "base_versions", "profiles", "auth", "features", "limits", "retention"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "common.schema.json#/$defs/Id" },
+    "name": { "type": "string", "minLength": 1 },
+    "implementation": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "base_versions": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/Version" } },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "versions"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*$" },
+          "versions": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/Version" } }
+        }
+      }
+    },
+    "auth": { "enum": ["paired", "open"] },
+    "tls": {
+      "type": "object",
+      "required": ["fingerprint_sha256"],
+      "additionalProperties": false,
+      "properties": { "fingerprint_sha256": { "$ref": "common.schema.json#/$defs/Sha256" } }
+    },
+    "features": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/Feature" } },
+    "limits": {
+      "type": "object",
+      "required": ["max_upload_bytes", "max_inline_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "max_upload_bytes": { "type": "integer", "minimum": 1 },
+        "max_inline_bytes": { "type": "integer", "minimum": 1 },
+        "max_queued_jobs_per_client": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "required": ["outputs_ttl_s", "job_record_ttl_s"],
+      "additionalProperties": false,
+      "properties": {
+        "outputs_ttl_s": { "type": "integer", "minimum": 60, "maximum": 86400 },
+        "job_record_ttl_s": { "type": "integer", "minimum": 60, "maximum": 604800 }
+      }
+    }
+  }
+}

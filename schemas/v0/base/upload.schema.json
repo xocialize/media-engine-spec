@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — POST {path}/uploads response (§8)",
+  "type": "object",
+  "required": ["upload_id", "media_type", "bytes", "sha256", "expires_at"],
+  "additionalProperties": false,
+  "properties": {
+    "upload_id": { "$ref": "common.schema.json#/$defs/Id" },
+    "media_type": { "$ref": "common.schema.json#/$defs/MediaType" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "expires_at": { "$ref": "common.schema.json#/$defs/Timestamp" }
+  }
+}
