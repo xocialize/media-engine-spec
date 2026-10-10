@@ -5,11 +5,15 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1 and Image profile 0.1 are **drafts in review** (R0a). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1 and Image profile 0.1 are **drafts**, tagged `v0.1.0`. **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
 > from descriptors); the conformance suite for engines and clients; and a mock Image engine. The mock and `mes` both
-> conform. 53 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)). Nothing here is published yet.
+> conform. 55 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
+>
+> Two implementations use it: [Pixel Agency Lite](https://github.com/xocialize/pixel-agency-lite), the reference
+> client, and the Pixel Agency Image Engine, the reference Image engine, which passes the conformance suite against
+> real models.
 
 ## Contents
 

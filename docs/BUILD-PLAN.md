@@ -347,7 +347,8 @@ and a MESFormsUI preview renders every mock descriptor.
 - **Dependencies:** pinned by tag, never by local path. The versions start from what the ML[X] Image Server proved:
   Hummingbird 2.27, swift-sdk 0.12.1, swift-argument-parser 1.5+.
 
-## Before anything is public
+## Publishing
 
-The repo stays local until you approve publishing it. Publishing means a public GitHub repository (MES-PRD OQ-1
-default: under xocialize) and the first tagged draft.
+Published 2026-10-10 as a public repository, [xocialize/media-engine-spec](https://github.com/xocialize/media-engine-spec)
+(MES-PRD OQ-1), with the first tagged draft, `v0.1.0`: Base 0.1 and Image 0.1. Consumers depend on it by URL at a
+tag.
