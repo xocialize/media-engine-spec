@@ -198,7 +198,9 @@ Rules:
    `seed`, `quality`), and MUST NOT require model-specific parameters.
 2. **Model choice.** Model choice is optional for clients. An engine MUST pick a default when the request names no
    model. An offer marked `named_only` (typically research-licensed or otherwise opt-in) MUST NOT be chosen that way:
-   it runs only when a request names it. An offer can't be both `default` and `named_only`.
+   it runs only when a request names it. An offer can't be both `default` and `named_only`. The choice MAY depend on
+   the request's params (an Image restore picking its network by `kind`). It stays within the requested quality tier
+   and the request's policy, and the `default` offer is the choice when the params don't decide it.
 3. **Stability.** A descriptor MUST be stable for an engine version, except that `models` and `remote` may change at
    runtime. Such changes are announced with `engine.operations_changed` (§11).
 4. **No surprises.** Limits a model cannot honour (sizes, durations, unsupported vocabulary such as

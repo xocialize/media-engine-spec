@@ -292,6 +292,23 @@ struct EngineTests {
         }
     }
 
+    @Test("An engine may refine the default per request; an answer outside the allowed candidates is ignored")
+    func refinedDefault() async throws {
+        let server = MESEngineServer(engine: RefiningEngine(), configuration: freshConfig())
+        try await server.makeApplication().test(.live) { client in
+            func run(_ prompt: String, policy: Policy? = nil) async throws -> Job {
+                try await client.run(JobRequest(operation: "image.generate", inputs: ["prompt": .text(prompt)],
+                                                params: ["size": ["width": 16, "height": 16]], policy: policy))
+            }
+            let plain = try await run("plain"), alt = try await run("use alt"), research = try await run("use research")
+            let commercial = try await run("use alt", policy: Policy(license: .commercialUse))
+            #expect(plain.plan?.model.id == "mock")
+            #expect(alt.plan?.model.id == "mock-alt" && alt.result?.provenance.model.id == "mock-alt")
+            #expect(research.plan?.model.id == "mock", "named-only is never a default")
+            #expect(commercial.plan?.model.id == "mock", "the refined choice must satisfy the policy")
+        }
+    }
+
     @Test("Release cancels a running job, frees the slot and cleans the spool")
     func cancellation() async throws {
         let config = freshConfig()
@@ -365,5 +382,31 @@ struct EngineTests {
                 #expect(GrantFetcher.hostAllowed("192.168.0.10", clientHost: "192.168.0.9") == false)
             }
         }
+    }
+}
+
+/// The mock with a second generate model, preferred when the prompt asks for it (Base §6 rule 2: a default may depend
+/// on the request). "mock-alt" is research-licensed, so a commercial-use policy rules it out.
+struct RefiningEngine: MediaEngine {
+    let mock = MockImageEngine()
+
+    func descriptors() async -> [Descriptor] {
+        await mock.descriptors().map { d in
+            guard d.operation == "image.generate" else { return d }
+            var d = d
+            d.models.append(ModelOffer(id: "mock-alt", title: "Mock alternative",
+                                       license: License(spdx: "LicenseRef-Research", commercialUse: .no),
+                                       memoryClass: .small, speedClass: .fast, qualityTiers: [.standard]))
+            return d
+        }
+    }
+
+    func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
+
+    func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer, candidates: [ModelOffer]) -> ModelOffer? {
+        guard case .text(let prompt)? = request.inputs?["prompt"] else { return nil }
+        if prompt.contains("alt") { return candidates.first { $0.id == "mock-alt" } }
+        if prompt.contains("research") { return descriptor.models.first { $0.id == "mock-research" } }
+        return nil
     }
 }

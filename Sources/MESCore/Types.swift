@@ -313,6 +313,13 @@ public struct Policy: Codable, Sendable, Equatable {
     public init(license: LicensePolicy? = nil, remote: RemotePolicy? = nil) { self.license = license; self.remote = remote }
     public var effectiveLicense: LicensePolicy { license ?? .any }
     public var effectiveRemote: RemotePolicy { remote ?? .forbid }
+
+    /// Whether `offer` may run under this policy (Base §10.2, §10.3).
+    public func allows(_ offer: ModelOffer) -> Bool {
+        if effectiveLicense == .commercialUse, offer.license.commercialUse != .yes { return false }
+        if offer.remoteProvider != nil, effectiveRemote != .allow { return false }
+        return true
+    }
 }
 
 public struct Grant: Codable, Sendable, Equatable {

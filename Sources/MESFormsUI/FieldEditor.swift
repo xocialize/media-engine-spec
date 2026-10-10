@@ -358,13 +358,20 @@ struct ChoiceEditor: View {
     }
 }
 
-struct JSONEditor: View {
+/// A one-line JSON field: committed on Return, shown in red while it doesn't parse. Public so hosts can use it for
+/// `data` inputs too.
+public struct JSONEditor: View {
     let label: String
     @Binding var value: JSONValue?
     @State private var text = ""
     @State private var invalid = false
 
-    var body: some View {
+    public init(label: String, value: Binding<JSONValue?>) {
+        self.label = label
+        _value = value
+    }
+
+    public var body: some View {
         LabeledContent(label) {
             TextField(label, text: $text, prompt: Text("JSON"))
                 .labelsHidden().textFieldStyle(.roundedBorder).font(Tokens.Font.mono)

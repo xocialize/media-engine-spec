@@ -19,6 +19,13 @@ public protocol MediaEngine: Sendable {
 
     /// Model ids currently in memory, for `GET {path}/health`.
     func residentModels() async -> [String]
+
+    /// When a request names no model: a better default for its params than `kitChoice`, the kit's default for the
+    /// quality tier (e.g. restore choosing a network by `kind`). Return nil to keep it. The kit uses the answer only
+    /// if it is one of `candidates`: the descriptor's offers for the tier that aren't `named_only` and that the
+    /// request's policy allows. Runs at submit, before the plan, so the plan and provenance name what runs.
+    func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer,
+                      candidates: [ModelOffer]) -> ModelOffer?
 }
 
 extension MediaEngine {
@@ -26,6 +33,8 @@ extension MediaEngine {
         if descriptor.profile == ImageProfile.id { try ImageProfileRules.validate(request, descriptor: descriptor) }
     }
     public func residentModels() async -> [String] { [] }
+    public func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer,
+                             candidates: [ModelOffer]) -> ModelOffer? { nil }
 }
 
 /// One input as the engine receives it: text, a file in the job's spool, or JSON data.

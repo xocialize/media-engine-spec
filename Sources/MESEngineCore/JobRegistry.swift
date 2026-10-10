@@ -253,11 +253,7 @@ package actor JobRegistry {
                            param: "quality")
         }
         let policy = request.policy ?? Policy()
-        func satisfies(_ m: ModelOffer) -> Bool {
-            if policy.effectiveLicense == .commercialUse, m.license.commercialUse != .yes { return false }
-            if m.remoteProvider != nil, policy.effectiveRemote != .allow { return false }
-            return true
-        }
+        func satisfies(_ m: ModelOffer) -> Bool { policy.allows(m) }
         if let named = request.model {
             guard let model = descriptor.models.first(where: { $0.id == named }) else {
                 throw MESError(.modelUnavailable, "\(descriptor.operation) offers no model \(named).", param: "model")
@@ -277,6 +273,10 @@ package actor JobRegistry {
             }
             throw MESError(.policyUnmet, "No model for \(descriptor.operation) at \(quality.rawValue) satisfies the policy.",
                            reason: forTier.map { "\($0.id): \($0.license.spdx)" }.joined(separator: "; "))
+        }
+        if let refined = engine.defaultModel(for: request, descriptor: descriptor, kitChoice: model, candidates: allowed),
+           allowed.contains(where: { $0.id == refined.id }) {
+            return (refined, quality)
         }
         return (model, quality)
     }
