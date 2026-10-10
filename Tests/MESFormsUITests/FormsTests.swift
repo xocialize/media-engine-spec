@@ -98,6 +98,7 @@ struct WidgetTests {
         #expect(FormSchema.label("negative_prompt") == "Negative prompt")
         #expect(FormSchema.display("golden_hour") == "Golden hour" && FormSchema.display("image/png") == "image/png")
         #expect(FormSchema.display(16) == "16" && FormSchema.display(0.75) == "0.75")
+        #expect(FormSchema.display(.number(4_716_241_010_020_292)) == "4716241010020292", "seeds use the whole 2^53 range")
         #expect(FormSchema.hex(1, 0.5, 0) == "#ff8000" && FormSchema.rgb("#ff8000")! == (1, 128.0 / 255, 0))
     }
 }

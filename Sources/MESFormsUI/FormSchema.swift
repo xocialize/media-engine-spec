@@ -206,7 +206,8 @@ public enum FormSchema {
         case .string(let s):
             // Identifiers read as words (`golden_hour` → "Golden hour"); anything else (`image/png`) as written.
             return s.allSatisfy { $0.isLowercase || $0.isNumber || $0 == "_" } && s.first?.isLetter == true ? label(s) : s
-        case .number(let n): return n.rounded() == n && abs(n) < 1e15 ? String(Int(n)) : String(n)
+        // Integers to 2^53 − 1 (seeds use the whole range) print without a ".0".
+        case .number(let n): return n.rounded() == n && abs(n) <= 9_007_199_254_740_991 ? String(Int64(n)) : String(n)
         case .bool(let b): return b ? "On" : "Off"
         case .null: return "—"
         default:
