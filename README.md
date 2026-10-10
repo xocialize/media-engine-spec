@@ -12,8 +12,8 @@ compliant engine, on any platform.
 > conform. 55 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 >
 > Two implementations use it: [Pixel Agency Lite](https://github.com/xocialize/pixel-agency-lite), the reference
-> client, and the Pixel Agency Image Engine, the reference Image engine, which passes the conformance suite against
-> real models.
+> client, and the [Pixel Agency Image Engine](https://github.com/xocialize/pixel-agency-image-engine), the reference
+> Image engine, which passes the conformance suite against real models.
 
 ## Contents
 
