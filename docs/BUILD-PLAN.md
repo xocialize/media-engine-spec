@@ -352,3 +352,9 @@ and a MESFormsUI preview renders every mock descriptor.
 Published 2026-10-10 as a public repository, [xocialize/media-engine-spec](https://github.com/xocialize/media-engine-spec)
 (MES-PRD OQ-1), with the first tagged draft, `v0.1.0`: Base 0.1 and Image 0.1. Consumers depend on it by URL at a
 tag.
+
+Patch releases (MESKit only; the spec is unchanged):
+- **`v0.1.1`** (2026-10-11): MESClientKit answers TLS trust at the task level, so event streams work on paired engines.
+- **`v0.1.2`** (2026-10-11): SIGTERM ends an engine process promptly. `MESEngineServer.run` bounds the graceful stop
+  (`EngineConfiguration.shutdownGracePeriod`, 5 s), so an open event stream or a slow upload no longer holds it up
+  indefinitely. Apps that embed the server opt out of signal handling (`handlesShutdownSignals = false`).

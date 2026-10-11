@@ -100,6 +100,18 @@ swift run mes-conformance client
 swift test
 ```
 
+## Serving an engine from Swift
+
+```swift
+let server = MESEngineServer(engine: MyEngine(), configuration: config)
+try await server.run { port in print("listening on \(port)") }
+```
+
+In an engine process, SIGTERM or SIGINT stops the server gracefully: requests in flight get
+`config.shutdownGracePeriod` (5 s), then `run` returns. An app that embeds the server sets
+`config.handlesShutdownSignals = false` and stops it by cancelling the task. Otherwise the signal stops only the
+server, and the app keeps running without it.
+
 ## Licences
 
 - **Code, schemas, examples and tools:** Apache-2.0 ([LICENSE](LICENSE)).

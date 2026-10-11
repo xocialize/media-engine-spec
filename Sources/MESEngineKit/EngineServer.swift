@@ -9,6 +9,8 @@ import Logging
 import MESCore
 @_exported import MESEngineCore
 import NIOCore
+import ServiceLifecycle
+import UnixSignals
 
 /// Serves a `MediaEngine` over MES Base 0.1: HTTP, SSE, the WebSocket channel and the MCP binding, in open or
 /// paired mode.
@@ -64,9 +66,24 @@ public final class MESEngineServer: Sendable {
             logger: logger)
     }
 
+    /// Serves until the task is cancelled or, with `EngineConfiguration.handlesShutdownSignals`, until SIGTERM or SIGINT.
     public func run(onRunning: @escaping @Sendable (Int) async -> Void = { _ in }) async throws {
         defer { advertiser.stop() }
-        try await makeApplication(onRunning: onRunning).runService()
+        let app = try await makeApplication(onRunning: onRunning)
+        try await ServiceGroup(configuration: Self.serviceGroupConfiguration(app, configuration, logger: app.logger)).run()
+    }
+
+    /// Hummingbird's `runService()` traps both signals unconditionally and waits for every request in flight, so an open
+    /// event stream or a slow upload held a signalled engine up indefinitely, with further signals ignored. Here the
+    /// wait is bounded, and an embedder can opt out of signal handling altogether. (A signal can't be both graceful
+    /// and cancelling: ServiceGroup refuses overlapping lists.)
+    static func serviceGroupConfiguration(_ service: some Service, _ config: EngineConfiguration, logger: Logger)
+        -> ServiceGroupConfiguration {
+        var group = ServiceGroupConfiguration(
+            services: [service], gracefulShutdownSignals: config.handlesShutdownSignals ? [.sigterm, .sigint] : [],
+            logger: logger)
+        group.maximumGracefulShutdownDuration = config.shutdownGracePeriod
+        return group
     }
 
     /// Stops advertising (the listener stops with the application's service).

@@ -51,6 +51,16 @@ public struct EngineConfiguration: Sendable {
     /// Progress events are coalesced to at most this rate (Base §11: SHOULD ≤ 10/s).
     public var minProgressInterval: Duration = .milliseconds(100)
 
+    /// Whether `MESEngineServer.run` handles SIGTERM and SIGINT. Keep the default in a standalone engine process: either
+    /// signal stops the server gracefully, `run` returns and `main` exits. An app that embeds the server sets false and
+    /// stops it by cancelling the task that runs it. Otherwise the handler would stop only the server and leave both
+    /// signals ignored, so the app would carry on with its engine down and `kill -TERM` would never end it.
+    public var handlesShutdownSignals: Bool = true
+    /// How long a graceful stop waits for requests in flight before cancelling them. An event stream or a long poll stays
+    /// open as long as its client does, and an upload as long as its client takes; clients resume event streams with
+    /// `Last-Event-ID`.
+    public var shutdownGracePeriod: Duration = .seconds(5)
+
     /// How much the server logs (`trace` … `critical`). Embedders running short-lived engines (tests, the client
     /// conformance scenarios) use `critical`.
     public var logLevel: LogLevel = .info

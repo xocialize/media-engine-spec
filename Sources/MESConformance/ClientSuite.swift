@@ -188,7 +188,9 @@ public enum ClientSuite {
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 
         return try await withThrowingTaskGroup(of: ScenarioRun?.self) { group in
-            group.addTask { try await app.runService(); return nil }
+            // No signal handling: this engine lives inside `mes-conformance` (or a test), and a trapped SIGINT stays
+            // ignored after the scenario, so Ctrl-C would no longer stop the suite.
+            group.addTask { try await app.runService(gracefulShutdownSignals: []); return nil }
             var it = ports.makeAsyncIterator()
             guard let port = await it.next() else { throw Failure("The scenario engine didn't start.") }
             let url = URL(string: "http://127.0.0.1:\(port)/mes/v0")!
