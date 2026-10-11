@@ -309,6 +309,25 @@ struct EngineTests {
         }
     }
 
+    @Test("An output the descriptor doesn't offer is 422 unsupported_parameter, not out_of_limits (Image §1.2)")
+    func unofferedOutput() async throws {
+        let server = MESEngineServer(engine: EightBitEngine(), configuration: freshConfig())
+        try await server.makeApplication().test(.live) { client in
+            let png = try pngData(width: 8, height: 8) { _, _ in (1, 2, 3, 255) }
+            func upscale(_ output: JSONValue) async throws -> String? {
+                try client.errorCode(try await client.post("/jobs", JobRequest(
+                    operation: "image.upscale", inputs: ["image": .one(.inline(mediaType: "image/png", data: png))],
+                    params: ["scale": 2, "output": output])))
+            }
+            #expect(try await upscale(["bit_depth": 16]) == "unsupported_parameter")
+            #expect(try await upscale(["media_type": "image/tiff"]) == "unsupported_parameter")
+            let fine = try await client.post("/jobs", JobRequest(
+                operation: "image.upscale", inputs: ["image": .one(.inline(mediaType: "image/png", data: png))],
+                params: ["scale": 2, "output": ["media_type": "image/png", "bit_depth": 8]]))
+            #expect(fine.status.code < 300)
+        }
+    }
+
     @Test("Release cancels a running job, frees the slot and cleans the spool")
     func cancellation() async throws {
         let config = freshConfig()
@@ -409,4 +428,24 @@ struct RefiningEngine: MediaEngine {
         if prompt.contains("research") { return descriptor.models.first { $0.id == "mock-research" } }
         return nil
     }
+}
+
+/// The mock with `image.upscale`'s `output` narrowed to 8-bit PNG or JPEG, as an engine whose models run at 8 bits.
+struct EightBitEngine: MediaEngine {
+    let mock = MockImageEngine()
+
+    func descriptors() async -> [Descriptor] {
+        await mock.descriptors().map { d in
+            guard d.operation == "image.upscale", case .object(var params) = d.params,
+                  case .object(var properties)? = params["properties"] else { return d }
+            var d = d
+            properties["output"] = ["type": "object", "additionalProperties": false,
+                                    "properties": ["media_type": ["enum": ["image/png", "image/jpeg"]], "bit_depth": ["enum": [8]]]]
+            params["properties"] = .object(properties)
+            d.params = .object(params)
+            return d
+        }
+    }
+
+    func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
 }

@@ -160,7 +160,32 @@ enum ImageTests {
             }
             return nil
         },
+        ConformanceTest("IMAGE-010", "An output the operation doesn't offer is refused with 422 unsupported_parameter", spec: "Image §1.2",
+                        applies: { p in unofferedOutput(p) == nil ? "every operation offers every output in the vocabulary" : nil }) { p in
+            let (d, output) = unofferedOutput(p)!
+            guard var request = p.minimalRequest(d) else { throw Failure("can't build a request for \(d.operation)") }
+            request.params = (request.params ?? [:]).merging(["output": output]) { _, new in new }
+            try expect(try await p.wire.json("POST", "jobs", request), 422, code: "unsupported_parameter",
+                       "an output \(d.operation) doesn't offer (\(output))", schemas: p.schemas)
+            return nil
+        },
     ]
+
+    /// An Image operation whose `output` narrows the vocabulary, and a value it leaves out: bit depth 16, else a media type.
+    static func unofferedOutput(_ p: Probe) -> (Descriptor, JSONValue)? {
+        let mediaTypes = ["image/png", "image/jpeg", "image/heic", "image/webp", "image/tiff"]
+        for d in p.operations where d.profile == ImageProfile.id && p.minimalRequest(d) != nil {
+            guard let output = d.params["properties"]?["output"]?["properties"] else { continue }
+            if let depths = output["bit_depth"]?["enum"]?.arrayValue?.compactMap(\.intValue), !depths.contains(16) {
+                return (d, ["bit_depth": 16])
+            }
+            if let offered = output["media_type"]?["enum"]?.arrayValue?.compactMap(\.stringValue),
+               let missing = mediaTypes.first(where: { !offered.contains($0) }) {
+                return (d, ["media_type": .string(missing)])
+            }
+        }
+        return nil
+    }
 
     static func offers(contentsOf ops: [String]) -> @Sendable (Probe) -> String? {
         { p in ops.contains { p.descriptor($0) != nil } ? nil : "the engine offers no Image operations" }

@@ -358,3 +358,6 @@ Patch releases (MESKit only; the spec is unchanged):
 - **`v0.1.2`** (2026-10-11): SIGTERM ends an engine process promptly. `MESEngineServer.run` bounds the graceful stop
   (`EngineConfiguration.shutdownGracePeriod`, 5 s), so an open event stream or a slow upload no longer holds it up
   indefinitely. Apps that embed the server opt out of signal handling (`handlesShutdownSignals = false`).
+- **`v0.1.3`** (2026-10-11): an `output` an operation doesn't offer, such as bit depth 16 where only 8 is offered, is
+  refused with 422 `unsupported_parameter` as Image §1.2 says, not `out_of_limits` (AB-T-0231). New conformance test
+  IMAGE-010 checks it.

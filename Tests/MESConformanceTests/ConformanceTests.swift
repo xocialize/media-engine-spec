@@ -22,8 +22,9 @@ func mockConfig(_ tweak: (inout EngineConfiguration) -> Void = { _ in }) -> Engi
     return c
 }
 
-func serve(_ config: EngineConfiguration, _ body: (Int) async throws -> Void) async throws {
-    let server = MESEngineServer(engine: MockImageEngine(), configuration: config)
+func serve(_ config: EngineConfiguration, engine: any MediaEngine = MockImageEngine(),
+           _ body: (Int) async throws -> Void) async throws {
+    let server = MESEngineServer(engine: engine, configuration: config)
     let (ports, continuation) = AsyncStream<Int>.makeStream()
     let app = try await server.makeApplication { port in continuation.yield(port) }
     try await withThrowingTaskGroup(of: Void.self) { group in
@@ -49,8 +50,18 @@ struct MockConformanceTests {
             #expect(report.failed == 0, "\(failures(report))")
             #expect(report.conformsToBase && report.conformsToImage == true)
             let skipped = Set(report.results.filter { $0.status == .skip }.map(\.id))
-            #expect(skipped == ["BASE-005", "BASE-006", "BASE-071", "BASE-090"], "skipped: \(skipped.sorted())")
+            // IMAGE-010 needs an operation that narrows `output`; the mock offers the whole vocabulary (see below).
+            #expect(skipped == ["BASE-005", "BASE-006", "BASE-071", "BASE-090", "IMAGE-010"], "skipped: \(skipped.sorted())")
             #expect(report.markdown.contains("✅ conforms"))
+        }
+    }
+
+    @Test("An un-offered output is refused with 422 unsupported_parameter (IMAGE-010) on an engine that narrows output")
+    func unofferedOutput() async throws {
+        try await serve(mockConfig(), engine: NarrowOutputEngine()) { port in
+            let probe = try await Probe.connect(Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!))
+            let report = await ConformanceRunner.run(probe, only: ["IMAGE-010"])
+            #expect(report.results.first { $0.id == "IMAGE-010" }?.status == .pass, "\(failures(report))")
         }
     }
 
@@ -190,4 +201,24 @@ struct ClientConformanceTests {
         #expect(!failed.contains("CLIENT-002") && !failed.contains("CLIENT-005"), "it does submit a valid request and fetch the output")
         #expect(!report.conforms && report.markdown.contains("❌ does not conform"))
     }
+}
+
+/// The mock with `image.upscale`'s `output` narrowed to 8-bit PNG or JPEG.
+struct NarrowOutputEngine: MediaEngine {
+    let mock = MockImageEngine()
+
+    func descriptors() async -> [Descriptor] {
+        await mock.descriptors().map { d in
+            guard d.operation == "image.upscale", case .object(var params) = d.params,
+                  case .object(var properties)? = params["properties"] else { return d }
+            var d = d
+            properties["output"] = ["type": "object", "additionalProperties": false,
+                                    "properties": ["media_type": ["enum": ["image/png", "image/jpeg"]], "bit_depth": ["enum": [8]]]]
+            params["properties"] = .object(properties)
+            d.params = .object(params)
+            return d
+        }
+    }
+
+    func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
 }

@@ -221,6 +221,12 @@ package actor JobRegistry {
             throw MESError(.unsupportedParameter, "\(descriptor.operation) has no parameter '\(name)'.", param: String(name))
         }
         let param = first.path.split(separator: ".").dropFirst().first.map(String.init)
+        // An `output` the engine doesn't offer (a media type, a bit depth) is a feature it can't honour, not a limit
+        // (Image §1.2): 422 unsupported_parameter.
+        if param == "output" {
+            throw MESError(.unsupportedParameter, "\(descriptor.operation) can't produce that output: \(first.path): \(first.message)",
+                           param: "output")
+        }
         throw MESError(.outOfLimits, "\(first.path): \(first.message)", param: param)
     }
 
