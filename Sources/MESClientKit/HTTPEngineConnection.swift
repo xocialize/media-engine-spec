@@ -235,7 +235,10 @@ public enum MESClientKit {
 
 /// Server trust for engines: TLS certificates are self-signed (Base §3.3), so trust comes from the pinned SHA-256 of
 /// the certificate, recorded at pairing. Without a pin, only trust-on-first-use (pairing itself) is accepted.
-final class EngineTrust: NSObject, URLSessionDelegate, @unchecked Sendable {
+///
+/// Both challenge methods are implemented: async `bytes(for:)` delivers the server-trust challenge to the task-level
+/// one only, and without it an event stream that opens its own TLS connection fails with -1202.
+final class EngineTrust: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let pinned: Data?
     let trustOnFirstUse: Bool
     private let seen = Locked<Data?>(nil)
@@ -249,6 +252,16 @@ final class EngineTrust: NSObject, URLSessionDelegate, @unchecked Sendable {
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        evaluate(challenge, completionHandler)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        evaluate(challenge, completionHandler)
+    }
+
+    private func evaluate(_ challenge: URLAuthenticationChallenge,
+                          _ completionHandler: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else {
             completionHandler(.performDefaultHandling, nil)
             return

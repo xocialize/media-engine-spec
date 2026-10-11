@@ -278,6 +278,48 @@ struct PairingClientTests {
         }
     }
 
+    /// Each check runs on a fresh connection, so the request under test opens its own TLS connection and answers the
+    /// trust challenge itself. Async `bytes(for:)` sends that challenge to the task-level delegate method only; a
+    /// session-level handler isn't consulted, and the stream failed with -1202 (Desktop, 2026-10-11).
+    @Test("A fresh pinned connection's first request can be the SSE stream, a download or the WebSocket")
+    func freshConnectionsOverTLS() async throws {
+        let config = freshConfig { $0.mode = .paired; $0.pairingApproval = { _ in true } }
+        try await withEngine(config) { port in
+            let pairing = try await Pairing.begin(baseURL: URL(string: "https://localhost:\(port)/mes/v0")!,
+                                                  identity: .generate(name: "Fresh"))
+            guard case .approved(let paired) = try await pairing.confirm(wait: 10) else {
+                Issue.record("expected approval"); return
+            }
+            let submitted = try await HTTPEngineConnection(paired: paired).submit(
+                JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")], params: ["size": ["width": 16, "height": 16]]),
+                idempotencyKey: nil)
+
+            var types: [EventType] = []
+            for try await event in HTTPEngineConnection(paired: paired).events(job: submitted.id, after: 0) {
+                types.append(event.type)
+                if event.type == .outputReady { break }
+            }
+            #expect(types.first == .state && types.last == .outputReady, "SSE over TLS on a new connection")
+            let wrongPin = HTTPEngineConnection(baseURL: paired.baseURL, token: paired.token,
+                                                pinnedFingerprint: Data(repeating: 1, count: 32))
+            do {
+                for try await _ in wrongPin.events(job: submitted.id, after: 0) { Issue.record("a wrong pin must not stream") }
+                Issue.record("a wrong pin must fail the stream")
+            } catch {}
+
+            let job = try await HTTPEngineConnection(paired: paired).job(submitted.id, wait: 5)
+            let output = try #require(job.result?.outputs.first)
+            let file = try await HTTPEngineConnection(paired: paired).download(job: job.id, output: output, to: tempFile("png"))
+            #expect(try Raster.load(file).0.width == 16, "a download over TLS on a new connection")
+
+            let channel = HTTPEngineConnection(paired: paired).eventChannel()
+            defer { channel.close() }
+            var messages = channel.messages.makeAsyncIterator()
+            try await channel.ping()
+            #expect(try await messages.next() == .pong, "wss on a new connection")
+        }
+    }
+
     @Test("A declined pairing throws pairing_rejected")
     func declined() async throws {
         let config = freshConfig { $0.mode = .paired; $0.pairingApproval = { _ in false } }

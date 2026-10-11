@@ -4,7 +4,7 @@ import MESCore
 
 /// Raw HTTP to the engine under test. The suite checks the wire itself (statuses, headers, bodies, framing), so it
 /// doesn't go through MESClientKit, which would smooth those over.
-public final class Wire: NSObject, URLSessionDelegate, @unchecked Sendable {
+public final class Wire: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     public struct Reply: Sendable {
         public var status: Int
         /// Lower-cased header names.
@@ -158,8 +158,19 @@ public final class Wire: NSObject, URLSessionDelegate, @unchecked Sendable {
 
     // MARK: - Trust
 
+    // Both challenge methods: async `bytes(for:)` delivers the server-trust challenge to the task-level one only.
     public func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        evaluate(challenge, completionHandler)
+    }
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                           completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        evaluate(challenge, completionHandler)
+    }
+
+    private func evaluate(_ challenge: URLAuthenticationChallenge,
+                          _ completionHandler: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
               let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else {

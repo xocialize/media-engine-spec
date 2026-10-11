@@ -79,6 +79,20 @@ struct MockConformanceTests {
         }
     }
 
+    @Test("Paired mode: a fresh Wire's first request can be the event stream (task-level TLS trust)")
+    func pairedFreshEventStream() async throws {
+        let config = mockConfig { $0.mode = .paired; $0.pairingApproval = EngineConfiguration.approveAll }
+        try await serve(config) { port in
+            let baseURL = URL(string: "https://localhost:\(port)/mes/v0")!
+            let (wire, run) = try await Probe.pair(baseURL: baseURL)
+            let job = JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")], params: ["size": ["width": 16, "height": 16]])
+            let id = try await wire.json("POST", "jobs", job).decode(Job.self).id
+            let fresh = Wire(baseURL: baseURL, token: run.token, pinned: try #require(wire.presentedFingerprint))
+            let (_, frames, _) = try await fresh.frames("jobs/\(id)/events", timeout: 10) { $0.event == "job.output_ready" }
+            #expect(frames.last?.event == "job.output_ready")
+        }
+    }
+
     @Test("A broken engine fails exactly the rules it breaks: IMAGE-001 (fill repaints kept pixels) and IMAGE-002 (upscale off)")
     func catchesBrokenEngines() async throws {
         let server = MESEngineServer(engine: BrokenEngine(), configuration: mockConfig())
