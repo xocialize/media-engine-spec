@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 0.1 (draft) |
 | **Status** | Draft for review. While the major version is 0, a minor version may make breaking changes. |
-| **Date** | 2026-10-09 |
+| **Date** | 2026-10-18 |
 | **Profiles** | [Image 0.1](profiles/image.md). Video is planned. |
 | **Schemas** | [`schemas/v0/base/`](../schemas/v0/base/) |
 
@@ -188,7 +188,7 @@ A descriptor states:
 | `outputs` | Each named output: `kind`, `media_types`, count range |
 | `limits` | E.g. `max_width`, `max_height`, `max_megapixels`, `max_duration_s` |
 | `quality_tiers` | The tiers this operation offers: a non-empty subset of `draft`, `standard`, `best` |
-| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `named_only?`, `remote_provider?` |
+| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `named_only?`, `remote_provider?`, `notes?` |
 | `extensions` | Optional, namespaced extra parameters (§6.2) |
 | `remote` | Whether this operation may run at a remote provider, and which providers |
 | `retention` | `outputs_ttl_s` for this operation, if different from the engine's |
@@ -205,6 +205,10 @@ Rules:
    runtime. Such changes are announced with `engine.operations_changed` (§11).
 4. **No surprises.** Limits a model cannot honour (sizes, durations, unsupported vocabulary such as
    `negative_prompt`) MUST be stated in the descriptor, not discovered by failure.
+5. **Notes.** An offer MAY carry `notes`: short, plain-text usage guidance for that model, such as how to write its
+   prompt or a limit worth knowing before naming it (at most 1000 characters; a sentence or two is better). Notes
+   advise; they never change the request's meaning, and anything a client must enforce still belongs in `params`,
+   `limits` or `license`. Clients MAY show notes and MAY ignore them. Licence terms go in `license.notice`, not here.
 
 ### 6.1 UI hints
 
@@ -457,6 +461,9 @@ Dispatchers use it to choose between engines.
   schema is the descriptor's `params`, plus:
   - the inputs, each a string: a data URL, or `upload:<id>`;
   - `model`, `quality`, `wait_s` (default 50) and `policy`.
+- **Model lines.** The tool's description lists each model offer on one line: its id, title, licence and
+  commercial-use flag. An offer's `license.notice` and `notes` (§6 rule 5), when present, follow on that model's line,
+  so an agent sees the terms and the usage guidance before it names the model.
 - **Results** contain:
   - a text summary: model, licence, warnings;
   - an image preview, for image outputs of at most 1 MB;

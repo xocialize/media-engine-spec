@@ -12,5 +12,6 @@
   "speed_class": "standard",
   "quality_tiers": [
     "best"
-  ]
+  ],
+  "notes": "Write the prompt in English or Chinese. Put text to render in quotes."
 }

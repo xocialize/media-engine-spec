@@ -69,6 +69,11 @@ struct MCPBindingTests {
             #expect(generate.inputSchema.objectValue?["required"] == ["prompt"])
             #expect(!containsKey(generate.inputSchema, prefix: "x-"), "UI hints are stripped from tool schemas")
             #expect(generate.description?.contains("mock-research") == true, "the model list names each licence")
+            let research = try #require(generate.description?.split(separator: "\n").first { $0.hasPrefix("mock-research:") })
+            #expect(research.hasSuffix("· Licence: A stand-in for research-only weights. · Notes: Describe the whole scene. "
+                                       + "Put text to render in quotes."), "an offer's notice and notes follow its line (§15)")
+            let modelParam = props["model"]?.objectValue?["description"]?.stringValue ?? ""
+            #expect(modelParam.contains("mock-research:") && !modelParam.contains("Notes:"), "the model parameter keeps the short line")
 
             let result = try await callTool(client, "image_generate",
                                             ["prompt": "a red fox", "size": ["width": 32, "height": 24], "seed": 7],
@@ -95,6 +100,17 @@ struct MCPBindingTests {
             #expect(confirmed.state == .purged)
             await client.disconnect()
         }
+    }
+
+    @Test("A model line folds its notice and notes onto one line and leaves out what's absent")
+    func modelLine() {
+        let license = License(spdx: "LicenseRef-X", commercialUse: .no, notice: "No commercial\nuse.  ")
+        var offer = ModelOffer(id: "x", title: "X", license: license, qualityTiers: [.best], notes: "  Quote\ttext. ")
+        #expect(MCPToolbox.modelLine(offer, notes: true)
+                == "x: X · LicenseRef-X · commercial use no · tiers best · Licence: No commercial use. · Notes: Quote text.")
+        #expect(MCPToolbox.modelLine(offer) == "x: X · LicenseRef-X · commercial use no · tiers best")
+        offer.notes = " \n"; offer.license.notice = nil
+        #expect(MCPToolbox.modelLine(offer, notes: true) == "x: X · LicenseRef-X · commercial use no · tiers best")
     }
 
     @Test("Fill with data: URLs; bad arguments are tool errors, not protocol errors")

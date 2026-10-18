@@ -191,7 +191,8 @@ examples = {
     "health.json": {"status": "ok", "queue_depth": 2, "running": "job_01J9ZK", "resident_models": ["z-image-turbo"],
                     "memory": {"headroom_bytes": 21474836480, "class": "large"}, "estimated_wait_s": 18},
     "model-offer-research.json": {"id": "qwen-image-2.1", "title": "Qwen-Image 2.1", "license": QWEN_RESEARCH,
-                                  "memory_class": "large", "speed_class": "standard", "quality_tiers": ["best"]},
+                                  "memory_class": "large", "speed_class": "standard", "quality_tiers": ["best"],
+                                  "notes": "Write the prompt in English or Chinese. Put text to render in quotes."},
 }
 
 OUT.mkdir(parents=True, exist_ok=True)

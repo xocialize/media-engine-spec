@@ -52,7 +52,8 @@ public struct MockImageEngine: MediaEngine {
                                  speedClass: .fast, qualityTiers: [.draft, .standard, .best], isDefault: true)]
         if operation == "image.generate" {
             models.append(ModelOffer(id: "mock-research", title: "Mock research model", license: researchLicense,
-                                     memoryClass: .large, speedClass: .slow, qualityTiers: [.best], namedOnly: true))
+                                     memoryClass: .large, speedClass: .slow, qualityTiers: [.best], namedOnly: true,
+                                     notes: "Describe the whole scene. Put text to render in quotes."))
         }
         return Descriptor(
             operation: operation, profile: ImageProfile.id, profileVersion: ImageProfile.version,

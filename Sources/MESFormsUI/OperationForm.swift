@@ -214,6 +214,7 @@ struct ModelRow: View {
                 Text(excluded ? "Excluded by the commercial-use policy" : detail)
                     .font(Tokens.Font.caption)
                     .foregroundStyle(excluded ? Tokens.Color.degraded : Tokens.Color.secondaryLabel)
+                    .help(offer?.notes ?? "")                     // the model's usage guidance (Base §6 rule 5)
             }
             Spacer(minLength: 0)
         }

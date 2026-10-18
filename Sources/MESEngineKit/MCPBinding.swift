@@ -160,10 +160,8 @@ struct MCPToolbox: Sendable {
             }
             if input.required { required.append(input.name) }
         }
-        let modelLines = d.models.map { m in
-            "\(m.id): \(m.title) · \(m.license.spdx) · commercial use \(Self.commercial(m.license.commercialUse))"
-                + (m.isDefault == true ? " · default" : "") + " · tiers \(m.qualityTiers.map(\.rawValue).joined(separator: "/"))"
-        }.joined(separator: "\n")
+        let modelLines = d.models.map { Self.modelLine($0) }.joined(separator: "\n")
+        let modelNotes = d.models.map { Self.modelLine($0, notes: true) }.joined(separator: "\n")
         properties["model"] = ["type": "string", "enum": .array(d.models.map { .string($0.id) }),
                                "description": .string("Omit to let the engine choose.\n\(modelLines)")]
         properties["wait_s"] = ["type": "integer", "minimum": 0, "maximum": .int(Self.maxWait), "default": .int(Self.defaultWait),
@@ -174,7 +172,7 @@ struct MCPToolbox: Sendable {
                              "additionalProperties": false]
         let readOnly = d.outputs.allSatisfy { $0.kind == .data }
         return Tool(name: Self.toolName(d.operation), title: d.title,
-                    description: "\(d.title). \(d.summary ?? "")\nModels:\n\(modelLines)",
+                    description: "\(d.title). \(d.summary ?? "")\nModels:\n\(modelNotes)",
                     inputSchema: schema, annotations: .init(title: d.title, readOnlyHint: readOnly ? true : nil, openWorldHint: false))
     }
 
@@ -389,6 +387,23 @@ struct MCPToolbox: Sendable {
     static func string(_ args: [String: JSONValue], _ key: String) throws -> String {
         guard let s = args[key]?.stringValue else { throw MESError(.invalidRequest, "\(key) is required.", param: key) }
         return s
+    }
+
+    /// One model offer on one line (Base §15): id, title, licence, default, tiers; with `notes`, its `license.notice` and
+    /// `notes` too. The tool description carries those; the `model` parameter keeps the short line, so each appears once.
+    static func modelLine(_ m: ModelOffer, notes: Bool = false) -> String {
+        var line = "\(m.id): \(m.title) · \(m.license.spdx) · commercial use \(commercial(m.license.commercialUse))"
+            + (m.isDefault == true ? " · default" : "") + " · tiers \(m.qualityTiers.map(\.rawValue).joined(separator: "/"))"
+        guard notes else { return line }
+        if let notice = oneLine(m.license.notice) { line += " · Licence: \(notice)" }
+        if let text = oneLine(m.notes) { line += " · Notes: \(text)" }
+        return line
+    }
+
+    /// Text folded onto one line, or nil when empty.
+    static func oneLine(_ text: String?) -> String? {
+        guard let words = text?.split(whereSeparator: \.isWhitespace), !words.isEmpty else { return nil }
+        return words.joined(separator: " ")
     }
 
     static func commercial(_ c: CommercialUse) -> String { switch c { case .yes: "yes"; case .no: "no"; case .unknown: "unknown" } }

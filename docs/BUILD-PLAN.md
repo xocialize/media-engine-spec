@@ -361,3 +361,10 @@ Patch releases (MESKit only; the spec is unchanged):
 - **`v0.1.3`** (2026-10-11): an `output` an operation doesn't offer, such as bit depth 16 where only 8 is offered, is
   refused with 422 `unsupported_parameter` as Image §1.2 says, not `out_of_limits` (AB-T-0231). New conformance test
   IMAGE-010 checks it.
+
+Minor releases (Base 0.1 gains optional fields; old engines and clients still validate):
+- **`v0.2.0`** (2026-10-18): a model offer MAY carry `notes`, short usage guidance such as prompting rules (Base §6
+  rule 5; `ModelOffer.notes`, at most 1000 characters). The MCP binding's tool description now puts each offer's
+  `license.notice` and `notes` on that model's line (Base §15), so an agent sees the terms and the guidance before it
+  names the model; the `model` parameter keeps the short line. MESFormsUI shows notes as the model row's help
+  (AB-A-0186).

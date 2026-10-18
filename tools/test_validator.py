@@ -69,6 +69,8 @@ CASES = [
      setp(["operations", 0, "quality_tiers"], []), "no quality tiers"),
     ("error-policy-unmet.json", "base/error.schema.json", setp(["error", "code"], "Policy Unmet"), "error code not snake_case"),
     ("health.json", "base/health.schema.json", setp(["status"], "fine"), "unknown health status"),
+    ("model-offer-research.json", "base/descriptor.schema.json#/$defs/ModelOffer", setp(["notes"], ""), "empty model notes"),
+    ("model-offer-research.json", "base/descriptor.schema.json#/$defs/ModelOffer", setp(["notes"], "x" * 1001), "model notes over 1000 characters"),
 ]
 
 
