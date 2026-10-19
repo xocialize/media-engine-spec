@@ -129,7 +129,11 @@ enum EventSocket {
             tasks[EventSocket.wildcard] = Task { [weak self] in
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask {
-                        for await event in events { if let f = EventSocket.frame(event) { sink.yield(f) } }
+                        for await var event in events {
+                            // Engine events (operations_changed) share the socket's engine sequence with engine.health.
+                            if event.job == nil { guard let seq = await self?.nextEngineSeq() else { return }; event.seq = seq }
+                            if let f = EventSocket.frame(event) { sink.yield(f) }
+                        }
                     }
                     group.addTask {
                         while !Task.isCancelled {

@@ -10,6 +10,7 @@ import MESCore
 @_exported import MESEngineCore
 import NIOCore
 import ServiceLifecycle
+import Synchronization
 import UnixSignals
 
 /// Serves a `MediaEngine` over MES Base 0.1: HTTP, SSE, the WebSocket channel and the MCP binding, in open or
@@ -21,6 +22,8 @@ public final class MESEngineServer: Sendable {
     public let configuration: EngineConfiguration
     let engine: any MediaEngine
     private let advertiser = EngineAdvertiser()
+    /// Set once `makeApplication` has prepared the spool, for the operator API below.
+    private let registryBox = Mutex<JobRegistry?>(nil)
 
     public init(engine: any MediaEngine, configuration: EngineConfiguration) {
         self.engine = engine
@@ -34,6 +37,7 @@ public final class MESEngineServer: Sendable {
         let config = configuration
         let (spool, _) = try Spool.prepare(at: config.spoolDirectory)
         let registry = JobRegistry(engine: engine, config: config, spool: spool)
+        registryBox.withLock { $0 = registry }
         var identity: EngineIdentity?
         var pairings: PairingRegistry?
         if config.mode == .paired {
@@ -88,6 +92,54 @@ public final class MESEngineServer: Sendable {
 
     /// Stops advertising (the listener stops with the application's service).
     public func stopAdvertising() { advertiser.stop() }
+}
+
+// MARK: - The operator's API (ENG-9)
+
+/// For an app that embeds the server and shows its operator what the engine is doing. Clients never reach these: over
+/// the wire each client sees only its own jobs (Base §5).
+extension MESEngineServer {
+    private var registry: JobRegistry? { registryBox.withLock { $0 } }
+
+    /// Every job from every client: a snapshot now, then one after every change. It starts once the server has started.
+    public func activity() -> AsyncStream<EngineActivity> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task { [weak self] in
+                var registry = self?.registry
+                while registry == nil, !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    registry = self?.registry
+                }
+                guard let registry else { continuation.finish(); return }
+                for await snapshot in await registry.activityUpdates() { continuation.yield(snapshot) }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Cancels any client's job, as the client releasing it would (Base §7.3).
+    @discardableResult
+    public func cancel(job id: String) async throws -> Job {
+        guard let registry else { throw MESError(.notFound, "No job \(id).", job: id) }
+        return try await registry.cancelAsOperator(id)
+    }
+
+    /// Asks the engine for its descriptors again, after its operator changed which models it offers. Clients
+    /// subscribed to `"*"` hear `engine.operations_changed`.
+    public func reloadDescriptors() async {
+        await registry?.reloadDescriptors()
+    }
+
+    /// The operations as clients see them now, or nil before the server has started.
+    public func operations() async -> [Descriptor]? {
+        await registry?.operationsList.operations
+    }
+
+    /// As `GET {path}/health` answers, or nil before the server has started.
+    public func health() async -> Health? {
+        await registry?.health()
+    }
 }
 
 // MARK: - Context and headers

@@ -14,6 +14,10 @@ import PackageDescription
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
 //                  extensions (DesignScaffold tokens). `mes-forms-gallery` previews every mock descriptor.
+//   MESEngineUI    an engine app's own console (Engines-PRD ENG-9): the queue, the enabled set of models with a card
+//                  per model, a System monitor and the menu-bar item. Every Pixel Agency engine shares it. The
+//                  `SystemSensors` trait (default on) adds temperatures, fans and power, read through private
+//                  interfaces; an App Store build turns it off. `mes-console-gallery` previews it over the mock engine.
 //   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn) and `mes-conformance`, its CLI.
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
@@ -28,12 +32,20 @@ let package = Package(
         .library(name: "MESClientKit", targets: ["MESClientKit"]),
         .library(name: "MESInProcess", targets: ["MESInProcess"]),
         .library(name: "MESFormsUI", targets: ["MESFormsUI"]),
+        .library(name: "MESEngineUI", targets: ["MESEngineUI"]),
         .library(name: "MESConformance", targets: ["MESConformance"]),
         .library(name: "MockEngineCore", targets: ["MockEngineCore"]),
         .executable(name: "mes-mock-engine", targets: ["MockEngine"]),
         .executable(name: "mes", targets: ["MESCLI"]),
         .executable(name: "mes-forms-gallery", targets: ["MESFormsGallery"]),
+        .executable(name: "mes-console-gallery", targets: ["MESConsoleGallery"]),
         .executable(name: "mes-conformance", targets: ["MESConformanceCLI"]),
+    ],
+    traits: [
+        .trait(name: "SystemSensors",
+               description: "Temperatures, fans and power on MESEngineUI's System page, read through private interfaces "
+                   + "(IOHIDEventSystem, IOReport, AppleSMC). Leave it off for an App Store build."),
+        .default(enabledTraits: ["SystemSensors"]),
     ],
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.27.0"),
@@ -83,6 +95,12 @@ let package = Package(
             dependencies: ["MESCore", .product(name: "DesignScaffold", package: "DesignScaffold"),
                            .product(name: "DesignScaffoldControls", package: "DesignScaffold")]
         ),
+        .target(
+            name: "MESEngineUI",
+            dependencies: ["MESCore", "MESEngineCore", .product(name: "DesignScaffold", package: "DesignScaffold"),
+                           .product(name: "DesignScaffoldStatus", package: "DesignScaffold")],
+            linkerSettings: [.linkedFramework("IOKit")]
+        ),
         .target(name: "MockEngineCore", dependencies: ["MESEngineCore"]),
         .executableTarget(name: "MockEngine", dependencies: ["MockEngineCore", "MESEngineKit"]),
         .executableTarget(
@@ -90,6 +108,7 @@ let package = Package(
             dependencies: ["MESClientKit", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
         .executableTarget(name: "MESFormsGallery", dependencies: ["MESFormsUI", "MockEngineCore"]),
+        .executableTarget(name: "MESConsoleGallery", dependencies: ["MESEngineUI", "MESEngineKit", "MockEngineCore"]),
         .target(
             name: "MESConformance",
             dependencies: ["MESCore", "MESClientKit", "MESEngineKit", "MockEngineCore"],

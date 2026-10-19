@@ -29,6 +29,8 @@ package actor JobRegistry {
         var cancelled = false
         var confirmed = false
         var lastProgressAt: ContinuousClock.Instant?
+        var startedAt: Date?
+        var finishedAt: Date?
     }
 
     package let engine: any MediaEngine
@@ -44,6 +46,8 @@ package actor JobRegistry {
     private var sweeper: Task<Void, Never>?
     /// Owner-wide subscriptions (WebSocket `"*"`): every event of every job the owner has, from now on.
     private var ownerSubscribers: [UUID: (owner: String, continuation: AsyncStream<Event>.Continuation)] = [:]
+    /// The operator's view (`activityUpdates`): a snapshot after every change, for the engine's own UI.
+    private var activitySubscribers: [UUID: AsyncStream<EngineActivity>.Continuation] = [:]
     /// The pinned certificate's fingerprint, in paired mode.
     package var tlsFingerprint: String?
 
@@ -57,10 +61,7 @@ package actor JobRegistry {
 
     package func start(tlsFingerprint: String? = nil) async {
         self.tlsFingerprint = tlsFingerprint
-        let list = await engine.descriptors()
-        descriptors = Dictionary(list.map { ($0.operation, $0) }, uniquingKeysWith: { first, _ in first })
-        let data = (try? MESJSON.encoder.encode(list)) ?? Data()
-        operationsList = OperationsList(operations: list, etag: "\"ops-\(Hashing.sha256(data).prefix(16))\"")
+        await reloadDescriptors()
         guard sweeper == nil else { return }
         let interval = config.sweepInterval
         sweeper = Task { [weak self] in
@@ -71,11 +72,27 @@ package actor JobRegistry {
         }
     }
 
+    /// Asks the engine for its descriptors again, e.g. after its operator changed which models it offers. New submits
+    /// see the new set, and `GET {path}/operations` gets a new ETag; jobs already accepted keep the model they were given.
+    /// Clients subscribed to `"*"` hear `engine.operations_changed` (Base §6 rule 3, §11) when the list changed.
+    package func reloadDescriptors() async {
+        let list = await engine.descriptors()
+        descriptors = Dictionary(list.map { ($0.operation, $0) }, uniquingKeysWith: { first, _ in first })
+        let data = (try? MESJSON.encoder.encode(list)) ?? Data()
+        let previous = operationsList.etag
+        operationsList = OperationsList(operations: list, etag: "\"ops-\(Hashing.sha256(data).prefix(16))\"")
+        guard previous != operationsList.etag, previous != "\"empty\"" else { return }
+        let event = Event(type: .operationsChanged, job: nil, seq: 0, time: Date(), data: ["etag": .string(operationsList.etag)])
+        for sub in ownerSubscribers.values { sub.continuation.yield(event) }
+    }
+
     package func stop() {
         sweeper?.cancel()
         sweeper = nil
         for sub in ownerSubscribers.values { sub.continuation.finish() }
         ownerSubscribers = [:]
+        for sub in activitySubscribers.values { sub.finish() }
+        activitySubscribers = [:]
         for id in records.keys { records[id]?.task?.cancel() }
     }
 
@@ -302,6 +319,7 @@ package actor JobRegistry {
         guard await acquireSlot(id) else { return }
         guard var record = records[id], !record.cancelled else { releaseSlot(); return }
         record.holdsSlot = true
+        record.startedAt = Date()
         record.job.state = .running
         record.job.plan = Plan(model: record.model.ref, effective: record.initialEffective,
                                remoteProvider: record.model.remoteProvider)
@@ -588,6 +606,60 @@ package actor JobRegistry {
 
     private func unsubscribeAll(_ token: UUID) { ownerSubscribers[token] = nil }
 
+    // MARK: - The operator's view (ENG-9)
+
+    /// Every job from every client, active ones in slot order.
+    package func activity() -> EngineActivity {
+        let waiting = slotWaiters.map(\.id)
+        func activity(_ r: Record) -> JobActivity {
+            JobActivity(id: r.job.id, operation: r.job.operation, client: r.owner, clientHost: r.clientHost,
+                        model: r.model.ref, quality: r.quality, state: r.job.state, outcome: r.job.outcome,
+                        progress: r.job.progress, warnings: r.job.warnings, error: r.job.error?.message,
+                        summary: JobActivity.summary(of: r.request), createdAt: r.job.createdAt, startedAt: r.startedAt,
+                        finishedAt: r.finishedAt, queuePosition: waiting.firstIndex(of: r.job.id).map { $0 + 1 })
+        }
+        let all = records.values.map(activity)
+        let active = all.filter { $0.outcome == nil }.sorted { a, b in
+            func rank(_ j: JobActivity) -> (Int, Int, Date) {
+                switch j.state {
+                case .running: (0, 0, j.createdAt)
+                case .waiting: (1, j.queuePosition ?? Int.max, j.createdAt)
+                default: (2, 0, j.createdAt)
+                }
+            }
+            return rank(a) < rank(b)
+        }
+        let finished = all.filter { $0.outcome != nil }
+            .sorted { ($0.finishedAt ?? $0.createdAt) > ($1.finishedAt ?? $1.createdAt) }
+            .prefix(EngineActivity.finishedLimit)
+        return EngineActivity(jobs: active + finished, concurrency: config.concurrency)
+    }
+
+    /// A snapshot now, then one after every change (progress at most every `minProgressInterval`).
+    package func activityUpdates() -> AsyncStream<EngineActivity> {
+        let (stream, continuation) = AsyncStream<EngineActivity>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let token = UUID()
+        activitySubscribers[token] = continuation
+        continuation.onTermination = { [weak self] _ in Task { await self?.unsubscribeActivity(token) } }
+        continuation.yield(activity())
+        return stream
+    }
+
+    private func unsubscribeActivity(_ token: UUID) { activitySubscribers[token] = nil }
+
+    private func publishActivity() {
+        guard !activitySubscribers.isEmpty else { return }
+        let snapshot = activity()
+        for continuation in activitySubscribers.values { continuation.yield(snapshot) }
+    }
+
+    /// Cancels any client's job, as its owner releasing it would (Base §7.3): a waiting job leaves the queue, a running
+    /// one is cancelled at the model, a held one's outputs are discarded.
+    package func cancelAsOperator(_ id: String) throws -> Job {
+        guard let owner = records[id]?.owner else { throw MESError(.notFound, "No job \(id).", job: id) }
+        return try release(id, owner: owner)
+    }
+
     // MARK: - Retention (§13)
 
     package func sweep(now: Date) {
@@ -597,6 +669,7 @@ package actor JobRegistry {
             } else if record.job.state == .purged, record.job.retention.recordExpiresAt <= now {
                 finishSubscribers(id)
                 records[id] = nil
+                publishActivity()
             }
         }
         for (uid, up) in uploads where up.upload.expiresAt <= now {
@@ -651,11 +724,13 @@ package actor JobRegistry {
     private func emit(_ id: String, _ type: EventType, _ data: JSONValue) {
         guard var record = records[id] else { return }
         record.seq += 1
+        if record.job.outcome != nil, record.finishedAt == nil { record.finishedAt = Date() }
         let event = Event(type: type, job: id, clientRef: record.job.clientRef, seq: record.seq, time: Date(), data: data)
         record.events.append(event)
         records[id] = record
         for continuation in record.subscribers.values { continuation.yield(event) }
         for sub in ownerSubscribers.values where sub.owner == record.owner { sub.continuation.yield(event) }
+        if type != .preview { publishActivity() }
     }
 
     private func finishSubscribers(_ id: String) {

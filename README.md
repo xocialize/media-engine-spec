@@ -24,7 +24,7 @@ compliant engine, on any platform.
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
-| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image tables, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESEngineUI:** an engine app's own console (queue, enabled set of models, System monitor, menu-bar item), and `mes-console-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
 | [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE and IMAGE test, and how to run them |
 | [`rfcs/`](rfcs/) | How changes are proposed |
@@ -83,6 +83,27 @@ swift run mes-forms-gallery
 ```
 
 ![Generate, rendered from its descriptor](docs/images/forms-image.generate-light.png)
+
+MESEngineUI is an engine app's console, shared by every Pixel Agency engine (Engines-PRD ENG-9). An engine supplies an
+`EngineConsoleBackend`: `MESEngineServer`'s operator API (every client's jobs, operator cancel, descriptor reload) and its
+own catalog, downloads and memory. MESEngineUI supplies the rest:
+- **Queue:** the job running now with its stage, step and elapsed time; what's waiting, in the order the slot takes it;
+  recent results. Any job can be cancelled.
+- **Models:** the engine's enabled set (`ModelEnablement`). Engines pick models themselves, by operation and tier, so the
+  operator switches models on and off instead of loading them. Autoswitch shows what a request that names no model gets.
+  Each model's card says what it does, how to name it (CLI, JSON, MCP), how to prompt it, its licence, and its state on
+  this Mac. An opt-in model asks for its terms to be accepted first, and runs only when named.
+- **System:** live CPU, GPU, memory (with the engine's own footprint), disk and sensors, from Nativ's system monitor.
+  The `SystemSensors` trait (on by default) reads temperatures, fans and power through private interfaces. An App Store
+  build turns it off and keeps thermal pressure.
+- **Menu bar:** the engine's icon with its active-job count, or live CPU, GPU and memory readings; its menu shows the running
+  job, what's waiting and what's in memory.
+
+The gallery runs it over the mock engine, with jobs arriving every few seconds:
+
+```bash
+swift run mes-console-gallery
+```
 
 Test an engine against the spec (the report lands in `mes-conformance-report/`):
 
