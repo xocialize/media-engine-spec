@@ -93,7 +93,7 @@ struct WidgetTests {
     func orderAndLabels() async {
         let form = OperationFormModel(descriptor: await descriptor("image.generate"))
         #expect(form.mainFields.map(\.name) == ["size", "aspect", "quality", "count"], "by the order hints")
-        #expect(Set(form.advancedFields.map(\.name)) == ["negative_prompt", "seed", "output", "megapixels"])
+        #expect(Set(form.advancedFields.map(\.name)) == ["negative_prompt", "seed", "output", "megapixels", "prompt_enhance"])
         #expect(OperationFormModel.grouped(form.mainFields).map(\.group) == [nil])
         #expect(FormSchema.label("negative_prompt") == "Negative prompt")
         #expect(FormSchema.display("golden_hour") == "Golden hour" && FormSchema.display("image/png") == "image/png")
@@ -174,7 +174,7 @@ struct FormModelTests {
             if job.outcome == .succeeded { ran.append(d.operation) }
             _ = try? await engine.confirm(job.id)
         }
-        #expect(ran.count == 13)
+        #expect(ran.count == 14)
         await engine.stop()
     }
 

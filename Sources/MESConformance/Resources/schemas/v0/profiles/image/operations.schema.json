@@ -108,6 +108,10 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "adapter_input": {
+            "type": "string",
+            "description": "The image input an ic adapter's slots fill (Image §1.10)."
           }
         }
       }

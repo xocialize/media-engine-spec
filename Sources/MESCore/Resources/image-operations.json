@@ -26,9 +26,11 @@
         "quality",
         "seed",
         "count",
-        "output"
+        "output",
+        "prompt_enhance"
       ],
-      "keeps_input_size": false
+      "keeps_input_size": false,
+      "adapter_input": "references"
     },
     "image.edit": {
       "inputs": {
@@ -51,9 +53,11 @@
         "quality",
         "seed",
         "size",
-        "output"
+        "output",
+        "prompt_enhance"
       ],
-      "keeps_input_size": true
+      "keeps_input_size": true,
+      "adapter_input": "images"
     },
     "image.fill": {
       "inputs": {
@@ -80,7 +84,8 @@
         "strength",
         "quality",
         "seed",
-        "output"
+        "output",
+        "prompt_enhance"
       ],
       "keeps_input_size": true,
       "preserves_unmasked": true
@@ -128,7 +133,8 @@
         "canvas",
         "quality",
         "seed",
-        "output"
+        "output",
+        "prompt_enhance"
       ],
       "keeps_input_size": false
     },
@@ -195,7 +201,8 @@
         "strength",
         "quality",
         "seed",
-        "output"
+        "output",
+        "prompt_enhance"
       ],
       "keeps_input_size": true
     },
@@ -301,6 +308,29 @@
         }
       },
       "vocabulary": []
+    },
+    "image.enhance_prompt": {
+      "inputs": {
+        "prompt": {
+          "kind": "text",
+          "required": true
+        },
+        "images": {
+          "kind": "image",
+          "required": false
+        }
+      },
+      "outputs": {
+        "enhanced": {
+          "kind": "data",
+          "value_schema": "vocabulary.schema.json#/$defs/enhanced_prompt"
+        }
+      },
+      "vocabulary": [
+        "target_operation",
+        "target_model",
+        "seed"
+      ]
     }
   }
 }

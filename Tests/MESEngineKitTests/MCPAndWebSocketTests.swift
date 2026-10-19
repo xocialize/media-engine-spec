@@ -62,7 +62,7 @@ struct MCPBindingTests {
             let names = Set(tools.map(\.name))
             #expect(names.isSuperset(of: ["image_generate", "image_fill", "image_upscale", "mes_list_operations", "mes_get_job",
                                           "mes_cancel_job", "mes_confirm_job"]))
-            #expect(tools.count == 13 + 4)
+            #expect(tools.count == 14 + 4)
             let generate = try #require(tools.first { $0.name == "image_generate" })
             let props = generate.inputSchema.objectValue?["properties"]?.objectValue ?? [:]
             #expect(props["prompt"] != nil && props["wait_s"] != nil && props["model"] != nil && props["size"] != nil)

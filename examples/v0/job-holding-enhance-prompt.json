@@ -1,0 +1,75 @@
+{
+  "id": "job_01J9ZS",
+  "operation": "image.enhance_prompt",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "qwen3.5-4b",
+      "title": "Qwen3.5-4B (int4)",
+      "license": {
+        "spdx": "Apache-2.0",
+        "commercial_use": true,
+        "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+      }
+    },
+    "effective": {
+      "target_operation": "image.generate",
+      "target_model": "z-image-turbo",
+      "seed": 7
+    }
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "enhanced",
+        "kind": "data",
+        "media_type": "application/json",
+        "bytes": 214,
+        "sha256": "aedbe9f5f1f5eaec316afa9e400027799b2451dcad28b6fd6cb7552fea2264a7",
+        "href": "/mes/v0/jobs/job_01J9ZS/outputs/0",
+        "value": {
+          "prompt": "A white lighthouse on a granite cliff at dusk, its lamp just lit, waves breaking below, warm orange sky fading to violet, oil painting with visible brushstrokes.",
+          "applied": true
+        }
+      }
+    ],
+    "effective": {
+      "target_operation": "image.generate",
+      "target_model": "z-image-turbo",
+      "seed": 7
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_6f1c2a",
+        "name": "Studio Image Engine",
+        "implementation": "pixel-agency-image-engine",
+        "version": "0.1.0"
+      },
+      "operation": "image.enhance_prompt",
+      "profile_version": "0.1",
+      "model": {
+        "id": "qwen3.5-4b",
+        "title": "Qwen3.5-4B (int4)",
+        "license": {
+          "spdx": "Apache-2.0",
+          "commercial_use": true,
+          "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+        }
+      },
+      "seed": 7,
+      "timings": {
+        "received_at": "2026-10-19T16:59:50Z",
+        "run_ms": 2100
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-19T17:59:53Z",
+    "record_expires_at": "2026-10-20T16:59:53Z"
+  },
+  "created_at": "2026-10-19T16:59:50Z",
+  "updated_at": "2026-10-19T16:59:53Z"
+}

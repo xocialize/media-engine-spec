@@ -1,0 +1,31 @@
+{
+  "operation": "image.edit",
+  "inputs": {
+    "images": [
+      {
+        "upload": "upl_c1"
+      },
+      {
+        "upload": "upl_c2"
+      }
+    ],
+    "instruction": "the woman from the second image, standing in this pose, studio light"
+  },
+  "params": {
+    "quality": "standard",
+    "seed": 11,
+    "prompt_enhance": "off"
+  },
+  "adapters": [
+    {
+      "id": "refcontrol-pose"
+    },
+    {
+      "id": "consistence-edit",
+      "strength": 0.8
+    }
+  ],
+  "policy": {
+    "license": "commercial-use"
+  }
+}

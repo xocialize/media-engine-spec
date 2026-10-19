@@ -256,7 +256,7 @@ struct PairingClientTests {
             #expect(decoded == paired)
 
             let engine = HTTPEngineConnection(paired: paired)
-            #expect(try await engine.operations().operations.count == 13)
+            #expect(try await engine.operations().operations.count == 14)
             let job = try await engine.run(JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")],
                                                       params: ["size": ["width": 16, "height": 16]]))
             #expect(job.outcome == .succeeded)
@@ -338,7 +338,7 @@ struct InProcessTests {
         let engine = try await InProcessEngine.start(engine: MockImageEngine(), configuration: freshConfig())
         let info = try await engine.engineInfo()
         #expect(info.id == "eng_client_test")
-        #expect(try await engine.operations().operations.count == 13)
+        #expect(try await engine.operations().operations.count == 14)
         let events = Recorder<EventType>()
         let job = try await engine.run(JobRequest(operation: "image.generate", inputs: ["prompt": .text("x")],
                                                   params: ["size": ["width": 32, "height": 16]])) { await events.add($0.type) }

@@ -1,0 +1,62 @@
+{
+  "id": "klein-4b",
+  "title": "FLUX.2 Klein 4B",
+  "license": {
+    "spdx": "Apache-2.0",
+    "commercial_use": true,
+    "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+  },
+  "memory_class": "medium",
+  "speed_class": "fast",
+  "quality_tiers": [
+    "standard"
+  ],
+  "default": true,
+  "max_adapters": 2,
+  "adapters": [
+    {
+      "id": "consistence-edit",
+      "title": "Consistent edit",
+      "kind": "plain",
+      "strength": {
+        "min": 0,
+        "max": 1.5,
+        "default": 0.6
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "commercial_use": true,
+        "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "notes": "Keeps faces and identity through larger edits."
+    },
+    {
+      "id": "refcontrol-pose",
+      "title": "Pose from a skeleton",
+      "kind": "ic",
+      "slots": [
+        {
+          "role": "pose",
+          "kind": "image",
+          "notes": "An OpenPose skeleton."
+        },
+        {
+          "role": "reference",
+          "kind": "image",
+          "notes": "The subject to repose."
+        }
+      ],
+      "strength": {
+        "min": 0,
+        "max": 1.5,
+        "default": 1.0
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "commercial_use": true,
+        "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "notes": "Put the skeleton first in images, then the subject."
+    }
+  ]
+}

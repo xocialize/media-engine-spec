@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 0.1 (draft) |
 | **Status** | Draft for review. While the major version is 0, a minor version may make breaking changes. |
-| **Date** | 2026-10-18 |
+| **Date** | 2026-10-19 |
 | **Profiles** | [Image 0.1](profiles/image.md). Video is planned. |
 | **Schemas** | [`schemas/v0/base/`](../schemas/v0/base/) |
 
@@ -188,7 +188,7 @@ A descriptor states:
 | `outputs` | Each named output: `kind`, `media_types`, count range |
 | `limits` | E.g. `max_width`, `max_height`, `max_megapixels`, `max_duration_s` |
 | `quality_tiers` | The tiers this operation offers: a non-empty subset of `draft`, `standard`, `best` |
-| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `named_only?`, `remote_provider?`, `notes?` |
+| `models` | The model offers: `id`, `title`, `license` (§10.2), `memory_class`, `speed_class`, `quality_tiers`, `default`, `named_only?`, `remote_provider?`, `notes?`, `adapters?`, `max_adapters?` (§6.3) |
 | `extensions` | Optional, namespaced extra parameters (§6.2) |
 | `remote` | Whether this operation may run at a remote provider, and which providers |
 | `retention` | `outputs_ttl_s` for this operation, if different from the engine's |
@@ -209,6 +209,8 @@ Rules:
    prompt or a limit worth knowing before naming it (at most 1000 characters; a sentence or two is better). Notes
    advise; they never change the request's meaning, and anything a client must enforce still belongs in `params`,
    `limits` or `license`. Clients MAY show notes and MAY ignore them. Licence terms go in `license.notice`, not here.
+6. **Operations.** An engine offers only operations that a profile it implements defines; the operation id's prefix
+   names the profile. Behaviour no profile defines goes in extensions (§6.2), or is proposed as a profile change.
 
 ### 6.1 UI hints
 
@@ -227,6 +229,37 @@ An extension is a named, optional parameter group, `{name, title, schema}`.
 - **Unknown extensions:** an engine MUST reject an unknown extension with 422 `unsupported_parameter`.
 - **Optional by design:** a request without extensions MUST still succeed.
 
+### 6.3 Adapters
+
+An **adapter** is a small set of weights that changes what a model produces (a style, a character, a pose), such as a
+LoRA. Clients choose adapters the way they choose models: from the descriptor, by id. Engines offer only adapters
+their operator installed; a request can't carry weights.
+
+A model offer lists the adapters it accepts in `adapters`, and in `max_adapters` how many one request may combine
+(default 1). Each adapter offer has:
+
+| Field | Meaning |
+|---|---|
+| `id`, `title` | The adapter. An id names the same adapter in every offer and operation that lists it. |
+| `kind` | `plain` (weights only) or `ic` (in-context: the adapter also takes reference media, its `slots`) |
+| `slots` | For `ic` adapters, the ordered media it takes, one value each: `{role, kind, required?, notes?}` (`required` defaults to `true`). The profile says which input fills them. |
+| `strength` | `{min, max, default}`: the range a request may ask for, and what it gets when it names none |
+| `license` | The adapter's own licence (§10.2), which applies on top of its model's |
+| `notes` | OPTIONAL. Usage guidance, such as a trigger word, as for model offers (§6 rule 5) |
+
+Rules:
+1. **Requests.** A request lists adapters in `adapters` (§7.1), each `{id, strength?}`. An id listed twice is 400
+   `invalid_request`.
+2. **An adapter implies its model.** With no model named, the engine chooses among the offers that list every
+   requested adapter, by §6 rule 2 (a `named_only` offer still runs only when named). These are refused with 422
+   `unsupported_parameter`: an adapter no offer of the operation lists, one the named model doesn't list, and a set
+   that no offer the engine may choose takes.
+3. **Limits.** More adapters than the model's `max_adapters`, or a strength outside an adapter's range, is 422
+   `out_of_limits`.
+4. **Licences.** The licence policy covers adapters (§10.3), and provenance lists them (§10.1).
+5. **Discovery first.** Clients send `adapters` only to offers that list them. An engine older than this section may
+   ignore the field.
+
 ## 7. Jobs
 
 ### 7.1 Submitting
@@ -241,6 +274,7 @@ An extension is a named, optional parameter group, `{name, title, schema}`.
 | `model` | OPTIONAL. A model id from the descriptor. |
 | `policy` | `license`: `any` (default) or `commercial-use`. `remote`: `forbid` (default) or `allow` (§10.3). |
 | `extensions` | OPTIONAL. Values for declared extensions. |
+| `adapters` | OPTIONAL. Adapters to apply, in order: `[{id, strength?}]` (§6.3). |
 | `client_ref` | OPTIONAL. An opaque string (≤ 128 characters) echoed in the job and its events. |
 
 **Responses:**
@@ -337,11 +371,16 @@ In `holding`, `result` holds:
 |---|---|
 | `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps` as relevant. A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
 | `effective` | The normalized parameters actually used, e.g. the chosen `quality`, a snapped `size`, the `seed`. Model-specific detail MAY appear under `effective.model_params`. |
-| `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}` |
+| `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `adapters? [{id, title?, revision?, license, strength}]`, `helpers? [{id, title?, revision?, license, role}]`, `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}` |
+
+**Adapters and helpers.** `provenance.adapters` lists the adapters the job applied (§6.3), with the strength each
+ran at. `provenance.helpers` lists any other model that shaped the result without producing it, such as a text model
+that rewrote the prompt, with its `role`. Profiles register helper roles. Both are present only when not empty.
 
 **Warnings.** Every change from the request is a warning, `{code, message, param?}`, in the job's `warnings`. A
 seed that was ignored, a size snapped to a grid, or a mask resampled MUST each produce one. Profiles register their
-warning codes.
+warning codes. An engine MAY use a code no registry defines, for a deviation the registries don't cover; clients
+MUST accept codes they don't know, and show the `message`.
 
 ### 10.2 Licence
 
@@ -357,8 +396,12 @@ The `license` object on a model offer and on provenance:
 
 ### 10.3 Policy
 
-- **`license: commercial-use`.** The engine MUST use only models whose `license.commercial_use` is `true`. If none
-  can serve the request, or the named model doesn't satisfy the policy, it MUST refuse with 422 `policy_unmet`.
+- **`license: commercial-use`.** The engine MUST use only models whose `license.commercial_use` is `true`, and the
+  same holds for the job's adapters and helpers (§10.1).
+  - If no model can serve the request, or the named model or a requested adapter doesn't satisfy the policy, the
+    engine MUST refuse with 422 `policy_unmet`.
+  - A helper that doesn't satisfy it is left out, with the warning `helper_skipped_by_policy`, or the request is
+    refused with 422 `policy_unmet`.
 - **`remote: forbid`** (the default). The engine MUST NOT send the request or its inputs to a remote provider.
 - **`remote: allow`.** The engine MAY use a remote provider. The plan and the provenance MUST then name it, and
   `billed` says whether the provider charges.
@@ -460,12 +503,14 @@ Dispatchers use it to choose between engines.
 - **One tool per operation.** It is named like the operation, with `.` replaced by `_` (`image_fill`). Its input
   schema is the descriptor's `params`, plus:
   - the inputs, each a string: a data URL, or `upload:<id>`;
-  - `model`, `quality`, `wait_s` (default 50) and `policy`.
+  - `model`, `quality`, `wait_s` (default 50) and `policy`;
+  - `adapters` (§6.3), when an offer lists any.
 - **Model lines.** The tool's description lists each model offer on one line: its id, title, licence and
   commercial-use flag. An offer's `license.notice` and `notes` (§6 rule 5), when present, follow on that model's line,
-  so an agent sees the terms and the usage guidance before it names the model.
+  so an agent sees the terms and the usage guidance before it names the model. The offer's adapters follow on lines of
+  their own, each with its id, title, kind, licence and commercial-use flag.
 - **Results** contain:
-  - a text summary: model, licence, warnings;
+  - a text summary: model, licence, adapters, helpers, warnings;
   - an image preview, for image outputs of at most 1 MB;
   - a `resource_link` to each output's `href`;
   - `structuredContent`: the Job snapshot.
@@ -514,6 +559,7 @@ Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is 
 | Progress stages | `fetching`, `waiting`, `preparing`, `running`, `finishing` |
 | Event types | §11 |
 | Error codes | §12 |
-| Base warning codes | `seed_ignored`, `param_adjusted`, `remote_provider_used`, `model_substituted_by_policy` |
+| Base warning codes | `seed_ignored`, `param_adjusted`, `remote_provider_used`, `model_substituted_by_policy`, `helper_skipped_by_policy` |
+| Adapter kinds | `plain`, `ic` (§6.3) |
 
-Profiles add their own operations, vocabulary and warning codes.
+Profiles add their own operations, vocabulary, warning codes and helper roles.

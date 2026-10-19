@@ -12,6 +12,15 @@ public enum Outcome: String, Codable, Sendable, CaseIterable { case succeeded, f
 public enum Stage: String, Codable, Sendable, CaseIterable { case fetching, waiting, preparing, running, finishing }
 public enum Feature: String, Codable, Sendable, CaseIterable { case uploads, grants, sse, websocket, mcp, previews, pairing }
 public enum AuthMode: String, Codable, Sendable { case paired, open }
+public enum AdapterKind: String, Codable, Sendable, CaseIterable { case plain, ic }
+
+/// Base warning codes (§18). Profiles add their own (e.g. `ImageProfile.WarningCode`); engines MAY use codes no
+/// registry defines, and clients accept any code (§10.1).
+public enum BaseWarningCode {
+    public static let seedIgnored = "seed_ignored", paramAdjusted = "param_adjusted"
+    public static let remoteProviderUsed = "remote_provider_used", modelSubstitutedByPolicy = "model_substituted_by_policy"
+    public static let helperSkippedByPolicy = "helper_skipped_by_policy"
+}
 
 // MARK: - Licence, providers, warnings (§10)
 
@@ -83,6 +92,31 @@ public struct ModelRef: Codable, Sendable, Equatable {
     public var license: License
     public init(id: String, title: String? = nil, revision: String? = nil, license: License) {
         self.id = id; self.title = title; self.revision = revision; self.license = license
+    }
+}
+
+/// An adapter a job applied (§6.3, §10.1), with the strength it ran at.
+public struct AdapterRef: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String?
+    public var revision: String?
+    public var license: License
+    public var strength: Double
+    public init(id: String, title: String? = nil, revision: String? = nil, license: License, strength: Double) {
+        self.id = id; self.title = title; self.revision = revision; self.license = license; self.strength = strength
+    }
+}
+
+/// A model that shaped a result without producing it (§10.1), such as a prompt enhancer. `role` is registered by a
+/// profile (Image: `prompt_enhance`).
+public struct HelperRef: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String?
+    public var revision: String?
+    public var license: License
+    public var role: String
+    public init(id: String, title: String? = nil, revision: String? = nil, license: License, role: String) {
+        self.id = id; self.title = title; self.revision = revision; self.license = license; self.role = role
     }
 }
 
@@ -213,23 +247,73 @@ public struct ModelOffer: Codable, Sendable, Equatable {
     /// Short usage guidance for this model (Base §6): prompting rules, limits. Clients MAY show it; the MCP binding
     /// includes it in the tool description.
     public var notes: String?
+    /// The adapters this model accepts (§6.3).
+    public var adapters: [AdapterOffer]?
+    /// How many adapters one request may combine on this model; `adapterLimit` applies the default, 1.
+    public var maxAdapters: Int?
     enum CodingKeys: String, CodingKey {
-        case id, title, license, notes
+        case id, title, license, notes, adapters
         case memoryClass = "memory_class"
         case speedClass = "speed_class"
         case qualityTiers = "quality_tiers"
         case isDefault = "default"
         case namedOnly = "named_only"
         case remoteProvider = "remote_provider"
+        case maxAdapters = "max_adapters"
     }
     public init(id: String, title: String, license: License, memoryClass: MemoryClass? = nil, speedClass: SpeedClass? = nil,
                 qualityTiers: [QualityTier], isDefault: Bool? = nil, namedOnly: Bool? = nil, remoteProvider: RemoteProvider? = nil,
-                notes: String? = nil) {
+                notes: String? = nil, adapters: [AdapterOffer]? = nil, maxAdapters: Int? = nil) {
         self.id = id; self.title = title; self.license = license; self.memoryClass = memoryClass
         self.speedClass = speedClass; self.qualityTiers = qualityTiers; self.isDefault = isDefault
         self.namedOnly = namedOnly; self.remoteProvider = remoteProvider; self.notes = notes
+        self.adapters = adapters; self.maxAdapters = maxAdapters
     }
     public var ref: ModelRef { ModelRef(id: id, title: title, license: license) }
+    /// The adapter offer with this id, if this model lists it.
+    public func adapter(_ id: String) -> AdapterOffer? { adapters?.first { $0.id == id } }
+    /// How many adapters one request may combine (§6.3: `max_adapters`, default 1).
+    public var adapterLimit: Int { maxAdapters ?? 1 }
+}
+
+/// An adapter a model offer accepts (§6.3): small weights, such as a LoRA, chosen by id like a model.
+public struct AdapterOffer: Codable, Sendable, Equatable {
+    /// One medium an `ic` adapter takes, in slot order. The profile says which input fills the slots.
+    public struct Slot: Codable, Sendable, Equatable {
+        public var role: String
+        public var kind: Kind
+        /// `true` when absent.
+        public var required: Bool?
+        /// What the slot wants, for people (e.g. "An OpenPose skeleton.").
+        public var notes: String?
+        public init(role: String, kind: Kind, required: Bool? = nil, notes: String? = nil) {
+            self.role = role; self.kind = kind; self.required = required; self.notes = notes
+        }
+        public var isRequired: Bool { required ?? true }
+    }
+    public struct Strength: Codable, Sendable, Equatable {
+        public var min: Double
+        public var max: Double
+        public var defaultValue: Double
+        enum CodingKeys: String, CodingKey { case min, max; case defaultValue = "default" }
+        public init(min: Double, max: Double, defaultValue: Double) { self.min = min; self.max = max; self.defaultValue = defaultValue }
+        public func contains(_ value: Double) -> Bool { value >= min && value <= max }
+    }
+    public var id: String
+    public var title: String
+    public var kind: AdapterKind
+    public var slots: [Slot]?
+    public var strength: Strength
+    public var license: License
+    public var notes: String?
+    public init(id: String, title: String, kind: AdapterKind = .plain, slots: [Slot]? = nil, strength: Strength, license: License,
+                notes: String? = nil) {
+        self.id = id; self.title = title; self.kind = kind; self.slots = slots; self.strength = strength
+        self.license = license; self.notes = notes
+    }
+    /// The slots a request must fill.
+    public var requiredSlots: Int { (slots ?? []).filter(\.isRequired).count }
+    public func ref(strength: Double) -> AdapterRef { AdapterRef(id: id, title: title, license: license, strength: strength) }
 }
 
 public struct ExtensionSpec: Codable, Sendable, Equatable {
@@ -320,10 +404,23 @@ public struct Policy: Codable, Sendable, Equatable {
 
     /// Whether `offer` may run under this policy (Base §10.2, §10.3).
     public func allows(_ offer: ModelOffer) -> Bool {
-        if effectiveLicense == .commercialUse, offer.license.commercialUse != .yes { return false }
+        if !allows(offer.license) { return false }
         if offer.remoteProvider != nil, effectiveRemote != .allow { return false }
         return true
     }
+
+    /// Whether weights under `license` may take part in a job under this policy: its model, adapters and helpers
+    /// (Base §10.3).
+    public func allows(_ license: License) -> Bool {
+        effectiveLicense != .commercialUse || license.commercialUse == .yes
+    }
+}
+
+/// One adapter a request asks for (§6.3, §7.1). Without `strength`, the adapter's default.
+public struct AdapterRequest: Codable, Sendable, Equatable {
+    public var id: String
+    public var strength: Double?
+    public init(id: String, strength: Double? = nil) { self.id = id; self.strength = strength }
 }
 
 public struct Grant: Codable, Sendable, Equatable {
@@ -416,12 +513,15 @@ public struct JobRequest: Codable, Sendable, Equatable {
     public var model: String?
     public var policy: Policy?
     public var extensions: [String: JSONValue]?
+    /// Adapters to apply, in order (§6.3). Send them only to offers that list them.
+    public var adapters: [AdapterRequest]?
     public var clientRef: String?
-    enum CodingKeys: String, CodingKey { case operation, inputs, params, model, policy, extensions; case clientRef = "client_ref" }
+    enum CodingKeys: String, CodingKey { case operation, inputs, params, model, policy, extensions, adapters; case clientRef = "client_ref" }
     public init(operation: String, inputs: [String: RequestInput]? = nil, params: [String: JSONValue]? = nil,
-                model: String? = nil, policy: Policy? = nil, extensions: [String: JSONValue]? = nil, clientRef: String? = nil) {
+                model: String? = nil, policy: Policy? = nil, extensions: [String: JSONValue]? = nil,
+                adapters: [AdapterRequest]? = nil, clientRef: String? = nil) {
         self.operation = operation; self.inputs = inputs; self.params = params; self.model = model
-        self.policy = policy; self.extensions = extensions; self.clientRef = clientRef
+        self.policy = policy; self.extensions = extensions; self.adapters = adapters; self.clientRef = clientRef
     }
 }
 
@@ -508,16 +608,21 @@ public struct Provenance: Codable, Sendable, Equatable {
     public var operation: String
     public var profileVersion: String
     public var model: ModelRef
+    /// The adapters the job applied (§6.3), with their strengths. Nil when none.
+    public var adapters: [AdapterRef]?
+    /// Other models that shaped the result (§10.1), e.g. a prompt enhancer. Nil when none.
+    public var helpers: [HelperRef]?
     public var remoteProvider: RemoteProvider?
     public var seed: Int?
     public var timings: Timings
     enum CodingKeys: String, CodingKey {
-        case engine, operation, model, seed, timings
+        case engine, operation, model, adapters, helpers, seed, timings
         case profileVersion = "profile_version", remoteProvider = "remote_provider"
     }
-    public init(engine: Engine, operation: String, profileVersion: String, model: ModelRef,
-                remoteProvider: RemoteProvider? = nil, seed: Int? = nil, timings: Timings) {
+    public init(engine: Engine, operation: String, profileVersion: String, model: ModelRef, adapters: [AdapterRef]? = nil,
+                helpers: [HelperRef]? = nil, remoteProvider: RemoteProvider? = nil, seed: Int? = nil, timings: Timings) {
         self.engine = engine; self.operation = operation; self.profileVersion = profileVersion; self.model = model
+        self.adapters = adapters; self.helpers = helpers
         self.remoteProvider = remoteProvider; self.seed = seed; self.timings = timings
     }
 }

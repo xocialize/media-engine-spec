@@ -71,6 +71,23 @@ CASES = [
     ("health.json", "base/health.schema.json", setp(["status"], "fine"), "unknown health status"),
     ("model-offer-research.json", "base/descriptor.schema.json#/$defs/ModelOffer", setp(["notes"], ""), "empty model notes"),
     ("model-offer-research.json", "base/descriptor.schema.json#/$defs/ModelOffer", setp(["notes"], "x" * 1001), "model notes over 1000 characters"),
+    ("model-offer-adapters.json", "base/descriptor.schema.json#/$defs/ModelOffer",
+     delp(["adapters", 1, "slots"]), "an ic adapter without slots"),
+    ("model-offer-adapters.json", "base/descriptor.schema.json#/$defs/ModelOffer",
+     setp(["adapters", 0, "kind"], "lora"), "unknown adapter kind"),
+    ("model-offer-adapters.json", "base/descriptor.schema.json#/$defs/ModelOffer",
+     delp(["adapters", 0, "strength", "default"]), "adapter strength without a default"),
+    ("model-offer-adapters.json", "base/descriptor.schema.json#/$defs/ModelOffer",
+     delp(["adapters", 0, "license"]), "adapter without a licence"),
+    ("model-offer-adapters.json", "base/descriptor.schema.json#/$defs/ModelOffer", setp(["max_adapters"], 0), "max_adapters below 1"),
+    ("job-request-edit-adapters.json", "base/job-request.schema.json", setp(["adapters", 0], {"strength": 1}), "adapter request without an id"),
+    ("job-request-edit-adapters.json", "base/job-request.schema.json", setp(["adapters"], []), "an empty adapters list"),
+    ("job-holding-edit-adapters.json", "base/job.schema.json",
+     delp(["result", "provenance", "adapters", 0, "license"]), "provenance adapter without a licence"),
+    ("job-holding-edit-adapters.json", "base/job.schema.json",
+     delp(["result", "provenance", "adapters", 0, "strength"]), "provenance adapter without its strength"),
+    ("job-holding-generate-enhanced.json", "base/job.schema.json",
+     delp(["result", "provenance", "helpers", 0, "role"]), "helper without a role"),
 ]
 
 

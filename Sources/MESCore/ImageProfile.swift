@@ -11,13 +11,25 @@ public enum ImageProfile {
         public static let size = "size", aspect = "aspect", megapixels = "megapixels", strength = "strength"
         public static let count = "count", scale = "scale", content = "content", output = "output", canvas = "canvas"
         public static let kind = "kind", outputs = "outputs", language = "language", preset = "preset"
+        public static let promptEnhance = "prompt_enhance", targetOperation = "target_operation", targetModel = "target_model"
     }
+
+    /// `prompt_enhance` (§1.9, §2): whether the engine may rewrite a prompt or instruction before the model sees it.
+    public enum PromptEnhanceMode: String, Codable, Sendable, CaseIterable { case auto, on, off }
 
     /// Warning codes the profile adds (§4).
     public enum WarningCode {
         public static let sizeSnapped = "size_snapped", maskResampled = "mask_resampled"
         public static let colorConverted = "color_converted", alphaReapplied = "alpha_reapplied"
         public static let negativePromptIgnored = "negative_prompt_ignored", countReduced = "count_reduced"
+        public static let promptRewritten = "prompt_rewritten", promptEnhanceIgnored = "prompt_enhance_ignored"
+        public static let promptEnhanceFailed = "prompt_enhance_failed"
+    }
+
+    /// Helper roles the profile registers (§4, Base §10.1).
+    public enum HelperRole {
+        /// A model that rewrote the prompt or instruction (§1.9).
+        public static let promptEnhance = "prompt_enhance"
     }
 
     /// One operation's normative requirements, from operations.json.
@@ -36,10 +48,13 @@ public enum ImageProfile {
         public var preservesUnmasked: Bool?
         public var exactScale: Bool?
         public var requiresOneOf: [String]?
+        /// The image input an `ic` adapter's slots fill (§1.10).
+        public var adapterInput: String?
         enum CodingKeys: String, CodingKey {
             case inputs, outputs, vocabulary
             case vocabularyDefs = "vocabulary_defs", keepsInputSize = "keeps_input_size"
             case preservesUnmasked = "preserves_unmasked", exactScale = "exact_scale", requiresOneOf = "requires_one_of"
+            case adapterInput = "adapter_input"
         }
     }
 

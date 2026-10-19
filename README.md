@@ -9,7 +9,7 @@ compliant engine, on any platform.
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
 > from descriptors); the conformance suite for engines and clients; and a mock Image engine. The mock and `mes` both
-> conform. 55 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
+> conform. 70 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 >
 > Two implementations use it: [Pixel Agency Lite](https://github.com/xocialize/pixel-agency-lite), the reference
 > client, and the [Pixel Agency Image Engine](https://github.com/xocialize/pixel-agency-image-engine), the reference
@@ -19,8 +19,8 @@ compliant engine, on any platform.
 
 | Path | What |
 |---|---|
-| [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• jobs, uploads, grants and events;<br/>• results, provenance and policy;<br/>• retention guarantees, errors and the MCP binding. |
-| [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 13 operations, the shared vocabulary, conventions (sRGB, masks, alpha), warnings, conformance tests |
+| [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• model offers and their adapters (e.g. LoRA);<br/>• jobs, uploads, grants and events;<br/>• results, provenance (models, adapters, helpers) and licence policy;<br/>• retention guarantees, errors and the MCP binding. |
+| [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 14 operations (including `image.enhance_prompt`, a preview of a prompt rewrite), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
@@ -73,6 +73,18 @@ swift run mes run image.generate -i prompt="a lighthouse at dusk" -p size=1024x7
 
 ```bash
 tools/smoke-cli.sh
+```
+
+Adapters and prompt enhancement (Base §6.3, Image §1.9 and §3.1). Generate's mock offer takes three adapters, and
+`prompt_enhance: on` rewrites the prompt and reports the rewrite. `image.enhance_prompt` previews a rewrite so a client can
+show and edit it before running:
+
+```bash
+curl -s http://127.0.0.1:17600/mes/v0/jobs -H 'Content-Type: application/json' -d '{"operation": "image.generate", "inputs": {"prompt": "a lighthouse"}, "params": {"prompt_enhance": "on"}, "adapters": [{"id": "mock-style", "strength": 0.5}]}'
+```
+
+```bash
+swift run mes run image.enhance_prompt -i prompt="a lighthouse" -p target_model=mock
 ```
 
 MESFormsUI renders an operation's controls from its descriptor: parameters by UI hint, model offers with their

@@ -86,6 +86,8 @@
         "operation": { "$ref": "common.schema.json#/$defs/OperationId" },
         "profile_version": { "$ref": "common.schema.json#/$defs/Version" },
         "model": { "$ref": "common.schema.json#/$defs/ModelRef" },
+        "adapters": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/AdapterRef" } },
+        "helpers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/HelperRef" } },
         "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" },
         "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "timings": {

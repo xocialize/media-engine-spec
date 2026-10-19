@@ -168,6 +168,16 @@ struct MCPToolbox: Sendable {
                                 "description": "Seconds to wait for the result, with progress; then continue with mes_get_job."]
         properties["policy"] = ["type": "object", "additionalProperties": false,
                                 "properties": ["license": ["enum": ["any", "commercial-use"]], "remote": ["enum": ["forbid", "allow"]]]]
+        let adapterIDs = Self.adapterIDs(d)
+        if !adapterIDs.isEmpty {
+            properties["adapters"] = [
+                "type": "array", "minItems": 1,
+                "items": ["type": "object", "required": ["id"], "additionalProperties": false,
+                          "properties": ["id": ["type": "string", "enum": .array(adapterIDs.map { .string($0) })],
+                                         "strength": ["type": "number"]]],
+                "description": "Adapters to apply, in order (each listed under its model). Without strength, the adapter's default.",
+            ]
+        }
         let schema: Value = ["type": "object", "properties": .object(properties), "required": .array(required.map { .string($0) }),
                              "additionalProperties": false]
         let readOnly = d.outputs.allSatisfy { $0.kind == .data }
@@ -252,14 +262,19 @@ struct MCPToolbox: Sendable {
         }
         let paramNames = Set(d.params["properties"]?.objectValue?.keys.map { $0 } ?? [])
         let params = args.filter { paramNames.contains($0.key) }
-        let reserved: Set<String> = ["model", "wait_s", "policy"]
+        let reserved: Set<String> = ["model", "wait_s", "policy", "adapters"]
         let inputNames = Set(d.inputs.map(\.name))
         if let unknown = args.keys.first(where: { !paramNames.contains($0) && !reserved.contains($0) && !inputNames.contains($0) }) {
             throw MESError(.unsupportedParameter, "\(toolName(d.operation)) has no argument '\(unknown)'.", param: unknown)
         }
         let policy = try args["policy"].map { try $0.decode(as: Policy.self) }
+        let adapters = try args["adapters"].map { value in
+            do { return try value.decode(as: [AdapterRequest].self) } catch {
+                throw MESError(.invalidRequest, "adapters is a list of {id, strength?}.", param: "adapters")
+            }
+        }
         return JobRequest(operation: d.operation, inputs: inputs, params: params.isEmpty ? nil : params,
-                          model: args["model"]?.stringValue, policy: policy)
+                          model: args["model"]?.stringValue, policy: policy, adapters: adapters)
     }
 
     static func mediaInput(_ s: String, name: String) throws -> InputValue {
@@ -316,6 +331,12 @@ struct MCPToolbox: Sendable {
         if let model = job.plan?.model ?? job.result?.provenance.model {
             lines.append("Model: \(model.id) · \(model.license.spdx) · commercial use \(Self.commercial(model.license.commercialUse))"
                 + (model.license.notice.map { " · \($0)" } ?? ""))
+        }
+        for a in job.result?.provenance.adapters ?? [] {
+            lines.append("Adapter: \(a.id) at \(Self.number(a.strength)) · \(a.license.spdx) · commercial use \(Self.commercial(a.license.commercialUse))")
+        }
+        for h in job.result?.provenance.helpers ?? [] {
+            lines.append("Helper (\(h.role)): \(h.id) · \(h.license.spdx) · commercial use \(Self.commercial(h.license.commercialUse))")
         }
         for w in job.warnings { lines.append("Warning [\(w.code)]: \(w.message)") }
         var content: [Tool.Content] = []
@@ -390,15 +411,40 @@ struct MCPToolbox: Sendable {
     }
 
     /// One model offer on one line (Base §15): id, title, licence, default, tiers; with `notes`, its `license.notice` and
-    /// `notes` too. The tool description carries those; the `model` parameter keeps the short line, so each appears once.
+    /// `notes` too, and a line for each adapter it takes. The tool description carries those; the `model` parameter
+    /// keeps the short line, so each appears once.
     static func modelLine(_ m: ModelOffer, notes: Bool = false) -> String {
         var line = "\(m.id): \(m.title) · \(m.license.spdx) · commercial use \(commercial(m.license.commercialUse))"
             + (m.isDefault == true ? " · default" : "") + " · tiers \(m.qualityTiers.map(\.rawValue).joined(separator: "/"))"
         guard notes else { return line }
         if let notice = oneLine(m.license.notice) { line += " · Licence: \(notice)" }
         if let text = oneLine(m.notes) { line += " · Notes: \(text)" }
+        if let adapters = m.adapters, !adapters.isEmpty {
+            line += " · up to \(m.adapterLimit) adapter\(m.adapterLimit == 1 ? "" : "s")"
+            for a in adapters { line += "\n  - " + adapterLine(a) }
+        }
         return line
     }
+
+    /// One adapter on one line (Base §15): id, title, kind (with its slots), licence and commercial-use flag, strength
+    /// range, then its licence notice and notes.
+    static func adapterLine(_ a: AdapterOffer) -> String {
+        let slots = (a.slots ?? []).map { "\($0.role) (\($0.kind.rawValue)\($0.isRequired ? "" : ", optional"))" }
+        var line = "adapter \(a.id): \(a.title) · \(a.kind.rawValue)" + (slots.isEmpty ? "" : " [\(slots.joined(separator: ", "))]")
+            + " · \(a.license.spdx) · commercial use \(commercial(a.license.commercialUse))"
+            + " · strength \(number(a.strength.min))–\(number(a.strength.max)), default \(number(a.strength.defaultValue))"
+        if let notice = oneLine(a.license.notice) { line += " · Licence: \(notice)" }
+        if let text = oneLine(a.notes) { line += " · Notes: \(text)" }
+        return line
+    }
+
+    /// Every adapter id the descriptor's offers list, once each, in offer order.
+    static func adapterIDs(_ d: Descriptor) -> [String] {
+        var seen = Set<String>()
+        return d.models.flatMap { $0.adapters ?? [] }.map(\.id).filter { seen.insert($0).inserted }
+    }
+
+    static func number(_ x: Double) -> String { x == x.rounded() ? String(Int(x)) : String(x) }
 
     /// Text folded onto one line, or nil when empty.
     static func oneLine(_ text: String?) -> String? {

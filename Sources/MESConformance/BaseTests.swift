@@ -9,6 +9,24 @@ enum BaseTests {
     static let needsOperation: @Sendable (Probe) -> String? = {
         $0.baseOperation == nil ? "no operation the suite can drive with text and image inputs" : nil
     }
+    static let offersAdapters: @Sendable (Probe) -> String? = {
+        $0.operations.contains { d in d.models.contains { !($0.adapters ?? []).isEmpty } } ? nil : "no model offer lists adapters"
+    }
+
+    /// An operation the suite can drive, an offer on it (preferring one that isn't `named_only`) and a `plain` adapter
+    /// the offer takes, for BASE-029.
+    static func plainAdapter(_ p: Probe) -> (Descriptor, JobRequest, ModelOffer, AdapterOffer)? {
+        for d in p.operations {
+            guard let request = p.minimalRequest(d) else { continue }
+            let offers = d.models.sorted { ($0.namedOnly == true ? 1 : 0) < ($1.namedOnly == true ? 1 : 0) }
+            for m in offers {
+                if let a = m.adapters?.first(where: { $0.kind == .plain }) {
+                    return (d, request, m, a)
+                }
+            }
+        }
+        return nil
+    }
 
     static let all: [ConformanceTest] = [
         // MARK: Handshake, transport, versioning (§2–§4)
@@ -79,6 +97,29 @@ enum BaseTests {
                 try check(!d.models.contains { $0.isDefault == true && $0.namedOnly == true },
                           "\(d.operation) has a model that is both default and named_only (§6 rule 2)")
                 try check(d.params["type"]?.stringValue == "object", "\(d.operation)'s params isn't an object schema")
+            }
+            return nil
+        },
+        ConformanceTest("BASE-013", "Adapter offers are consistent: an id names one adapter everywhere, defaults lie in their ranges", spec: "§6.3",
+                        applies: offersAdapters) { p in
+            var seen: [String: AdapterOffer] = [:]
+            for d in p.operations {
+                for m in d.models {
+                    let adapters = m.adapters ?? []
+                    try check(Set(adapters.map(\.id)).count == adapters.count, "\(d.operation) / \(m.id) lists an adapter twice")
+                    try check((m.maxAdapters ?? 1) >= 1, "\(d.operation) / \(m.id): max_adapters below 1")
+                    for a in adapters {
+                        let range = a.strength
+                        try check(range.min <= range.defaultValue && range.defaultValue <= range.max,
+                                  "\(a.id): default strength \(range.defaultValue) is outside \(range.min)–\(range.max)")
+                        try check(a.kind != .ic || !(a.slots ?? []).isEmpty, "\(a.id) is ic but has no slots")
+                        if let first = seen[a.id] {
+                            try check(first.license == a.license && first.kind == a.kind && first.slots == a.slots,
+                                      "adapter \(a.id) is described differently in two offers")
+                        }
+                        seen[a.id] = a
+                    }
+                }
             }
             return nil
         },
@@ -228,6 +269,47 @@ enum BaseTests {
         },
 
         // MARK: Uploads and inputs (§8)
+        ConformanceTest("BASE-029", "Adapters: a run lists them in provenance with licence and strength; unknown, out-of-range and policy-failing ones are refused",
+                        spec: "§6.3, §10", applies: { p in
+                            if let reason = offersAdapters(p) { return reason }
+                            return plainAdapter(p) == nil ? "no operation the suite can drive offers a plain adapter" : nil
+                        }) { p in
+            let (d, base, model, adapter) = plainAdapter(p)!
+            var request = base
+            request.model = model.id
+            request.adapters = [AdapterRequest(id: adapter.id)]
+            let job = try await p.succeed(request)
+            guard let applied = job.result?.provenance.adapters else { throw Failure("\(d.operation) with \(adapter.id): provenance lists no adapters") }
+            try check(applied.map(\.id) == [adapter.id], "provenance.adapters is \(applied.map(\.id)), not [\(adapter.id)]")
+            try check(applied[0].license == adapter.license, "provenance gives \(adapter.id) another licence than its offer")
+            try check(applied[0].strength == adapter.strength.defaultValue,
+                      "\(adapter.id) ran at \(applied[0].strength); without a strength it runs at its default, \(adapter.strength.defaultValue)")
+            await p.confirm(job)
+
+            var unknown = request
+            unknown.adapters = [AdapterRequest(id: "conformance-missing-adapter")]
+            try expect(try await p.wire.json("POST", "jobs", unknown), 422, code: "unsupported_parameter", "an adapter no offer lists",
+                       schemas: p.schemas)
+            var strong = request
+            strong.adapters = [AdapterRequest(id: adapter.id, strength: adapter.strength.max + 1)]
+            try expect(try await p.wire.json("POST", "jobs", strong), 422, code: "out_of_limits", "a strength above \(adapter.id)'s range",
+                       schemas: p.schemas)
+            let plain = (model.adapters ?? []).filter { $0.kind == .plain }
+            if plain.count > model.adapterLimit {
+                var many = request
+                many.adapters = plain.prefix(model.adapterLimit + 1).map { AdapterRequest(id: $0.id) }
+                try expect(try await p.wire.json("POST", "jobs", many), 422, code: "out_of_limits",
+                           "more adapters than \(model.id)'s max_adapters", schemas: p.schemas)
+            }
+            if let restricted = plain.first(where: { $0.license.commercialUse != .yes }) {
+                var policy = request
+                policy.adapters = [AdapterRequest(id: restricted.id)]
+                policy.policy = Policy(license: .commercialUse)
+                try expect(try await p.wire.json("POST", "jobs", policy), 422, code: "policy_unmet",
+                           "\(restricted.id) (\(restricted.license.spdx)) under policy commercial-use", schemas: p.schemas)
+            }
+            return nil
+        },
         ConformanceTest("BASE-030", "Uploads: 201 with the right size and SHA-256, at most an hour's expiry, and single use", spec: "§8",
                         applies: { p in
                             p.operations.contains { d in d.inputs.contains { $0.kind == .image && $0.required } && p.minimalRequest(d) != nil }

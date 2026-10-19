@@ -368,3 +368,25 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   `license.notice` and `notes` on that model's line (Base §15), so an agent sees the terms and the guidance before it
   names the model; the `model` parameter keeps the short line. MESFormsUI shows notes as the model row's help
   (AB-A-0186).
+- **`v0.4.0`** (in review; AB-A-0194, AB-D-0155): prompt enhancement and adapters. Base and Image stay 0.1 drafts;
+  everything new is optional, except that an engine that rewrites prompts must now say so.
+  - **Adapters** (Base §6.3): a model offer lists the adapters it takes (`adapters`, `max_adapters`: id, title,
+    `plain` or `ic` with ordered `slots`, a strength range, a licence). A request asks for them by id
+    (`adapters: [{id, strength?}]`), and an adapter implies its model. Provenance lists them with their licences and
+    strengths, and `policy.license: commercial-use` covers them. MESEngineCore checks a request's adapters and chooses
+    the model by them (`RunContext.adapters`); the MCP binding takes an `adapters` argument and lists each adapter under
+    its model.
+  - **Helpers** (Base §10.1): `provenance.helpers` names models that shaped a result without producing it, such as a
+    prompt enhancer, with a role; the licence policy covers them too (`helper_skipped_by_policy`). Engines report them
+    in `RunOutput.helpers`.
+  - **Warning codes** (Base §10.1): an engine MAY use a code no registry defines; clients accept any code.
+  - **Operations** (Base §6 rule 6): an engine offers only operations a profile defines.
+  - **Prompt enhancement** (Image §1.9): `prompt_enhance` (`auto`, `on`, `off`) on every prompted operation. An engine
+    that may rewrite a prompt declares it, warns `prompt_rewritten`, reports the text in `effective.prompt` (or
+    `effective.instruction`), and names a separate enhancer in `provenance.helpers` (role `prompt_enhance`);
+    `prompt_enhance_ignored` and `prompt_enhance_failed` say when it couldn't.
+  - **`image.enhance_prompt`** (Image §3.1): the preview. It takes a prompt, the target operation and model, and
+    returns `{prompt, applied, size?}` for the client to show and edit, then run with `prompt_enhance: off`.
+  - **Adapter slots** (Image §1.10): an `ic` adapter's slots fill from `references` (generate) or `images` (edit).
+  - **Conformance:** BASE-013, BASE-029 and IMAGE-011 to IMAGE-013. The mock offers all of it: three adapters on
+    generate, `mock-enhancer`, and `prompt_enhance: on` rewrites.

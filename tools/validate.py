@@ -45,6 +45,11 @@ MANIFEST = {
     "error-policy-unmet.json": "base/error.schema.json",
     "health.json": "base/health.schema.json",
     "model-offer-research.json": "base/descriptor.schema.json#/$defs/ModelOffer",
+    "model-offer-adapters.json": "base/descriptor.schema.json#/$defs/ModelOffer",
+    "job-request-edit-adapters.json": "base/job-request.schema.json",
+    "job-holding-generate-enhanced.json": "base/job.schema.json",
+    "job-holding-enhance-prompt.json": "base/job.schema.json",
+    "job-holding-edit-adapters.json": "base/job.schema.json",
 }
 
 _cache = {}

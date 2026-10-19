@@ -91,6 +91,19 @@
         "scale": { "type": "string" },
         "raw": { "type": "number" }
       }
+    },
+    "prompt_enhance": { "enum": ["auto", "on", "off"], "default": "auto" },
+    "target_operation": { "type": "string", "pattern": "^image\\.[a-z][a-z0-9_]*$", "default": "image.generate" },
+    "target_model": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]+$" },
+    "enhanced_prompt": {
+      "type": "object",
+      "required": ["prompt", "applied"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": { "type": "string" },
+        "applied": { "type": "boolean" },
+        "size": { "$ref": "#/$defs/size" }
+      }
     }
   }
 }

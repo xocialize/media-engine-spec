@@ -2,9 +2,15 @@ import Foundation
 import MESCore
 import MESEngineCore
 
-/// A mock Image-profile engine (MES R0b). It offers all 13 operations with synthetic results that obey the profile's
+/// A mock Image-profile engine (MES R0b). It offers all 14 operations with synthetic results that obey the profile's
 /// rules: fill and erase keep black-mask pixels byte-identical, upscale is exactly ×scale, mattes are 8-bit grey,
 /// and the same seed gives the same result. Clients and the conformance suite test against it; it runs no model.
+///
+/// - **Prompt enhancement** (Image §1.9): every prompted operation declares `prompt_enhance`. The mock's models are
+///   ones whose makers don't ask for it, so `auto` leaves prompts alone; `on` rewrites the prompt with the mock
+///   enhancer (`mock-enhancer`, also `image.enhance_prompt`'s model), and reports it.
+/// - **Adapters** (Base §6.3): generate's `mock` offer takes `mock-style` (plain), `mock-research-style` (plain,
+///   research-licensed) and `mock-pose` (ic, one slot filled from `references`), up to two per request.
 public struct MockImageEngine: MediaEngine {
     /// Delay per progress step, to exercise waiting, progress and cancellation.
     public var stepDelay: Duration
@@ -18,6 +24,30 @@ public struct MockImageEngine: MediaEngine {
     static let mockLicense = License.apache2
     static let researchLicense = License(spdx: "LicenseRef-Mock-Research", commercialUse: .no,
                                          notice: "A stand-in for research-only weights.", acceptedRequired: true)
+
+    /// The model `image.enhance_prompt` offers, and the helper that rewrites prompts under `prompt_enhance: on`.
+    public static let enhancer = ModelOffer(id: "mock-enhancer", title: "Mock prompt enhancer", license: mockLicense,
+                                            memoryClass: .small, speedClass: .fast, qualityTiers: [.draft, .standard, .best],
+                                            isDefault: true, notes: "Rewrites a prompt the way the mock's models like it.")
+
+    /// The adapters generate's `mock` offer takes (Base §6.3).
+    public static let adapters: [AdapterOffer] = [
+        AdapterOffer(id: "mock-style", title: "Mock style", strength: .init(min: 0, max: 2, defaultValue: 1), license: mockLicense,
+                     notes: "Warms the colours; strength scales it."),
+        AdapterOffer(id: "mock-research-style", title: "Mock research style", strength: .init(min: 0, max: 1, defaultValue: 0.8),
+                     license: researchLicense),
+        AdapterOffer(id: "mock-pose", title: "Mock pose", kind: .ic,
+                     slots: [.init(role: "pose", kind: .image, notes: "A picture of the pose to follow.")],
+                     strength: .init(min: 0, max: 1.5, defaultValue: 1), license: mockLicense,
+                     notes: "Put the pose first in references."),
+    ]
+
+    /// The revision the mock reports for every adapter it applies (provenance `revision`).
+    public static let adapterRevision = "mock-r1"
+
+    /// The operations whose prompts the mock can enhance: those whose vocabulary has `prompt_enhance`.
+    static let enhanceable: [String] = ImageProfile.operations.operations
+        .filter { $0.value.vocabulary.contains(ImageProfile.Param.promptEnhance) }.keys.sorted()
 
     // MARK: - Descriptors
 
@@ -43,13 +73,21 @@ public struct MockImageEngine: MediaEngine {
             properties[ImageProfile.Param.preset] = ["enum": ["soft", "golden_hour", "studio"],
                                                      "x-mes-ui": ["label": "Preset", "widget": "picker"]]
         }
+        if case .object(var target)? = properties[ImageProfile.Param.targetOperation] {
+            target["enum"] = .array(enhanceable.map { .string($0) })
+            target["pattern"] = nil
+            properties[ImageProfile.Param.targetOperation] = .object(target)
+        }
         let outputs = spec.outputs.sorted { $0.key < $1.key }.map { name, io in
             OutputSpec(name: name, kind: io.kind, mediaTypes: io.kind == .data ? ["application/json"] : ["image/png"],
                        min: name == "images" || name == "masks" ? 1 : (operation == "image.matte" ? 0 : 1),
                        max: name == "images" || name == "masks" ? 8 : 1)
         }
         var models = [ModelOffer(id: "mock", title: "Mock \(operation)", license: mockLicense, memoryClass: .small,
-                                 speedClass: .fast, qualityTiers: [.draft, .standard, .best], isDefault: true)]
+                                 speedClass: .fast, qualityTiers: [.draft, .standard, .best], isDefault: true,
+                                 adapters: operation == "image.generate" ? adapters : nil,
+                                 maxAdapters: operation == "image.generate" ? 2 : nil)]
+        if operation == "image.enhance_prompt" { models = [enhancer] }
         if operation == "image.generate" {
             models.append(ModelOffer(id: "mock-research", title: "Mock research model", license: researchLicense,
                                      memoryClass: .large, speedClass: .slow, qualityTiers: [.best], namedOnly: true,
@@ -82,19 +120,45 @@ public struct MockImageEngine: MediaEngine {
         ["image.generate": "Generate", "image.edit": "Edit", "image.fill": "Generative fill", "image.erase": "Erase",
          "image.extend": "Extend canvas", "image.upscale": "Upscale", "image.restore": "Restore", "image.relight": "Relight",
          "image.colorize": "Colorize", "image.matte": "Select subject", "image.segment": "Select by prompt",
-         "image.describe": "Describe", "image.score": "Quality score"][op] ?? op
+         "image.describe": "Describe", "image.score": "Quality score", "image.enhance_prompt": "Enhance prompt"][op] ?? op
     }
 
     static func ui(_ name: String, order: Int) -> [String: JSONValue] {
         let widgets: [String: String] = ["prompt": "textarea", "negative_prompt": "textarea", "seed": "seed", "quality": "picker",
                                          "size": "size", "aspect": "aspect", "megapixels": "slider", "strength": "slider",
                                          "count": "stepper", "scale": "picker", "content": "picker", "kind": "picker",
-                                         "outputs": "picker", "language": "text"]
+                                         "outputs": "picker", "language": "text", "prompt_enhance": "picker",
+                                         "target_operation": "picker", "target_model": "text"]
         var hints: [String: JSONValue] = ["label": .string(name.replacingOccurrences(of: "_", with: " ").capitalized),
                                           "order": .number(Double(order))]
         if let w = widgets[name] { hints["widget"] = .string(w) }
-        if ["seed", "negative_prompt", "output", "megapixels"].contains(name) { hints["advanced"] = true }
+        if ["seed", "negative_prompt", "output", "megapixels", "prompt_enhance"].contains(name) { hints["advanced"] = true }
         return hints
+    }
+
+    /// `image.enhance_prompt`'s target model must be one the target operation offers (Image §3.1).
+    public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
+        try ImageProfileRules.validate(request, descriptor: descriptor)
+        if descriptor.operation == "image.enhance_prompt" { _ = try Self.enhanceTarget(request.params ?? [:]) }
+    }
+
+    static func enhanceTarget(_ params: [String: JSONValue]) throws -> (operation: String, model: String) {
+        let operation = params[ImageProfile.Param.targetOperation]?.stringValue ?? "image.generate"
+        let offers = descriptor(operation).models
+        guard let model = params[ImageProfile.Param.targetModel]?.stringValue else {
+            return (operation, offers.first { $0.isDefault == true }?.id ?? offers[0].id)
+        }
+        guard offers.contains(where: { $0.id == model }) else {
+            throw MESError(.unsupportedParameter, "\(operation) offers no model \(model).", param: ImageProfile.Param.targetModel)
+        }
+        return (operation, model)
+    }
+
+    /// The mock's rewrite: the prompt plus a seed-chosen lighting phrase, the same for the same seed.
+    static func enhance(_ text: String, seed: Int) -> String {
+        let light = ["soft natural light", "golden hour light", "studio light", "overcast light"][abs(seed) % 4]
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(trimmed.isEmpty ? "an image" : trimmed), in \(light), finely detailed"
     }
 
     // MARK: - Running
@@ -132,10 +196,30 @@ public struct MockImageEngine: MediaEngine {
             }
             return mask
         }
-        let prompt = context.input("prompt")?.text ?? context.input("instruction")?.text ?? ""
+        var prompt = context.input("prompt")?.text ?? context.input("instruction")?.text ?? ""
         var effective: [String: JSONValue] = ["model_params": ["mock": true]]
         if !context.extensions.isEmpty { effective["extensions"] = .object(context.extensions) }
         var outputs: [ProducedOutput] = []
+        var helpers: [HelperRef] = []
+
+        // Image §1.9: `auto` leaves the mock's prompts alone; `on` rewrites a prompt the request gave, and says so.
+        if context.descriptor.params["properties"]?[ImageProfile.Param.promptEnhance] != nil {
+            let mode = context.param(ImageProfile.Param.promptEnhance)?.stringValue.flatMap(ImageProfile.PromptEnhanceMode.init) ?? .auto
+            effective[ImageProfile.Param.promptEnhance] = .string(mode.rawValue)
+            let input = context.input("prompt") != nil ? "prompt" : "instruction"
+            if mode == .on, context.input(input) != nil {
+                prompt = Self.enhance(prompt, seed: seed)
+                effective[input] = .string(prompt)
+                helpers.append(HelperRef(id: Self.enhancer.id, title: Self.enhancer.title, license: Self.enhancer.license,
+                                         role: ImageProfile.HelperRole.promptEnhance))
+                warnings.append(Warning(code: ImageProfile.WarningCode.promptRewritten,
+                                        message: "The \(input) was rewritten by \(Self.enhancer.title); prompt_enhance off sends it as typed.",
+                                        param: input))
+            }
+        }
+        if !context.adapters.isEmpty {
+            effective["model_params"] = ["mock": true, "adapters": .array(context.adapters.map { .string($0.id) })]
+        }
 
         switch context.operation {
         case "image.generate":
@@ -152,6 +236,9 @@ public struct MockImageEngine: MediaEngine {
                 for y in 0..<h {
                     let t = Double(y) / Double(max(1, h - 1))
                     for x in 0..<w { r[x, y] = (Palette.blend(a.0, b.0, t), Palette.blend(a.1, b.1, t), Palette.blend(a.2, b.2, t), 255) }
+                }
+                for adapter in context.adapters where adapter.offer.kind == .plain {
+                    Self.tint(&r, (230, 140, 60), amount: min(1, 0.2 * adapter.strength))
                 }
                 outputs.append(try png(r, "images", i))
             }
@@ -256,6 +343,12 @@ public struct MockImageEngine: MediaEngine {
                                   "alt_text": .string("Mock description of a \(orientation) image"),
                                   "tags": ["mock", .string(orientation)], "language": .string(language)], name: "description"))
 
+        case "image.enhance_prompt":
+            let target = try Self.enhanceTarget(context.params)
+            effective[ImageProfile.Param.targetOperation] = .string(target.operation)
+            effective[ImageProfile.Param.targetModel] = .string(target.model)
+            outputs.append(.data(["prompt": .string(Self.enhance(prompt, seed: seed)), "applied": true], name: "enhanced"))
+
         case "image.score":
             let input = try loadImage("image")
             var total = 0
@@ -267,9 +360,10 @@ public struct MockImageEngine: MediaEngine {
             throw MESError(.unknownOperation, "The mock doesn't implement \(context.operation).")
         }
         return RunOutput(outputs: outputs, effective: effective,
-                         seed: ["image.generate", "image.edit", "image.fill", "image.relight", "image.colorize", "image.extend"]
-                             .contains(context.operation) ? seed : nil,
-                         warnings: warnings)
+                         seed: ["image.generate", "image.edit", "image.fill", "image.relight", "image.colorize", "image.extend",
+                                "image.enhance_prompt"].contains(context.operation) ? seed : nil,
+                         warnings: warnings, helpers: helpers,
+                         revisions: Dictionary(context.adapters.map { ($0.id, Self.adapterRevision) }, uniquingKeysWith: { a, _ in a }))
     }
 
     // MARK: - Helpers

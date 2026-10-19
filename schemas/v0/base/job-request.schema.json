@@ -30,9 +30,19 @@
       "type": "object",
       "propertyNames": { "pattern": "^x-[a-z0-9]+\\.[a-z0-9_]+$" }
     },
+    "adapters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/AdapterRequest" } },
     "client_ref": { "type": "string", "maxLength": 128 }
   },
   "$defs": {
+    "AdapterRequest": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Id" },
+        "strength": { "type": "number" }
+      }
+    },
     "InputValue": {
       "oneOf": [
         {

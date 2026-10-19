@@ -18,6 +18,7 @@ package actor JobRegistry {
         var descriptor: Descriptor
         var model: ModelOffer
         var quality: QualityTier
+        var adapters: [AdapterChoice] = []
         var initialEffective: [String: JSONValue]
         var inputs: [String: [RunInput]] = [:]
         var outputFiles: [Int: URL] = [:]
@@ -150,6 +151,7 @@ package actor JobRegistry {
         try validateExtensions(request, descriptor: descriptor)
         try engine.validate(request, descriptor: descriptor)
         let (model, quality) = try chooseModel(request, descriptor: descriptor)
+        let adapters = try chooseAdapters(request, model: model)
 
         let now = Date()
         let id = IDs.make("job_")
@@ -160,7 +162,7 @@ package actor JobRegistry {
                       warnings: [], retention: .init(recordExpiresAt: now.addingTimeInterval(TimeInterval(config.jobRecordTTLSeconds))),
                       createdAt: now, updatedAt: now)
         records[id] = Record(job: job, owner: owner, clientHost: clientHost, request: request, descriptor: descriptor,
-                             model: model, quality: quality, initialEffective: effective)
+                             model: model, quality: quality, adapters: adapters, initialEffective: effective)
         // Uploads are single-use: claimed now, so a second job naming one is refused.
         for value in (request.inputs ?? [:]).values.flatMap(\.values) {
             if case .upload(let uid) = value { uploads[uid]?.owner = "\u{0}claimed:\(id)" }
@@ -259,8 +261,8 @@ package actor JobRegistry {
         }
     }
 
-    /// Model choice (Base §6 rule 2, §10.3): a named model must exist and satisfy the policy; otherwise the default
-    /// offer for the requested quality tier that satisfies it.
+    /// Model choice (Base §6 rule 2, §6.3, §10.3): a named model must exist, satisfy the policy and list every requested
+    /// adapter; otherwise the default offer for the requested quality tier that satisfies the policy and lists them.
     private func chooseModel(_ request: JobRequest, descriptor: Descriptor) throws -> (ModelOffer, QualityTier) {
         var quality = QualityTier.standard
         if let raw = request.params?[ImageProfile.Param.quality]?.stringValue {
@@ -277,6 +279,15 @@ package actor JobRegistry {
         }
         let policy = request.policy ?? Policy()
         func satisfies(_ m: ModelOffer) -> Bool { policy.allows(m) }
+        // Adapters (§6.3): each listed at most once, by some offer of this operation; an adapter implies its model.
+        let wanted = (request.adapters ?? []).map(\.id)
+        if Set(wanted).count != wanted.count {
+            throw MESError(.invalidRequest, "Each adapter may be asked for once.", param: "adapters")
+        }
+        if let unknown = wanted.first(where: { id in !descriptor.models.contains { $0.adapter(id) != nil } }) {
+            throw MESError(.unsupportedParameter, "\(descriptor.operation) offers no adapter \(unknown).", param: "adapters")
+        }
+        func fits(_ m: ModelOffer) -> Bool { wanted.allSatisfy { m.adapter($0) != nil } }
         if let named = request.model {
             guard let model = descriptor.models.first(where: { $0.id == named }) else {
                 throw MESError(.modelUnavailable, "\(descriptor.operation) offers no model \(named).", param: "model")
@@ -285,12 +296,19 @@ package actor JobRegistry {
                 throw MESError(.policyUnmet, "Model \(named) doesn't satisfy the request's policy.",
                                reason: "\(model.id): \(model.license.spdx)", param: "model")
             }
+            if let misfit = wanted.first(where: { model.adapter($0) == nil }) {
+                throw MESError(.unsupportedParameter, "Model \(named) doesn't take the adapter \(misfit).", param: "adapters")
+            }
             return (model, model.qualityTiers.contains(quality) ? quality : (model.qualityTiers.first ?? quality))
         }
-        // Named-only offers (research, opt-in) never run by default (Base §6 rule 2).
-        let forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) && $0.namedOnly != true }
+        // Named-only offers (research, opt-in) never run by default (Base §6 rule 2), adapters or not.
+        let forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) && $0.namedOnly != true && fits($0) }
         let allowed = forTier.filter(satisfies)
         guard let model = allowed.first(where: { $0.isDefault == true }) ?? allowed.first else {
+            if forTier.isEmpty, !wanted.isEmpty {
+                throw MESError(.unsupportedParameter, "No model at the \(quality.rawValue) tier takes \(wanted.joined(separator: " with ")) "
+                               + "without being named.", param: "adapters")
+            }
             if forTier.isEmpty {
                 throw MESError(.unsupportedParameter, "No model offers the \(quality.rawValue) tier.", param: "quality")
             }
@@ -302,6 +320,33 @@ package actor JobRegistry {
             return (refined, quality)
         }
         return (model, quality)
+    }
+
+    /// The requested adapters on the chosen model (§6.3, §10.3): within its `max_adapters`, each strength within its
+    /// range (default when absent), each licence allowed by the policy.
+    private func chooseAdapters(_ request: JobRequest, model: ModelOffer) throws -> [AdapterChoice] {
+        let wanted = request.adapters ?? []
+        guard !wanted.isEmpty else { return [] }
+        if wanted.count > model.adapterLimit {
+            throw MESError(.outOfLimits, "\(model.id) takes at most \(model.adapterLimit) adapter\(model.adapterLimit == 1 ? "" : "s") per request.",
+                           param: "adapters")
+        }
+        let policy = request.policy ?? Policy()
+        return try wanted.map { a in
+            guard let offer = model.adapter(a.id) else {
+                throw MESError(.unsupportedParameter, "Model \(model.id) doesn't take the adapter \(a.id).", param: "adapters")
+            }
+            let strength = a.strength ?? offer.strength.defaultValue
+            guard offer.strength.contains(strength) else {
+                throw MESError(.outOfLimits, "Adapter \(a.id) takes a strength from \(offer.strength.min) to \(offer.strength.max).",
+                               param: "adapters")
+            }
+            guard policy.allows(offer.license) else {
+                throw MESError(.policyUnmet, "Adapter \(a.id) doesn't satisfy the request's policy.",
+                               reason: "\(a.id): \(offer.license.spdx)", param: "adapters")
+            }
+            return AdapterChoice(offer: offer, strength: strength)
+        }
     }
 
     // MARK: - Execution
@@ -331,7 +376,7 @@ package actor JobRegistry {
 
         let context = RunContext(
             jobID: id, operation: record.request.operation, descriptor: record.descriptor, model: record.model,
-            quality: record.quality, params: record.request.params ?? [:], extensions: record.request.extensions ?? [:],
+            adapters: record.adapters, quality: record.quality, params: record.request.params ?? [:], extensions: record.request.extensions ?? [:],
             inputs: record.inputs, policy: record.request.policy ?? Policy(), outputDirectory: spool.outputsDirectory(id),
             reporter: RunReporter(
                 progress: { [weak self] p in await self?.reportProgress(id, p) },
@@ -427,7 +472,15 @@ package actor JobRegistry {
                 engine: .init(id: config.id, name: config.name, implementation: config.implementationName,
                               version: config.implementationVersion),
                 operation: record.request.operation, profileVersion: record.descriptor.profileVersion,
-                model: record.model.ref, remoteProvider: record.model.remoteProvider, seed: output.seed,
+                model: ModelRef(id: record.model.id, title: record.model.title, revision: output.revisions[record.model.id],
+                                license: record.model.license),
+                adapters: record.adapters.isEmpty ? nil : record.adapters.map { a in
+                    var ref = a.offer.ref(strength: a.strength)
+                    ref.revision = output.revisions[a.id]
+                    return ref
+                },
+                helpers: output.helpers.isEmpty ? nil : output.helpers,
+                remoteProvider: record.model.remoteProvider, seed: output.seed,
                 timings: .init(receivedAt: record.job.createdAt, startedAt: startedAt, finishedAt: now,
                                queueMs: Int(startedAt.timeIntervalSince(record.job.createdAt) * 1000),
                                runMs: Int(now.timeIntervalSince(startedAt) * 1000))))

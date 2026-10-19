@@ -110,7 +110,45 @@
         "default": { "type": "boolean" },
         "named_only": { "type": "boolean", "description": "Never chosen by default: the model runs only when a request names it." },
         "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" },
-        "notes": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Short usage guidance for this model: prompting rules, limits." }
+        "notes": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Short usage guidance for this model: prompting rules, limits." },
+        "adapters": { "type": "array", "items": { "$ref": "#/$defs/AdapterOffer" }, "description": "The adapters this model accepts (§6.3)." },
+        "max_adapters": { "type": "integer", "minimum": 1, "description": "How many adapters one request may combine on this model. Default 1." }
+      }
+    },
+    "AdapterOffer": {
+      "type": "object",
+      "required": ["id", "title", "kind", "strength", "license"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Id" },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "common.schema.json#/$defs/AdapterKind" },
+        "slots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/AdapterSlot" } },
+        "strength": {
+          "type": "object",
+          "required": ["min", "max", "default"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "default": { "type": "number" }
+          }
+        },
+        "license": { "$ref": "common.schema.json#/$defs/License" },
+        "notes": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      },
+      "if": { "properties": { "kind": { "const": "ic" } } },
+      "then": { "required": ["slots"] }
+    },
+    "AdapterSlot": {
+      "type": "object",
+      "required": ["role", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "kind": { "enum": ["image", "mask", "video", "audio"] },
+        "required": { "type": "boolean" },
+        "notes": { "type": "string", "minLength": 1, "maxLength": 1000 }
       }
     },
     "Extension": {

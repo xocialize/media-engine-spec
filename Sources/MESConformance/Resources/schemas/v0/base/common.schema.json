@@ -82,6 +82,33 @@
         "revision": { "type": "string" },
         "license": { "$ref": "#/$defs/License" }
       }
+    },
+    "AdapterKind": { "enum": ["plain", "ic"] },
+    "AdapterRef": {
+      "description": "An adapter a job applied (§6.3, §10.1), with the strength it ran at.",
+      "type": "object",
+      "required": ["id", "license", "strength"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "revision": { "type": "string" },
+        "license": { "$ref": "#/$defs/License" },
+        "strength": { "type": "number" }
+      }
+    },
+    "HelperRef": {
+      "description": "A model that shaped a result without producing it, e.g. a prompt enhancer (§10.1). Profiles register roles.",
+      "type": "object",
+      "required": ["id", "license", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "revision": { "type": "string" },
+        "license": { "$ref": "#/$defs/License" },
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      }
     }
   }
 }

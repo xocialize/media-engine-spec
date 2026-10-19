@@ -54,6 +54,9 @@ public struct RunContext: Sendable {
     public let descriptor: Descriptor
     /// The model the kit chose (or the client named), already checked against the licence and remote policy.
     public let model: ModelOffer
+    /// The adapters the request asked for (Base §6.3), in its order, each the model's offer with the strength to run
+    /// at: already checked against the model's list, its `max_adapters`, each range and the licence policy.
+    public let adapters: [AdapterChoice]
     public let quality: QualityTier
     /// The request's params, validated against the descriptor.
     public let params: [String: JSONValue]
@@ -66,6 +69,14 @@ public struct RunContext: Sendable {
 
     public func input(_ name: String) -> RunInput? { inputs[name]?.first }
     public func param(_ name: String) -> JSONValue? { params[name] }
+}
+
+/// One adapter a job applies: the model's offer of it and the strength to run it at (the request's, or the default).
+public struct AdapterChoice: Sendable, Equatable {
+    public let offer: AdapterOffer
+    public let strength: Double
+    public init(offer: AdapterOffer, strength: Double) { self.offer = offer; self.strength = strength }
+    public var id: String { offer.id }
 }
 
 /// Progress, warnings and previews from a running job, delivered as events.
@@ -127,9 +138,16 @@ public struct RunOutput: Sendable {
     public var effective: [String: JSONValue]
     public var seed: Int?
     public var warnings: [Warning]
+    /// Models that shaped the result without producing it, e.g. a prompt enhancer (Base §10.1), for provenance. The
+    /// engine checks them against `context.policy` (Base §10.3) and leaves out one that doesn't satisfy it.
+    public var helpers: [HelperRef]
+    /// The pinned revisions of the weights that ran, by model or adapter id, for provenance's `revision` fields.
+    public var revisions: [String: String]
 
-    public init(outputs: [ProducedOutput], effective: [String: JSONValue] = [:], seed: Int? = nil, warnings: [Warning] = []) {
-        self.outputs = outputs; self.effective = effective; self.seed = seed; self.warnings = warnings
+    public init(outputs: [ProducedOutput], effective: [String: JSONValue] = [:], seed: Int? = nil, warnings: [Warning] = [],
+                helpers: [HelperRef] = [], revisions: [String: String] = [:]) {
+        self.outputs = outputs; self.effective = effective; self.seed = seed; self.warnings = warnings; self.helpers = helpers
+        self.revisions = revisions
     }
 }
 
@@ -146,6 +164,23 @@ public enum ImageProfileRules {
                 throw MESError(.invalidRequest, "\(descriptor.operation) needs one of: \(oneOf.joined(separator: ", "))",
                                param: oneOf.first)
             }
+        }
+        try validateSlots(request, descriptor: descriptor)
+    }
+
+    /// §1.10: `ic` adapters' required slots are filled, in order, from the operation's adapter input.
+    static func validateSlots(_ request: JobRequest, descriptor: Descriptor) throws {
+        let offers = descriptor.models.flatMap { $0.adapters ?? [] }
+        let needed = (request.adapters ?? []).reduce(0) { sum, a in sum + (offers.first { $0.id == a.id }?.requiredSlots ?? 0) }
+        guard needed > 0 else { return }
+        guard let input = ImageProfile.operations.operations[descriptor.operation]?.adapterInput else {
+            throw MESError(.unsupportedParameter, "\(descriptor.operation) has no input for in-context adapters' slots.",
+                           param: "adapters")
+        }
+        let given = request.inputs?[input]?.values.count ?? 0
+        if given < needed {
+            throw MESError(.invalidRequest, "The adapters asked for need \(needed) value\(needed == 1 ? "" : "s") in '\(input)', "
+                           + "one per slot in order; the request has \(given).", param: input)
         }
     }
 }
