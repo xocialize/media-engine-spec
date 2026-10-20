@@ -390,3 +390,8 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   - **Adapter slots** (Image §1.10): an `ic` adapter's slots fill from `references` (generate) or `images` (edit).
   - **Conformance:** BASE-013, BASE-029 and IMAGE-011 to IMAGE-013. The mock offers all of it: three adapters on
     generate, `mock-enhancer`, and `prompt_enhance: on` rewrites.
+  - **MCP progress, fixed** (Base §15): progress could be lost for a whole session.
+    - The swift-sdk client sends its first standalone GET with the `Last-Event-ID` of initialize's priming event, and
+      the transport then resumed that POST stream instead of opening the standalone one. The engine now drops a
+      `Last-Event-ID` from a session's first GET.
+    - Progress sent before the stream opens now waits and goes out once it does.

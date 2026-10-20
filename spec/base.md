@@ -516,6 +516,8 @@ Dispatchers use it to choose between engines.
   - `structuredContent`: the Job snapshot.
 - **Progress:** `notifications/progress` while waiting, from 0 to 100. Engines MAY send them on the session's
   standalone GET stream rather than on the call's own response stream, so clients that want progress SHOULD open it.
+  An engine that does SHOULD hold a session's progress until the client first opens that stream, so progress sent
+  before it connects isn't lost.
 - **Long jobs:** a job not finished by `wait_s` returns the snapshot with its state, and the agent continues with
   `mes_get_job`.
 - **Helper tools:** `mes_list_operations`, `mes_get_job`, `mes_cancel_job` and `mes_confirm_job`.

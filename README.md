@@ -9,7 +9,7 @@ compliant engine, on any platform.
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
 > from descriptors); the conformance suite for engines and clients; and a mock Image engine. The mock and `mes` both
-> conform. 70 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
+> conform. 72 tests pass. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 >
 > Two implementations use it: [Pixel Agency Lite](https://github.com/xocialize/pixel-agency-lite), the reference
 > client, and the [Pixel Agency Image Engine](https://github.com/xocialize/pixel-agency-image-engine), the reference

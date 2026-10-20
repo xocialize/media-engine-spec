@@ -21,9 +21,41 @@ struct MCPReply: Sendable {
     var body: Body
 }
 
-private final class WeakServer: @unchecked Sendable {
-    weak var server: Server?
-    init(_ server: Server) { self.server = server }
+/// A session's progress notifications (Base §15). The SDK's transport sends every notification on the session's
+/// standalone GET stream, and stores one sent before the client opens that stream only for a `Last-Event-ID` replay,
+/// which a fresh stream never asks for. So progress waits here until the session's first standalone stream opens, and
+/// goes out in order then. After that the transport's own store covers reconnects.
+actor MCPProgressOutbox {
+    private weak var server: Server?
+    private var opened = false
+    private var flushing = false
+    private var waiting: [Message<ProgressNotification>] = []
+    /// Progress kept for a client that never opens the stream; older notifications go first.
+    static let limit = 256
+
+    func attach(_ server: Server) { self.server = server }
+
+    func send(_ notification: Message<ProgressNotification>) async {
+        guard opened else {
+            waiting.append(notification)
+            if waiting.count > Self.limit { waiting.removeFirst(waiting.count - Self.limit) }
+            return
+        }
+        try? await server?.notify(notification)
+    }
+
+    /// The session's standalone stream is open: send what waited, then send directly. Progress that arrives during the
+    /// flush joins the queue behind it, so order holds.
+    func open() async {
+        guard !opened, !flushing else { return }
+        flushing = true
+        while !waiting.isEmpty {
+            let next = waiting.removeFirst()
+            try? await server?.notify(next)
+        }
+        opened = true
+        flushing = false
+    }
 }
 
 /// One MCP `Server` + `StatefulHTTPServerTransport` per `Mcp-Session-Id`, each bound to the client that opened it.
@@ -31,8 +63,11 @@ actor MCPSessions {
     private struct Session {
         let server: Server
         let transport: StatefulHTTPServerTransport
+        let outbox: MCPProgressOutbox
         let client: String
         var lastUsed: Date
+        /// Whether the client has opened its standalone GET stream yet.
+        var streamOpened = false
     }
 
     private var sessions: [String: Session] = [:]
@@ -61,7 +96,20 @@ actor MCPSessions {
             }
             session.lastUsed = Date()
             sessions[id] = session
+            var request = request
+            // A session's first GET can't be resuming its standalone stream, since nothing has been sent on it. Yet the
+            // swift-sdk client (0.12) sends the last event id it saw on any stream, often initialize's priming event,
+            // and the transport would then resume that POST stream and never open the standalone one.
+            if request.method == "GET", !session.streamOpened, request.header(HTTPHeaderName.lastEventID) != nil {
+                let name = HTTPHeaderName.lastEventID.lowercased()
+                request = HTTPRequest(method: request.method, headers: request.headers.filter { $0.key.lowercased() != name },
+                                      body: request.body, path: request.path)
+            }
             let response = await session.transport.handleRequest(request)
+            if request.method == "GET", case .stream = response {
+                sessions[id]?.streamOpened = true
+                await session.outbox.open()
+            }
             if request.method == "DELETE" {
                 sessions[id] = nil
                 await session.server.stop()
@@ -72,10 +120,10 @@ actor MCPSessions {
             return .error(statusCode: 400, .invalidRequest("Missing Mcp-Session-Id; POST initialize first."))
         }
         do {
-            let (server, transport) = try await makeSession(client: client, clientHost: clientHost, baseURL: baseURL)
+            let (server, transport, outbox) = try await makeSession(client: client, clientHost: clientHost, baseURL: baseURL)
             let response = await transport.handleRequest(request)
             if let id = response.headers[HTTPHeaderName.sessionID] {
-                sessions[id] = Session(server: server, transport: transport, client: client, lastUsed: Date())
+                sessions[id] = Session(server: server, transport: transport, outbox: outbox, client: client, lastUsed: Date())
             } else {
                 await server.stop()
             }
@@ -85,7 +133,8 @@ actor MCPSessions {
         }
     }
 
-    private func makeSession(client: String, clientHost: String?, baseURL: String) async throws -> (Server, StatefulHTTPServerTransport) {
+    private func makeSession(client: String, clientHost: String?, baseURL: String) async throws
+        -> (Server, StatefulHTTPServerTransport, MCPProgressOutbox) {
         // Origins and auth already ran in the engine's middleware; the SDK checks the rest of the protocol.
         let transport = StatefulHTTPServerTransport(validationPipeline: StandardValidationPipeline(validators: [
             OriginValidator.disabled, AcceptHeaderValidator(mode: .sseRequired), ContentTypeValidator(),
@@ -104,14 +153,15 @@ actor MCPSessions {
             capabilities: .init(tools: .init(listChanged: false)))
         let toolbox = self.toolbox
         await server.withMethodHandler(ListTools.self) { _ in ListTools.Result(tools: await toolbox.tools()) }
-        let notifier = WeakServer(server)
+        let outbox = MCPProgressOutbox()
+        await outbox.attach(server)
         await server.withMethodHandler(CallTool.self) { params in
             await toolbox.call(params, client: client, clientHost: clientHost, baseURL: baseURL) { notification in
-                try? await notifier.server?.notify(notification)
+                await outbox.send(notification)
             }
         }
         try await server.start(transport: transport)
-        return (server, transport)
+        return (server, transport, outbox)
     }
 
     private func expireIdle() {

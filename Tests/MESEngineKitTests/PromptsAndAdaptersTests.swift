@@ -10,7 +10,7 @@ import Testing
 // Adapters (Base §6.3, §10), prompt enhancement (Image §1.9) and its preview, image.enhance_prompt (Image §3.1),
 // against the mock engine over HTTP and MCP.
 
-@Suite("Adapters and prompt enhancement", .serialized)
+@Suite("Adapters and prompt enhancement")
 struct PromptsAndAdaptersTests {
     func app(_ config: EngineConfiguration = freshConfig()) async throws -> some ApplicationProtocol {
         try await MESEngineServer(engine: MockImageEngine(), configuration: config).makeApplication()
