@@ -368,8 +368,8 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   `license.notice` and `notes` on that model's line (Base §15), so an agent sees the terms and the guidance before it
   names the model; the `model` parameter keeps the short line. MESFormsUI shows notes as the model row's help
   (AB-A-0186).
-- **`v0.4.0`** (in review; AB-A-0194, AB-D-0155): prompt enhancement and adapters. Base and Image stay 0.1 drafts;
-  everything new is optional, except that an engine that rewrites prompts must now say so.
+- **`v0.4.0`** (2026-10-19; AB-A-0194, AB-D-0155; PRs #1 and #2): prompt enhancement and adapters. Base and Image
+  stay 0.1 drafts; everything new is optional, except that an engine that rewrites prompts must now say so.
   - **Adapters** (Base §6.3): a model offer lists the adapters it takes (`adapters`, `max_adapters`: id, title,
     `plain` or `ic` with ordered `slots`, a strength range, a licence). A request asks for them by id
     (`adapters: [{id, strength?}]`), and an adapter implies its model. Provenance lists them with their licences and
