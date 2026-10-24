@@ -15,10 +15,12 @@ win, and §4, §5 and §8 have been revised to match.
 
 - **Purpose.** MES exists so an app that conforms to the spec can adopt a new model quickly. For audio, that means
   normalizing the controls: an app asks for "angry" or a laugh once, and every model that can do it understands.
-- **Audio 0.1 is generative only.** It starts with three operations (§4):
+- **Audio 0.1 is generative only.** It starts with four operations (§4):
   - **Voice design:** describe a voice, and create it.
   - **Speech (TTS):** request a built-in voice, or pass what a cloned voice needs.
   - **Speech editing:** basic edits, with AuK as the model of what to cover.
+  - **Sound generation:** non-verbal audio from a description, such as foley, ambience and effects (MOSS-SoundEffect).
+    Sounds, not voices.
 - **Controls are normalized** across models (§4.3, §4.4):
   - emotions such as anger and sadness;
   - nonverbal sounds such as a cough or laughter.
@@ -106,7 +108,7 @@ and nothing live.
 | Several named outputs | Output count ranges, e.g. one output per stem |
 | Text in, structured data out | Kinds `text` and `data`; a `data` output over 64 KiB is fetched by `href` (the kit already drops `value` past 65 536 bytes) |
 | Model choice by tier | `quality_tiers` and §6 rule 2: draft → Kokoro or MOSS-TTS-Nano, best → VoxCPM2 or IndexTTS-2.5 |
-| Research and opt-in models | `named_only` and `license.accepted_required` (AuK's `LicenseRef-Qwen-Research`) |
+| Research and opt-in models | `named_only` and `license.accepted_required` (AuK's `LicenseRef-Qwen-Research`, YuE2's `CC-BY-NC-4.0`) |
 | Usage guidance per model | `notes` (§6 rule 5): "write turns as [S1]/[S2]", "give the reference transcript" |
 | Seeds | `seed`, and `effective.seed` (Qwen3-TTS VoiceDesign + seed is the E9 Voice Library) |
 | Helper models | `provenance.helpers` with a role, e.g. AuK's prompt enhancer turning a free-form request into a canonical instruction |
@@ -224,7 +226,27 @@ no outputs to hold, so §13 would need its own rules for it. **Recommendation:**
 **Decided (Direction):** speech-to-text, file or live, is out of the spec for now, so this deferral covers voice chat
 only.
 
-### 3.7 Kit (code, not spec)
+### 3.7 Licence notices on results
+
+A non-commercial model's terms reach the user only if a client shows them, and reach the file only if something
+writes them in. YuE2 (§4.6) makes both concrete. They apply equally to AuK and to Image's research-licensed offers.
+
+1. **Showing the notice is optional.** Base §10.2 calls `notice` text "the client should show", and nothing says
+   where. A client can show it in the model picker and never with the result. **Proposal (A-8):** when a result's
+   `provenance` names a model, adapter, helper or voice whose `license.commercial_use` isn't `true`, a client that
+   presents the result MUST show that licence's `notice` with it, or its `spdx` and `terms_url` when there's no
+   notice. MCP's text summary already lists the licence (§15); it gains the notice.
+2. **The licence doesn't travel with the file.** Provenance lives in the job, and is left behind once a client saves
+   the output. **Proposal (A-9):** when a job's licences include one whose `commercial_use` isn't `true`, the engine
+   SHOULD write the `spdx` id and `notice` into the output's own metadata, where the format has a place for it:
+   - FLAC and Ogg: the `LICENSE` and `COPYRIGHT` Vorbis comments;
+   - MP3: ID3 `TCOP` and `COMM`;
+   - WAV: a `LIST/INFO` chunk with `ICOP` and `ICMT`.
+
+   It MAY do the same for every output. The output's `sha256` covers the file as written, tags included. The same
+   tags could carry an AI-generated marker, which some jurisdictions now require for synthetic audio.
+
+### 3.8 Kit (code, not spec)
 
 - `MediaEngine.validate` runs only the Image rules (`MediaEngine.swift:33`). Profile rules need a registry.
 - `MediaTypes.fileExtension` knows `audio/wav` and `audio/mpeg` only. It needs FLAC, AAC/M4A, Ogg/Opus and L16.
@@ -234,7 +256,7 @@ only.
 
 ## 4. An Audio profile (outline)
 
-Revised to the Direction above: generative only, three operations, and controls normalized across models. The label
+Revised to the Direction above: generative only, four operations, and controls normalized across models. The label
 lists come from the packages as they are on 2026-10-24 (MLXToolKit contract 1.55.0); each list cites its source.
 
 ### 4.1 Operations
@@ -244,6 +266,7 @@ lists come from the packages as they are on 2026-10-24 (MLXToolKit contract 1.55
 | `audio.design_voice` | `description` (text, required); `text` (text, optional: what the sample says) | `language`, `seed`, `count` (auditions, 1–4), `quality` | `samples` (audio, `count`) | `tts`, voice from a description | Qwen3-TTS VoiceDesign; VoxCPM2; AuK (`named_only`) |
 | `audio.speak` | `text` (required, may carry cues, §4.4); `voice_ref` (audio, 0–1); `voice_ref_text` (text, optional) | `voice`, `language`, `emotion`, `style`, `speed`, `target_duration_s`, `seed`, `quality`, `output` | `audio` | `tts` | Kokoro, MOSS-TTS-Nano, Gepard, Audio8, Qwen3-TTS, MOSS-TTS-Local, IndexTTS-2.5, VoxCPM2; AuK (`named_only`) |
 | `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (one edit, §4.5), `seed`, `quality`, `output` | `audio`; `transcript` (data, when the edit changes the words or cues) | `speechEdit` | Step-Audio-EditX; AuK (`named_only`) |
+| `audio.generate` | `prompt` (text, required) | `negative_prompt`, `duration_s`, `seed`, `count`, `quality`, `output` | `sounds` (audio, `count`) | `soundEffect` | MOSS-SoundEffect v2.0 |
 
 **A voice, three ways.** `audio.speak` takes exactly one of these, and a request with more than one is 400:
 - `voice`: a built-in voice, by id from the named model's list (RFC 0003 §6.5);
@@ -414,11 +437,94 @@ applies one edit, `edit: {kind, …}`, as both editors do. `supports.edits` list
 - **Later, as tools:** AuK's dereverberation, enhancement, speaker isolation (`keepSpeaker`, `keepSpeakerSaying`) and
   singing-only.
 
-### 4.6 `supports` keys (RFC 0003)
+### 4.6 Sound generation
+
+`audio.generate` makes non-verbal audio from a description: foley, ambience, creatures, actions and effects. It is
+the audio counterpart of `image.generate`, and takes the same shape:
+- **Inputs:** `prompt` (text, required).
+- **Parameters:** `negative_prompt`, `duration_s`, `seed`, `count`, `quality`, `output`.
+- **Outputs:** `sounds` (audio, `count`), each with its reported seed.
+
+MLXEngine already has this as its own capability, `soundEffect`. Its canonical request is `prompt`,
+`durationSeconds`, `negativePrompt`, `steps`, `guidanceScale` and `seed` (`SoundEffect.swift`, contract 1.2.0), so
+the operation maps onto it field for field:
+- **`quality` picks the step count.** The engine maps `draft`, `standard` and `best` to steps and guidance, as Image
+  does, so clients never send model-specific diffusion settings (OQ-4). The package defaults are 100 steps at CFG 4.0
+  (`MossSoundEffectConfiguration.swift:35-38`). An engine that exposes raw steps does it as an extension
+  (`x-moss.steps`).
+- **`duration_s` is exact.** The output is that long, up to the offer's `limits.max_duration_s`, which is 30 s for
+  MOSS. When it's absent, the engine uses the model's default, 10 s for MOSS, and reports it as
+  `effective.duration_s`.
+  - MOSS conditions the length through a trained prompt suffix, " duration: X.Xs", and always denoises the full 30 s
+    latent, then crops (`Pipeline.swift:164-165`).
+  - So a 2 s sound costs as much as a 30 s one. That belongs in the offer's `notes`.
+- **`negative_prompt`** steers away from a sound. An empty one is MOSS's trained unconditional path.
+- **Seeds.** When the request has no seed, the engine picks one and reports it. The package defaults to seed 0
+  (`MossSoundEffectPackage.swift:154`), so without that, every unseeded run of a prompt would give the same sound.
+- **`count`** runs the model once per sound, each with its own seed, as Image does.
+- **Prompt language.** `supports.languages` says what a prompt may be written in: English and Chinese captions for
+  MOSS.
+- **Progress** is honest, because the step count is known: `step` and `steps`, then the decode. Cancelling stops at
+  the next step, about 0.5 s on M-class chips at bf16.
+- **No streaming.** Diffusion makes the whole clip at once, so `supports.stream` is `false`.
+
+MOSS-SoundEffect-v2.0 is Apache-2.0, weights and port both. It is 48 kHz mono, and needs a Pro chip or better
+(5.4 GB int4 or 7.4 GB bf16 resident, plus about 18 GB transient). It's the only sound model in the registry today.
+
+**Not in it:**
+- **Music.** YuE2-3B is ported as a non-commercial offer (below), but music isn't one of Audio 0.1's operations
+  (A-7).
+- **Sound under speech.** MOSS-TTS-Local's core prompt has `soundEvent` and `ambientSound` fields that its package
+  doesn't expose (`MossTTSLocal.swift:166-173`). Dia2's sound cues (`(applause)`, `(thunder)`) belong with dialog.
+  Mixing a generated sound under speech is a client's job for now.
+
+**Music: YuE2-3B, a non-commercial offer.** E17's YuE2-3B was passed for its CC BY-NC 4.0 weights, and the pass was
+reversed on 2026-10-24 (AB-D-0073). It turns lyrics and a style prompt into a full song with vocals, 48 kHz stereo,
+through an editable ABC score. The operation's shape is open. Music can join `audio.generate` with a `supports` key
+for what it makes, or become an operation of its own, since lyrics, a style and a score are inputs that sounds don't
+take. Whatever the shape, these are the offer's licence fields (its other fields are left out):
+
+```json
+{
+  "id": "yue2-3b",
+  "title": "YuE2 3B",
+  "named_only": true,
+  "license": {
+    "spdx": "CC-BY-NC-4.0",
+    "commercial_use": false,
+    "terms_url": "https://huggingface.co/m-a-p/YuE2-3B/blob/main/LICENSE",
+    "accepted_required": true,
+    "notice": "YuE2-3B by M-A-P (huggingface.co/m-a-p/YuE2-3B), CC BY-NC 4.0. Non-commercial use only: don't sell, license or monetize songs made with it, or use them in paid or client work."
+  },
+  "notes": "Covers and supplied lyrics may need the original song's rights; this model's licence doesn't grant them."
+}
+```
+
+- **`named_only`.** The model is never chosen by default (Base §6 rule 2), so a client that names no model never
+  gets a non-commercial song.
+- **`accepted_required`.** The operator accepts the terms before first use. The text they accept should say the
+  outputs are non-commercial, not only name the licence.
+- **`commercial_use: false`.** A request with `policy.license: commercial-use` is refused with 422 `policy_unmet`
+  (Base §10.3). A commercial client should send that policy by default, and drop it only in a mode the user chooses
+  for personal, non-commercial work.
+- **`notice`.** Running the model copies the weights, and CC BY-NC 4.0 §2(a)(1) licenses that only for
+  non-commercial purposes. So the songs are non-commercial whoever runs the engine. MES keeps the weights out of the
+  client, so a commercial client doesn't distribute them, but that doesn't make the songs commercially usable. A
+  hosted engine making songs for paying users is commercial use. The notice also carries the attribution the
+  weights' LICENSE asks for: YuE2, the model and its repo.
+- **`notes`.** YuE2's model card promotes covers of existing songs, and a cover needs the original song's rights,
+  which no model licence grants. That's usage guidance rather than the model's terms, so it goes in `notes` (Base §6
+  rule 5).
+
+Base shows the notice on the offer, on the model's line in the MCP tool description (§15), and in every result's
+`provenance.model.license`. It doesn't yet require a client to show it with the result, and nothing carries it in
+the saved file (§3.7).
+
+### 4.7 `supports` keys (RFC 0003)
 
 | Key | Operations | Type | Absent | Class |
 |---|---|---|---|---|
-| `languages` | all | `[BCP 47]` | any | Gate: `language` |
+| `languages` | all | `[BCP 47]` | any | Gate: `language`. In `generate`, a Fact: the languages a prompt may be written in |
 | `default_voice` | `speak` | boolean | `false` | Gate: a request with neither `voice` nor `voice_ref` |
 | `voice_ref` | `speak` | boolean | `false` | Gate: the `voice_ref` input |
 | `voice_ref_text` | `speak` | `unused` · `optional` · `required` | `unused` | Gate: `required` needs `voice_ref_text` |
@@ -433,12 +539,14 @@ applies one edit, `edit: {kind, …}`, as both editors do. `supports.edits` list
 | `transcript` | `edit_speech` | `required` · `optional` · `unused` | `optional` | Gate: `required` needs `transcript` |
 | `keeps_length` | `edit_speech` | boolean | `false` | Fact |
 | `sample_rate` | all | integer | — | Fact |
+| `channels` | `generate` | integer | — | Fact |
 
-Limit fields: `max_text_chars`, `max_voice_ref_s`, and `max_duration_s` for an edit's input.
+Limit fields: `max_text_chars`, `max_voice_ref_s`, and `max_duration_s`: an edit's input, or a generated
+sound's length.
 
 The Base keys `stream`, `seed` and `voices` apply too.
 
-### 4.7 Warnings and helper roles
+### 4.8 Warnings and helper roles
 
 - **Warnings:**
   - `audio_resampled` and `audio_downmixed`;
@@ -450,7 +558,7 @@ The Base keys `stream`, `seed` and `voices` apply too.
   `effective.language`.
 - **Helper role:** `prompt_enhance`, as in Image, for a model that rewrites a voice description or an instruction.
 
-### 4.8 Conformance ideas (AUDIO-nnn)
+### 4.9 Conformance ideas (AUDIO-nnn)
 
 - Outputs report `sample_rate`, `channels` and `duration_s`, and the file agrees.
 - Every MUST input type is accepted.
@@ -460,14 +568,16 @@ The Base keys `stream`, `seed` and `voices` apply too.
 - `[pause 1s]` adds about a second of silence on every offer.
 - `design_voice` returns `count` samples, each with its seed; the same seed reproduces a sample on a seeded model; a
   sample used as `voice_ref` with `effective.text` speaks.
+- `generate` returns `count` sounds, each `duration_s` long to the frame, each with its seed; the same seed
+  reproduces a sound; an unseeded request reports the seed it used.
 - Streamed chunks concatenate to the final output, sample-exact (RFC 0002).
 - An asset survives two jobs and is gone after `DELETE` (RFC 0001).
 
-### 4.9 Later, and outside
+### 4.10 Later, and outside
 
 - **Later (generative):**
   - `audio.speak_dialog`: two-speaker scenes, Dia2, with a structured `script` so clients never write `[S1]`;
-  - `audio.generate`: sound effects, MOSS-SoundEffect.
+  - music: YuE2-3B, as a non-commercial offer (§4.6).
 - **Later (tools):**
   - `audio.separate`: HTDemucs, Mel-Band-RoFormer;
   - `audio.enhance`: AudioPolishKit loudness, and AuK's enhancement family;
@@ -494,6 +604,7 @@ model. Resident sizes are the packages' declared `residentBytes`, with the decla
 | MOSS-TTS-Local v1.5 (4B) | 6.5–12.2 + 2.4 GB | `speak` (clone) | Engine, streamed | 149 ms to first audio at int8: the case for streaming from an engine |
 | Audio8 0.6b / Mini 0.1b | 2.6 / 1.81 + 4.2–4.4 GB | `speak` (clone) | Engine | 44.1 kHz. Streams, but 2.41 s to first audio. Mini: commercial use only below US$2M revenue |
 | Step-Audio-EditX | 7.0–10.3 + 2.0 GB | `edit_speech` | Engine, the default editor | 15 emotions, 33 styles, 10 inline cues, denoise, trim; 0.5–90 s. The length changes, and the result carries a transcript. Apache-2.0 + FunASR model licence: commercial use |
+| MOSS-SoundEffect v2.0 | 5.4 (int4) – 7.4 (bf16) + 18 GB, Pro chips and up | `generate` | Engine | Foley, ambience, creatures and actions from EN/ZH captions; up to 30 s; 48 kHz mono. Apache-2.0 |
 | AuK / AuK-Flash | 7.8–12.9 + 1.5 GB | `edit_speech`, `speak` (clone), `design_voice` | Engine, `named_only` | The model for what `edit_speech` covers (§4.5). 0.5–30 s; en/zh; keeps the source length. Non-commercial (Qwen Research) |
 
 ### 5.2 Later
@@ -501,7 +612,7 @@ model. Resident sizes are the packages' declared `residentBytes`, with the decla
 | Model | Resident | Operation | Why later |
 |---|---|---|---|
 | Dia2-2B | 4.5 + 3.0 GB | `speak_dialog`: two speakers, English, up to 120 s | Generative, but scenes aren't in the first set. `(laughs)` is accepted and rarely performed |
-| MOSS-SoundEffect | 5.4–7.4 + 18 GB, Pro and up | `generate` (sound effects): up to 30 s, 48 kHz | Generative, but not speech. Next after the first set |
+| YuE2-3B | ≈8.5 GB bf16, estimated (no package yet) | Music: lyrics and a style prompt to a song with vocals, 48 kHz stereo | Music isn't in the first set (A-7). Non-commercial (CC BY-NC 4.0), `named_only` (§4.6) |
 | HTDemucs v4 / Mel-Band-RoFormer | 0.9 + 6.7 GB / 0.3–0.7 GB | `separate`: vocals and instrumental, 44.1 kHz stereo | Tools |
 | AudioPolishKit | no weights (DSP) | `enhance`: loudness, with input and output LUFS | Tools |
 | Mimi codec | 0.8 GB | Encode and decode codes | Tools, if ever: codes mean nothing across engines |
@@ -529,6 +640,7 @@ Served through the adapter unchanged, these break a MES rule:
 | Qwen3-TTS, Gepard, IndexTTS-2.5 | Seeds are clamped to 32 bits, because large seeds break EOS | Image's seed range is 0 – 2⁵³−1 | The Audio vocabulary caps `seed` at 2³²−1 |
 | MOSS-TTS-Nano, MOSS-TTS-Local | References are trimmed to 60 s | §10.1 | `voice_ref_trimmed` |
 | Step-Audio-EditX | Needs a transcript for every edit, including denoise and trim, which upstream doesn't (`StepAudioEditXPackage.swift:197-198`) | — | `supports.transcript: required`, so a request without one goes to another editor or is 422 |
+| MOSS-SoundEffect | With no seed, uses seed 0 (`MossSoundEffectPackage.swift:154`): every unseeded run of a prompt is the same sound | Image §2's convention: each result reports the seed it used | The adapter picks a seed and reports it |
 | All TTS | The encoded reference is cached across runs | §13 rule 4 | Assets (§3.1) |
 
 **Licences.** IndexTTS-2.5 allows commercial use below 100M MAU or RMB 1B revenue, and Audio8-Mini below US$2M
@@ -588,6 +700,8 @@ inherits whatever it chose.
 | A-2 | Assets, so a voice can be reused and its encoding cached? | Yes, as a Base feature, also usable by Image (§3.1). RFC 0001 |
 | A-3 | Live sessions in MES? | **Decided:** not in 0.x. Voice chat stays embedded, and speech-to-text is out of the spec (§3.6) |
 | A-4 | Per-offer `supports` and `voices`? | Yes, in Base, with keys defined per profile (§3.3). **Decided:** a named model's voices are listed by `GET` and `mes_list_voices`, not inline. RFC 0003 |
-| A-7 | What does Audio 0.1 cover? | **Decided:** generative only. Voice design, speech with a built-in or cloned voice, speech editing modelled on AuK, and normalized emotions and nonverbal cues (§4). Tools later; STT and other interpretive models out |
+| A-7 | What does Audio 0.1 cover? | **Decided:** generative only. Voice design, speech with a built-in or cloned voice, speech editing modelled on AuK, sound generation (non-verbal, MOSS-SoundEffect), and normalized emotions and nonverbal cues (§4). Tools later; STT and other interpretive models out |
 | A-5 | Order: Audio before Video, or shared time conventions first? | Shared conventions in Base first (§7), then whichever profile has a client waiting |
 | A-6 | Licences that allow commercial use only below a revenue or user threshold? | Add `commercial_use: "conditional"`, with the threshold in `notice`. `license: commercial-use` admits it only once the operator has accepted the terms (`accepted_required`) |
+| A-8 | Must a client show a non-commercial licence's notice with the result? | Yes: a MUST in Base §10.2 whenever a licence in `provenance` isn't `commercial_use: true`, and the MCP text summary carries the notice (§3.7) |
+| A-9 | Should the licence travel in the output file? | Yes: the engine SHOULD write the `spdx` id and `notice` into the file's metadata when a job's licences aren't all commercial, and MAY for every output (§3.7) |

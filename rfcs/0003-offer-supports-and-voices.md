@@ -177,7 +177,7 @@ doesn't, the request is 422 `policy_unmet`, as for adapters.
 ### How the profiles would use it (illustrative, not part of this RFC)
 
 **Audio 0.1 draft, `audio.speak`.** The Audio profile defines these keys. The full list, with the normalized emotion,
-style and cue labels, is in the evaluation's §4.3–§4.6.
+style and cue labels, is in the evaluation's §4.3–§4.7.
 
 | Key | Type | Absent | Class |
 |---|---|---|---|
