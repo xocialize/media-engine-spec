@@ -8,7 +8,32 @@
 | **Engine contract** | MLXToolKit 1.50 (`TTS.swift`, `Streaming.swift`, `LiveSTT.swift`, `SpeechEdit.swift`, `ToolDescriptor.swift`) |
 | **Status** | Evaluation. Nothing here changes the spec yet; §8 lists the decisions it needs. RFCs [0001](../rfcs/0001-assets.md), [0002](../rfcs/0002-streamed-output.md) and [0003](../rfcs/0003-offer-supports-and-voices.md) draft A-2, A-1 and A-4. |
 
+## Direction (2026-10-24)
+
+These decisions were made after the first draft of this evaluation. Where they differ from the sections below, they
+win, and §4, §5 and §8 have been revised to match.
+
+- **Purpose.** MES exists so an app that conforms to the spec can adopt a new model quickly. For audio, that means
+  normalizing the controls: an app asks for "angry" or a laugh once, and every model that can do it understands.
+- **Audio 0.1 is generative only.** It starts with three operations (§4):
+  - **Voice design:** describe a voice, and create it.
+  - **Speech (TTS):** request a built-in voice, or pass what a cloned voice needs.
+  - **Speech editing:** basic edits, with AuK as the model of what to cover.
+- **Controls are normalized** across models (§4.3, §4.4):
+  - emotions such as anger and sadness;
+  - nonverbal sounds such as a cough or laughter.
+- **Tools come later.** These are utility operations rather than generation: separation, cleanup and loudness, and
+  codecs.
+- **Speech-to-text stays client-side, out of the spec.** That covers transcription, live or from a file, and other
+  interpretive models such as emotion recognition. Apps link them directly through MLXEngine. MES keeps to
+  generative models.
+- **Voice catalogues stay in the client.** The engine serves a named model's voices by `GET`, and the MCP binding
+  gets a helper for the same list ([RFC 0003](../rfcs/0003-offer-supports-and-voices.md) §6.5). Our TTS packages
+  get a helper that returns their voices, for the engine to serve (§6).
+
 ## Summary
+
+The first draft's findings, from before the direction above.
 
 - **Most of our audio models fit MES as it stands, as batch jobs.** Base already has the `audio` input and output
   kind, `duration_s` on outputs and `max_duration_s` in limits. What's missing is an **Audio profile**: operations,
@@ -157,8 +182,10 @@ honour belongs in the descriptor. There's nowhere per offer to put any of this.
   implies an offer that supports it. With no model named, the engine chooses among those. A named model that doesn't
   support it is 422 `unsupported_parameter`. This is MLXEngine's declared-control rule (`checkDeclaredControls`),
   where an undeclared emotion is refused before admission, carried over the wire.
-- **Voice catalogues** follow the adapter pattern: `voices: [{id, title, languages, gender?, notes?, sample?, license?}]`
-  on an offer. The engine side doesn't have this yet. The speaker half of E6 is still open (`TTSControls` has no
+- **Voice catalogues.** The first draft put `voices: [{id, title, languages, gender?, notes?, sample?, license?}]` on
+  each offer. As decided, the offer now gives only a count (`supports.voices`), and a client that names the model
+  fetches the list with `GET {path}/operations/{op}/models/{model}/voices` (RFC 0003 §6.5). The catalogue UI stays in
+  the client. The engine side doesn't have a list yet. The speaker half of E6 is still open (`TTSControls` has no
   voice list), so the MLXEngine adapter has nothing to read today (§6).
 
 ### 3.4 Audio facts in results and progress
@@ -176,9 +203,10 @@ honour belongs in the descriptor. There's nowhere per offer to put any of this.
 - **Results:** an `audio` content block for audio outputs of at most 1 MB, as for image previews. swift-sdk 0.12.1
   has `.audio(data:mimeType:)`; `MCPBinding.swift:423` passes only PNG and JPEG today.
 - **Inputs:** the input hint text says `data:image/png;base64,…` for every kind (`MCPBinding.swift:201`).
-- **Long audio from agents:** ten minutes of 16 kHz mono WAV is ~19 MB, ~25 MB as a data URL in a tool call. A helper
-  tool, `mes_create_upload`, could return a one-time URL the agent PUTs a file to, then names as `upload:<id>`. Without
-  it, transcription over MCP is practical only for short clips.
+- **Long audio from agents:** a minute of 48 kHz 16-bit mono WAV is ~5.8 MB, ~7.7 MB as a data URL in a tool call. A
+  helper tool, `mes_create_upload`, could return a one-time URL the agent PUTs a file to, then names as `upload:<id>`.
+  With transcription out of scope, this matters less: speech edits take up to 90 s, and voice references are short.
+- **Voices:** `mes_list_voices {operation, model}` (RFC 0003).
 
 ### 3.6 Sessions (deferred, and recorded here so the decision is visible)
 
@@ -193,6 +221,9 @@ no outputs to hold, so §13 would need its own rules for it. **Recommendation:**
 0.1 draft. Revisit when a remote client needs it, e.g. Lite on an iPad dictating through a Mac Studio's Nemotron.
 `LiveSTT.swift` is the design to start from.
 
+**Decided (Direction):** speech-to-text, file or live, is out of the spec for now, so this deferral covers voice chat
+only.
+
 ### 3.7 Kit (code, not spec)
 
 - `MediaEngine.validate` runs only the Image rules (`MediaEngine.swift:33`). Profile rules need a registry.
@@ -203,26 +234,35 @@ no outputs to hold, so §13 would need its own rules for it. **Recommendation:**
 
 ## 4. An Audio profile (outline)
 
+Revised to the Direction above: generative only, three operations, and controls normalized across models. The label
+lists come from the packages as they are on 2026-10-24 (MLXToolKit contract 1.55.0); each list cites its source.
+
 ### 4.1 Operations
 
 | Operation | Inputs | Parameters (vocabulary) | Outputs | MLXEngine capability | Models |
 |---|---|---|---|---|---|
-| `audio.speak` | `text`; `voice_ref` (audio, 0–1); `voice_ref_text` (text, optional); `emotion_ref` (audio, 0–1) | `voice`, `voice_description`, `language`, `emotion`, `target_duration_s`, `speed`, `seed`, `quality`, `output` | `audio` | `tts` | Kokoro, MOSS-TTS-Nano, Gepard, Audio8, Qwen3-TTS, MOSS-TTS-Local, IndexTTS-2.5, VoxCPM2; AuK (`named_only`) |
-| `audio.speak_dialog` | `script` (data: `[{speaker, text}]`); `voice_refs` (audio, 1–n); `voice_ref_texts` (text, 0–n) | `language`, `seed`, `quality`, `output` | `audio` | `tts` with `speakerTags` | Dia2-2B |
-| `audio.edit_speech` | `audio`; `transcript` (text); `instruction` (text, optional) | `edit`: `{kind: emotion · style · paralinguistic · denoise · trim_silence, label?, target_text?}` (the engine's `SpeechEditOperation`), `seed`, `quality` | `audio`; `transcript` (data) | `speechEdit` | Step-Audio-EditX; AuK (`named_only`) |
-| `audio.transcribe` | `audio` | `language`, `context` (terms to bias toward), `speakers` (`auto` · `off`), `timestamps` (`segment` · `word`), `formats` (`json`, `vtt`, `srt`) | `transcript` (data: `{text, segments[{text, start_s, duration_s, speaker?}], language?}`); `subtitles` (text, 0–n) | `stt` | Nemotron, R2T2, VibeVoice-ASR (speakers); Whisper once wrapped |
-| `audio.generate` | `prompt` (text) | `negative_prompt`, `duration_s`, `seed`, `quality`, `output` | `audio` | `soundEffect` | MOSS-SoundEffect |
-| `audio.separate` | `audio` | `stems`: any of `vocals`, `drums`, `bass`, `other`, `instrumental`, as the offer supports (ours give `vocals` and `instrumental`) | `stems` (audio, 1–n, named) | `audioSeparation` | HTDemucs, Mel-Band-RoFormer |
-| `audio.enhance` | `audio` | `kind`: `loudness` · `denoise` · `dereverb` · `bandwidth`; `target_lufs` | `audio` | `audioPolish`, plus `speechEdit` denoise | AudioPolishKit (loudness); Step-Audio-EditX, AuK (denoise) |
-| `audio.describe` | `audio` | — | `description` (data: `{emotion: {label, confidence, scores}}`) | `speechEmotion` | emotion2vec+ |
+| `audio.design_voice` | `description` (text, required); `text` (text, optional: what the sample says) | `language`, `seed`, `count` (auditions, 1–4), `quality` | `samples` (audio, `count`) | `tts`, voice from a description | Qwen3-TTS VoiceDesign; VoxCPM2; AuK (`named_only`) |
+| `audio.speak` | `text` (required, may carry cues, §4.4); `voice_ref` (audio, 0–1); `voice_ref_text` (text, optional) | `voice`, `language`, `emotion`, `style`, `speed`, `target_duration_s`, `seed`, `quality`, `output` | `audio` | `tts` | Kokoro, MOSS-TTS-Nano, Gepard, Audio8, Qwen3-TTS, MOSS-TTS-Local, IndexTTS-2.5, VoxCPM2; AuK (`named_only`) |
+| `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (one edit, §4.5), `seed`, `quality`, `output` | `audio`; `transcript` (data, when the edit changes the words or cues) | `speechEdit` | Step-Audio-EditX; AuK (`named_only`) |
 
-Left out: **Mimi encode** (`audioCodec`). Codec codes mean nothing across engines, so it's a building block, not a
-client operation. Music (E17) waits for a permissively licensed model.
+**A voice, three ways.** `audio.speak` takes exactly one of these, and a request with more than one is 400:
+- `voice`: a built-in voice, by id from the named model's list (RFC 0003 §6.5);
+- `voice_ref`, with `voice_ref_text` when the model needs it: a cloned voice;
+- neither: the model's default voice, for a model that has one (`supports.default_voice`).
 
-**Why a separate `speak_dialog`.** MES's premise is that clients ask for operations and engines normalize how each
-model is used. Dia2 wants `[S1]` / `[S2]` in its text, the next scene model will want something else, and
-`TTSControls.speakerTags` exists because "scene models do not share a syntax". A structured `script` lets the
-engine write the tags, so clients never learn a model's markup.
+**Designing a voice, then using it.** `design_voice` returns audition clips. The clip is the voice: a client keeps the
+one it likes, ideally as an asset (RFC 0001). It then speaks with it through `audio.speak`, passing `voice_ref` = the
+clip and `voice_ref_text` = the sample's text (`effective.text`). That is how ML[X] Audio Studio's Voice Library
+already works ("the audition take's audio IS the identity", `Character.swift:5-8`). `roxy-voice-gen` does it across
+models, designing on Qwen3-TTS and cloning on Gepard. A designed voice therefore works on every cloning model, not
+only the one that designed it.
+- **Reproducing.** With the same `description`, `seed` and model, an engine SHOULD produce the same voice (E9).
+  `effective.seed` reports the seed of each sample. VoxCPM2 takes no seed (`supports.seed: false`).
+- **The sample text.** When `text` is absent the engine chooses a short sentence in `language`, and reports it as
+  `effective.text`. Qwen3-TTS wants descriptions of 15–40 words, in English or Chinese (`Qwen3TTS.swift:205-210`): a
+  `notes` line.
+- **Speaking with a description in one pass** (instruct TTS: Qwen3-TTS, VoxCPM2, AuK) is left out of `audio.speak`.
+  The result isn't a voice a client can keep, and three models disagree on what a description means.
 
 ### 4.2 Conventions
 
@@ -233,79 +273,249 @@ engine write the tags, so clients never learn a model's markup.
 3. **Resampling quality.** Inputs are resampled to the model's rate with a band-limited (windowed-sinc) resampler.
    AB-L-0209 measured linear interpolation flipping 5–10 % of Step-Audio's codes, and dragging speaker similarity to
    0.86.
-4. **Channels.** Speech models take mono. Engines downmix and warn `audio_downmixed`. Separation keeps the input's
-   channels.
-5. **Loudness.** Outputs aren't normalized unless the request asks (`audio.enhance`, or a `loudness` target).
-6. **Voices.** `voice` names an id from the offer's `voices` (§3.3). `voice_ref` clones, and offers that condition on
-   a transcript say so in `supports`. `voice_description` designs a voice; with a `seed` it reproduces (E9). A
-   request with more than one of the three is 400.
-7. **Long text.** Engines split text the model can't take in one pass, and stitch the takes. `limits.max_text_chars`
-   bounds the request.
-8. **Inline cues.** Nonverbal tags (laughs, sighs) are an offer's declared list (`supports.cues`). A tag the offer
-   doesn't list is spoken as text, with the warning `cue_unsupported`.
-9. **Emotion.** `emotion: {label?, description?}`. Labels come from the offer's list. Model-defined vectors
-   (IndexTTS-2.5's head) are an extension.
-10. **Seeds.** `seed` is 0 – 2³²−1: Qwen3-TTS, Gepard and IndexTTS-2.5 clamp to 32 bits, because larger seeds break the stop
-    token. An offer whose decoding is deterministic warns `seed_ignored` when given one.
+4. **Channels.** Speech models take mono. Engines downmix and warn `audio_downmixed`.
+5. **Loudness.** Outputs aren't normalized unless the request asks.
+6. **Long text.** Engines split text the model can't take in one pass, at sentence boundaries, and stitch the takes.
+   `limits.max_text_chars` bounds the request.
+7. **References.** A reference longer than the model takes is trimmed, with `voice_ref_trimmed`. MOSS-TTS trims to
+   60 s, and Qwen3-TTS's ICL to 30 s with 10–15 s recommended (`ReferenceEncoder.swift:46-63`).
+8. **Seeds.** `seed` is 0 – 2³²−1: Qwen3-TTS, Gepard and IndexTTS-2.5 clamp to 32 bits, because larger seeds break
+   the stop token. A model whose result doesn't depend on a seed declares `supports.seed: false`, and warns
+   `seed_ignored` when given one (RFC 0003).
+9. **Grids.** A value the model takes only on a grid is snapped to the nearest step, with `param_adjusted`. AuK's
+   speed, pitch and volume are grids (§4.5).
+10. **One label set.** Requests use the profile's labels (§4.3, §4.4). The engine translates them into each model's
+    own vocabulary and syntax. A client never writes `[Laughter]` for one model and `(laughs)` for another.
 
-### 4.3 Warnings and helper roles
+### 4.3 Normalized emotion and style
 
-`audio_resampled`, `audio_downmixed`, `voice_ref_trimmed` (reference clipped to the model's limit),
-`duration_missed` (`target_duration_s` not met within the offer's tolerance) and `cue_unsupported`. A language the
-model detected, when the request named none, is reported as `effective.language`. Helper role: `prompt_enhance`, as
-in Image, for AuK's instruction canonicalizer.
+**Emotion** is `emotion: {label?, description?, intensity?}`:
+- **`label`** comes from the table below.
+- **`description`** is free text (Qwen3-TTS, VoxCPM2, AuK), for an offer with `supports.emotion_description`.
+- **`intensity`** is 0–1. Only IndexTTS-2.5 has one (`emoAlpha`, default 0.6). Elsewhere it's ignored, with
+  `emotion_intensity_ignored`.
+- **Vectors** (IndexTTS-2.5's 8 weights) are an extension, `x-indextts.emotion_vector`.
 
-### 4.4 Conformance ideas (AUDIO-nnn)
+Three of our TTS packages already share a vocabulary: E12, `happy, angry, sad, afraid, disgusted, melancholic,
+surprised, calm` (`E12Emotion.swift:16`). Each maps a label to its own steering:
+- an instruct sentence on Qwen3-TTS (`happy` → "Speak cheerfully and with energy.");
+- a `(description)` prefix on VoxCPM2;
+- a weight vector on IndexTTS-2.5.
+
+The profile adopts E12 as its core and adds what the editors offer. Labels are adjectives, as every package uses them:
+anger is `angry`, sadness is `sad`.
+
+| Label | E12 TTS (IndexTTS-2.5, Qwen3-TTS, VoxCPM2) | AuK edit | Step-Audio-EditX edit |
+|---|---|---|---|
+| `happy` | `happy` | `happy` | `happy` |
+| `sad` | `sad` | `sad` | `sad` |
+| `angry` | `angry` | `angry` | `angry` |
+| `afraid` | `afraid` | `fearful` | `fear` |
+| `disgusted` | `disgusted` | `disgusted` | `disgusted` |
+| `surprised` | `surprised` | `surprised` | `surprised` |
+| `calm` | `calm` | `calm` | — |
+| `melancholic` | `melancholic` | — | — |
+| `excited` | — | `excited` | `excited` |
+| `neutral` | No emotion (sent as none) | — | `remove` |
+
+- **`neutral`** means no emotion. Every `speak` offer supports it, because the engine simply sends no emotion. In an
+  edit, it removes the emotion, which only Step-Audio-EditX does.
+- **EditX's other seven** labels are `humour`, `confusion`, `empathy`, `embarrass`, `depressed`, `coldness` and
+  `admiration` (`StepAudioEditXPackage.swift:44-47`). The profile registers them as `humorous`, `confused`,
+  `empathetic`, `embarrassed`, `depressed`, `cold` and `admiring`. A label is registered when one model supports it;
+  `supports.emotions` says which models do.
+- **Aliases.** The engine resolves aliases, never the client: `fearful`, `fear` and `scared` → `afraid`, and
+  `anger` → `angry`. E12 does this inside three packages (`E12Emotion.swift:18-22`); the profile does it once, for
+  every model.
+
+**Style** is `style: <label>`, delivery rather than feeling. Instruct TTS models (Qwen3-TTS, VoxCPM2, AuK) get it as
+text, the way they get E12 labels today ("Whisper softly.").
+
+| Label | Step-Audio-EditX edit | AuK edit | Instruct TTS (Qwen3-TTS, VoxCPM2) |
+|---|---|---|---|
+| `whisper` | `whisper` | `whisper` (`toWhisper`) | "Whisper softly." |
+| `shout` | `shout` | — | Instruct text |
+| `gentle` | `gentle` | — | Instruct text |
+| `serious` | `serious` | — | Instruct text |
+| `warm` | `warm` | — | Instruct text |
+| `narration` | `story` | — | Instruct text |
+| `conversational` | `chat` | — | Instruct text |
+| `news` | `news` | — | Instruct text |
+| `normal` | `remove` | `normal` (`fromWhisper`) | No style (sent as none) |
+
+EditX's other 24 styles (`arrogant`, `child`, `older`, `ethereal`, `act_coy`, `radio`, `exaggerated`, …,
+`StepAudioEditXPackage.swift:48-52`) stay extensions, `x-stepfun.style`. Several describe the speaker rather than the
+delivery, and none has a second model.
+
+### 4.4 Normalized nonverbal cues
+
+Cues go inline in the text, in one syntax for every model: `[laugh]`, `[cough]`, `[pause 1.5s]`. A literal bracket is
+written `\[`. The engine rewrites each cue into the model's syntax, and removes a cue the model can't perform, with
+`cue_unsupported` (the first draft spoke it as text, which reads "cough" aloud).
+
+| Cue | Dia2 (later) | VoxCPM2 | Step-Audio-EditX edit | AuK edit (core, not yet on the engine) |
+|---|---|---|---|---|
+| `laugh` | `(laughs)` | `[laughing]` | `[Laughter]` | `laughs` |
+| `cough` | `(coughs)` | — | — | `coughs` |
+| `sigh` | `(sighs)` | `[sigh]` | `[Sigh]` | — |
+| `breath` | — | — | `[Breathing]` | `breaths` |
+| `gasp` | `(gasps)` | — | — | — |
+| `clear_throat` | `(clears throat)` | — | — | — |
+| `hesitation` | — | — | `[Uhm]` | — |
+| `sob` | `(sobs)` | — | — | — |
+| `sniff` | `(sniffs)` | — | — | — |
+| `pause` (seconds) | — | — | — | — |
+
+- **`pause`** is native only on MOSS-TTS-Local (`[pause 1.0s]`, `MossTTSLocalPackage.swift:10`). Every engine can do
+  it anyway: split the text at the pause and insert silence, as long-text stitching already does. So engines MUST
+  honour `pause`.
+- **Coverage is thin, and that's the finding.**
+  - In `speak`, only VoxCPM2 performs cues: `[laughing]` and `[sigh]`, listen-tested (E11), but undeclared.
+  - Dia2 accepts 50 cues and "rarely" performs them (`Dia2TTSPackage.swift:79-80`). It is a later operation anyway.
+  - Bark has `[laughs]`, `[sighs]`, `[gasps]` and `[clears throat]`, but it's unpublished.
+  - A **cough** is in only two places: Dia2, and AuK's core edit, which the engine doesn't expose.
+  - The normalized cue costs nothing. Models that perform a cough well are what's missing.
+- **EditX's interjections** (`[Surprise-oh]`, `[Confirmation-en]`, `[Question-ei]`, `[Dissatisfaction-hnn]`,
+  `[Surprise-ah]`, `[Surprise-wa]`) are Mandarin-specific. They stay extensions, `x-stepfun.<name>`.
+
+### 4.5 Speech editing, modelled on AuK
+
+AuK's instruction set is the broadest we have (`AukInstruction.swift:10-45`), so the profile takes its shape. One job
+applies one edit, `edit: {kind, …}`, as both editors do. `supports.edits` lists the kinds an offer takes.
+
+| `kind` | Fields | AuK core | AuK on the engine today | Step-Audio-EditX |
+|---|---|---|---|---|
+| `emotion` | `emotion` (§4.3 label) | ✓ | ✓ (8 labels) | ✓ (15) |
+| `style` | `style` (§4.3 label) | whisper ↔ normal | ✓ | ✓ (33) |
+| `add_cue` | `cue`, and `at: start · end`, or `text` with the cue inline | start or end | — | inline, 10 tags |
+| `remove_cue` | `cue` (absent: all) | ✓ | — | — |
+| `replace_text` | `text`, `with` | ✓ | — | — |
+| `insert_text` | `text`, `anchor`, `position: before · after` | ✓ | — | — |
+| `remove_text` | `text` | ✓ | — | — |
+| `speed` | `factor` | grid 0.5, 0.75, 1.25, 1.5, 2.0 | — | in the core, not exposed |
+| `pitch` | `semitones` | grid −3 … +3 | — | — |
+| `volume` | `gain_db` | grid −15 … +15 in 5s | — | — |
+| `timbre` | `description` | ✓ | — | — |
+| `de_accent` | — | ✓ (13 Chinese dialects) | — | — |
+| `denoise` | — | ✓ | ✓ | ✓ |
+| `trim_silence` | — | — | — | ✓ |
+
+- **What the engine offers today** is the narrow part: emotion, style and denoise on AuK, plus add-cue and
+  trim-silence on EditX. The rest of AuK's set, and an optional transcript, are AB-A-0188, which contract 1.55 hasn't
+  landed. The profile defines all of them, so engines can add them without changing it.
+- **Transcripts.** EditX needs one for every edit, though upstream doesn't for denoise and trim. AuK ignores it. The
+  offer says which: `supports.transcript: required · optional · unused`. With speech-to-text out of MES, the client
+  supplies it.
+- **Length.** EditX regenerates the take, so its length changes (up to 90 s in). AuK keeps the source length (up to
+  30 s in). The fact key `supports.keeps_length` says which.
+- **Licences.** AuK is non-commercial (`LicenseRef-Qwen-Research`, from its Qwen2.5-Omni encoder), so it is
+  `named_only` and is never chosen by default. Step-Audio-EditX is Apache-2.0 with the FunASR model licence, both
+  permissive, so it is the default editor.
+- **Later, as tools:** AuK's dereverberation, enhancement, speaker isolation (`keepSpeaker`, `keepSpeakerSaying`) and
+  singing-only.
+
+### 4.6 `supports` keys (RFC 0003)
+
+| Key | Operations | Type | Absent | Class |
+|---|---|---|---|---|
+| `languages` | all | `[BCP 47]` | any | Gate: `language` |
+| `default_voice` | `speak` | boolean | `false` | Gate: a request with neither `voice` nor `voice_ref` |
+| `voice_ref` | `speak` | boolean | `false` | Gate: the `voice_ref` input |
+| `voice_ref_text` | `speak` | `unused` · `optional` · `required` | `unused` | Gate: `required` needs `voice_ref_text` |
+| `emotions` | `speak`, `edit_speech` | `[label]` | `speak`: `[neutral]`; `edit_speech`: `[]` | Gate: `emotion.label` |
+| `emotion_description` | `speak` | boolean | `false` | Gate: `emotion.description` |
+| `emotion_intensity` | `speak` | boolean | `false` | Warn: `emotion_intensity_ignored` |
+| `styles` | `speak`, `edit_speech` | `[label]` | `speak`: `[normal]`; `edit_speech`: `[]` | Gate: `style` |
+| `cues` | `speak`, `edit_speech` | `[cue]` | `speak`: `[pause]`; `edit_speech`: `[]` | Warn in `speak`: `cue_unsupported`. Gate for `add_cue` and `remove_cue` |
+| `speed` | `speak` | boolean | `false` | Gate: `speed` |
+| `target_duration` | `speak` | boolean | `false` | Gate: `target_duration_s` |
+| `edits` | `edit_speech` | `[kind]` | `[]` | Gate: `edit.kind` |
+| `transcript` | `edit_speech` | `required` · `optional` · `unused` | `optional` | Gate: `required` needs `transcript` |
+| `keeps_length` | `edit_speech` | boolean | `false` | Fact |
+| `sample_rate` | all | integer | — | Fact |
+
+Limit fields: `max_text_chars`, `max_voice_ref_s`, and `max_duration_s` for an edit's input.
+
+The Base keys `stream`, `seed` and `voices` apply too.
+
+### 4.7 Warnings and helper roles
+
+- **Warnings:**
+  - `audio_resampled` and `audio_downmixed`;
+  - `voice_ref_trimmed`: the reference was clipped to the model's limit;
+  - `duration_missed`: `target_duration_s` wasn't met within the offer's tolerance;
+  - `cue_unsupported`: a cue was removed;
+  - `emotion_intensity_ignored`.
+- **Effective values:** a language the model detected, when the request named none, is reported as
+  `effective.language`.
+- **Helper role:** `prompt_enhance`, as in Image, for a model that rewrites a voice description or an instruction.
+
+### 4.8 Conformance ideas (AUDIO-nnn)
 
 - Outputs report `sample_rate`, `channels` and `duration_s`, and the file agrees.
 - Every MUST input type is accepted.
-- Streamed chunks concatenate to the final output, sample-exact.
-- A feature an offer doesn't support, used with that model named, is 422.
-- `transcribe` segments are ordered and lie within the input's duration.
-- `separate` returns each requested stem at the input's duration.
-- An asset survives two jobs and is gone after `DELETE`.
+- `voice`, `voice_ref` and neither each route to an offer that supports them; two together are 400.
+- A label, cue or edit kind the named model doesn't list is 422 for a gate key. An unsupported cue is removed, with
+  `cue_unsupported`.
+- `[pause 1s]` adds about a second of silence on every offer.
+- `design_voice` returns `count` samples, each with its seed; the same seed reproduces a sample on a seeded model; a
+  sample used as `voice_ref` with `effective.text` speaks.
+- Streamed chunks concatenate to the final output, sample-exact (RFC 0002).
+- An asset survives two jobs and is gone after `DELETE` (RFC 0001).
+
+### 4.9 Later, and outside
+
+- **Later (generative):**
+  - `audio.speak_dialog`: two-speaker scenes, Dia2, with a structured `script` so clients never write `[S1]`;
+  - `audio.generate`: sound effects, MOSS-SoundEffect.
+- **Later (tools):**
+  - `audio.separate`: HTDemucs, Mel-Band-RoFormer;
+  - `audio.enhance`: AudioPolishKit loudness, and AuK's enhancement family;
+  - codecs: Mimi.
+- **Outside MES:** speech-to-text (Nemotron, R2T2, VibeVoice-ASR, Whisper), emotion recognition (emotion2vec+), and
+  voice chat. Apps link these directly through MLXEngine.
 
 ## 5. Our models: where each belongs
 
 **Embedded** means an app links the package and drives it through MLXEngine in its own process. **Engine** means
-an MES engine serves it as jobs. Most models can do both; the group says which shape gets the most out of the
+an MES engine serves it as jobs. Most models can do both; the shape column says which gets the most out of the
 model. Resident sizes are the packages' declared `residentBytes`, with the declared peak transient after the "+".
 
-### 5.1 Embedded first
+### 5.1 In Audio 0.1
 
-| Model | Resident | Why embedded | Engine offer too? |
+| Model | Resident | Operations | Shape | Notes for the profile |
+|---|---|---|---|---|
+| MOSS-TTS-Nano-100M | 0.4–0.7 + 1.4 GB | `speak` (clone) | Embedded first; engine draft tier, streamed | Streams: 62–380 ms to first audio, RTF 0.10. 20 languages, Apache-2.0. The best in-app TTS we have |
+| Kokoro-82M | 0.5 GB | `speak` (built-in voices) | Embedded first; engine draft tier | 10 voices, English, one pass of up to 512 tokens. Needs the voice-list helper (§6) |
+| Gepard-1.0 | 1.2 + 4.0 GB | `speak` (clone) | Embedded first; engine, streamed | VoiceChatKit's voice. ~790 ms to first audio since v0.4.0 |
+| VoxCPM2 | 9.3 + 4.0 GB, Pro chips and up | `speak` (clone), `design_voice` | Engine | Best tier, 48 kHz. Clip alone, or clip and transcript (continuation). Designs from a `(description)` prefix, with no seed; its README still says design isn't exposed. Performs `[laughing]` and `[sigh]` |
+| IndexTTS-2.5 | 3.9–4.6 + 5.1 GB | `speak` (clone) | Engine | 8 emotions or a vector; native target duration (dub timing); zh/en/ja/es/ar. Commercial use needs a separate licence above 100M MAU or RMB 1B revenue |
+| Qwen3-TTS 1.7B | ~3.0 + 4.8 GB (8-bit) | `speak` (built-in voices, clone), `design_voice` | Engine | Three checkpoints: CustomVoice (presets), Base (clone: clip alone ~0.75 similarity, with transcript ~0.89), VoiceDesign (description + seed). E12 emotions. The core can stream, but the package doesn't expose it |
+| MOSS-TTS-Local v1.5 (4B) | 6.5–12.2 + 2.4 GB | `speak` (clone) | Engine, streamed | 149 ms to first audio at int8: the case for streaming from an engine |
+| Audio8 0.6b / Mini 0.1b | 2.6 / 1.81 + 4.2–4.4 GB | `speak` (clone) | Engine | 44.1 kHz. Streams, but 2.41 s to first audio. Mini: commercial use only below US$2M revenue |
+| Step-Audio-EditX | 7.0–10.3 + 2.0 GB | `edit_speech` | Engine, the default editor | 15 emotions, 33 styles, 10 inline cues, denoise, trim; 0.5–90 s. The length changes, and the result carries a transcript. Apache-2.0 + FunASR model licence: commercial use |
+| AuK / AuK-Flash | 7.8–12.9 + 1.5 GB | `edit_speech`, `speak` (clone), `design_voice` | Engine, `named_only` | The model for what `edit_speech` covers (§4.5). 0.5–30 s; en/zh; keeps the source length. Non-commercial (Qwen Research) |
+
+### 5.2 Later
+
+| Model | Resident | Operation | Why later |
 |---|---|---|---|
-| MOSS-TTS-Nano-100M | 0.4–0.7 + 1.4 GB | Streams: 62–380 ms to first audio, RTF 0.10. 20 languages, clones from a clip, Apache-2.0. The best in-app TTS we have | Yes: the draft tier of `audio.speak`, streamed |
-| Kokoro-82M | 0.5 GB | 10 preset voices, English, one pass of up to 512 tokens: instant UI speech | Yes: draft tier. Needs `voices` (§3.3) |
-| Gepard-1.0 | 1.2 + 4.0 GB | VoiceChatKit's voice. Streams, ~790 ms to first audio since v0.4.0. Clone-only | Yes, streamed |
-| Nemotron 3.5 ASR 0.6B | 0.64 (int8) – 1.24 + 0.82 GB | Live, `cumulative`; 80 ms–1.12 s chunks; 40 locales. Dictation and voice chat | Yes: `audio.transcribe` for files |
-| Confucius4-R2T2 | 2.8 (int8) + 3.6 GB | Live, `incremental`, 160 ms chunks, hotwords. Memory stays flat however long the session runs | Yes: `transcribe` with `context` |
-| NemotronLabs-VoiceChat-11B (DEV) | — | Full duplex on an 80 ms frame clock, with KV and recurrent state carried across frames. It can't be a job | No |
-| Mimi codec | 0.8 GB | A building block other packages use (codes) | No (§4.1) |
+| Dia2-2B | 4.5 + 3.0 GB | `speak_dialog`: two speakers, English, up to 120 s | Generative, but scenes aren't in the first set. `(laughs)` is accepted and rarely performed |
+| MOSS-SoundEffect | 5.4–7.4 + 18 GB, Pro and up | `generate` (sound effects): up to 30 s, 48 kHz | Generative, but not speech. Next after the first set |
+| HTDemucs v4 / Mel-Band-RoFormer | 0.9 + 6.7 GB / 0.3–0.7 GB | `separate`: vocals and instrumental, 44.1 kHz stereo | Tools |
+| AudioPolishKit | no weights (DSP) | `enhance`: loudness, with input and output LUFS | Tools |
+| Mimi codec | 0.8 GB | Encode and decode codes | Tools, if ever: codes mean nothing across engines |
 
-### 5.2 Engine first
+### 5.3 Outside MES (client-side)
 
-| Model | Resident | Operation | Notes for the profile |
+| Model | Resident | What | Why outside |
 |---|---|---|---|
-| VoxCPM2 | 9.3 + 4.0 GB, Pro chips and up | `audio.speak`, best tier, 48 kHz | Continuation cloning needs the reference transcript |
-| IndexTTS-2.5 | 3.9–4.6 + 5.1 GB | `audio.speak`: clone-only; 8 emotions or a vector; native target duration (dub timing); zh/en/ja/es/ar | Commercial use needs a separate licence above 100M MAU or RMB 1B revenue |
-| Qwen3-TTS 1.7B | ~3.0 + 4.8 GB (8-bit) | `audio.speak`: CustomVoice presets, ICL cloning, VoiceDesign + seed, `instruct` | The core can stream (`synthesizeStream`), but the package doesn't expose it |
-| Dia2-2B | 4.5 + 3.0 GB | `audio.speak_dialog`: two speakers, English, up to 120 s | `(laughs)` is accepted and rarely performed: a `cues` note |
-| MOSS-TTS-Local v1.5 (4B) | 6.5–12.2 + 2.4 GB | `audio.speak`. Streams, 149 ms to first audio at int8: the case for streaming from an engine | `[pause 1.5s]` cues |
-| Audio8 0.6b / Mini 0.1b | 2.6 / 1.81 + 4.2–4.4 GB | `audio.speak`, 44.1 kHz. Streams, but 2.41 s to first audio | Mini: commercial use only below US$2M revenue |
-| Step-Audio-EditX | 7.0–10.3 + 2.0 GB | `audio.edit_speech`: 15 emotions, 33 styles, 10 paralinguistic tags, denoise, trim; up to 90 s | The length changes, and the result carries a transcript |
-| AuK / AuK-Flash | 7.8–12.9 + 1.5 GB | `audio.speak` (instruct TTS) and `audio.edit_speech`; up to 30 s; en/zh | Non-commercial (Qwen Research): `named_only` |
-| MOSS-SoundEffect | 5.4–7.4 + 18 GB, Pro and up | `audio.generate`; up to 30 s; 48 kHz | — |
-| VibeVoice-ASR 7B | 6.2 + 4.6 GB, growing 0.18 GB a minute | `audio.transcribe` with speakers | Its live path (~3 s floor) stays embedded in the Studio |
-| Whisper large-v3-turbo | not declared | `audio.transcribe` | A library, not an engine package yet: wrap it first |
-
-### 5.3 Either
-
-| Model | Resident | Operation |
-|---|---|---|
-| HTDemucs v4 / Mel-Band-RoFormer | 0.9 + 6.7 GB / 0.3–0.7 GB | `audio.separate`: vocals and instrumental, 44.1 kHz stereo |
-| emotion2vec+ | 1.0 + 0.4 GB | `audio.describe`: 9 classes |
-| AudioPolishKit | no weights (DSP) | `audio.enhance`, loudness. Reports input and output LUFS |
+| Nemotron 3.5 ASR 0.6B | 0.64 (int8) – 1.24 + 0.82 GB | Live STT, `cumulative`; 80 ms–1.12 s chunks; 40 locales | Interpretive (STT) |
+| Confucius4-R2T2 | 2.8 (int8) + 3.6 GB | Live STT, `incremental`, 160 ms chunks, hotwords | Interpretive (STT) |
+| VibeVoice-ASR 7B | 6.2 + 4.6 GB, growing 0.18 GB a minute | STT with speakers | Interpretive (STT) |
+| Whisper large-v3-turbo | not declared | STT | Interpretive (STT), and not an engine package yet |
+| emotion2vec+ | 1.0 + 0.4 GB | Emotion recognition, 9 classes | Interpretive |
+| NemotronLabs-VoiceChat-11B (DEV) | — | Full duplex on an 80 ms frame clock | A session, not a job (§3.6) |
 
 ### 5.4 What would break as it is
 
@@ -313,23 +523,29 @@ Served through the adapter unchanged, these break a MES rule:
 
 | Package | Behaviour | MES rule | Fix |
 |---|---|---|---|
-| Kokoro | A `referenceAudio` request gets the default voice (`KokoroTTSPackage.swift:132-139`) | §6 rule 4, no surprises; §10.1, every deviation warns | Declared as `supports.voice_ref: none`, so a clone request is 422 before it runs (RFC 0003) |
+| Kokoro | A `referenceAudio` request gets the default voice (`KokoroTTSPackage.swift:132-139`), and a `.named` id goes to the core unchecked | §6 rule 4, no surprises; §10.1, every deviation warns | `supports.voice_ref: false`, so a clone request is 422 before it runs; voice ids checked against the list (RFC 0003) |
+| VoxCPM2 | A `.named` voice silently falls back to zero-shot (`VoxCPM2TTSPackage.swift:180-181`), and a seed is never read | §6 rule 4; §10.1 | `supports.voices: 0`, so a voice id is 422; `supports.seed: false` |
 | Gepard, Kokoro | Accept a seed and ignore it: Gepard's decoding is greedy (`GepardPackage.swift:29`), and Kokoro's package reads none | §10.1: `seed_ignored` | The offer declares `supports.seed: false`, and the kit warns (RFC 0003) |
 | Qwen3-TTS, Gepard, IndexTTS-2.5 | Seeds are clamped to 32 bits, because large seeds break EOS | Image's seed range is 0 – 2⁵³−1 | The Audio vocabulary caps `seed` at 2³²−1 |
-| MOSS-TTS-Nano | References are trimmed to 60 s | §10.1 | `voice_ref_trimmed` |
+| MOSS-TTS-Nano, MOSS-TTS-Local | References are trimmed to 60 s | §10.1 | `voice_ref_trimmed` |
+| Step-Audio-EditX | Needs a transcript for every edit, including denoise and trim, which upstream doesn't (`StepAudioEditXPackage.swift:197-198`) | — | `supports.transcript: required`, so a request without one goes to another editor or is 422 |
 | All TTS | The encoded reference is cached across runs | §13 rule 4 | Assets (§3.1) |
 
-**Licences.** IndexTTS-2.5 and R2T2 allow commercial use below 100M MAU or RMB 1B revenue, and Audio8-Mini below
-US$2M revenue. MLXEngine records an advisory. Base §10.2 has only `commercial_use: true | false | unknown`, so a
+**Licences.** IndexTTS-2.5 allows commercial use below 100M MAU or RMB 1B revenue, and Audio8-Mini below US$2M
+revenue (R2T2 has the same terms as IndexTTS-2.5, but it is STT, now outside MES). MLXEngine records an advisory. Base §10.2 has only `commercial_use: true | false | unknown`, so a
 `license: commercial-use` request either admits these with a `notice`, or refuses them. That needs a decision (A-6).
 
 ## 6. Engine-side work the adapter depends on
 
 The MLXEngine adapter (DLV-9) maps capabilities onto operations, so the profile can only expose what the contract
 declares:
-- **Voice catalogue.** E6's speaker half is open, so `TTSControls` lists no voices. Kokoro's and Qwen3-TTS
-  CustomVoice's presets are hardcoded in clients today.
-- **Languages per surface.** Not declared anywhere in `TTSControls` or `STTControls`.
+- **A voice-list helper (decided).** E6's speaker half is open, so `TTSControls` lists no voices. Kokoro's and
+  Qwen3-TTS CustomVoice's presets are hardcoded in their packages and in clients today. Each TTS package with presets
+  gains a helper that returns its voices (id, title, languages, tags, an optional sample). The adapter calls it when
+  a client names the model and asks for the list, and serves it as RFC 0003's `GET …/voices` and `mes_list_voices`.
+- **Normalized controls.** The packages each speak their own emotion and cue dialect (§4.3, §4.4). Either the adapter
+  carries the mapping table, or `TTSControls` declares labels in the profile's vocabulary.
+- **Languages per surface.** Not declared anywhere in `TTSControls`.
 - **Output sample rate per surface.** Known only from the returned `.wav` (E7).
 - **Seed in `TTSRequest`.** Not a canonical field: Qwen3-TTS and Gepard read `metaData["seed"]`, so the adapter
   needs a per-package mapping, which the contract set out to retire.
@@ -339,6 +555,23 @@ declares:
 - **Voice handles.** E1 left a contract-level `prepareVoice(reference:transcript:) -> VoiceHandle` as a possible
   follow-up. An MES asset (§3.1) is the wire twin of that handle, and would make the cache explicit instead of keyed
   by bytes.
+- **Voice design isn't a contract concept.** `VoiceSelector` has `named`, `referenceAudio` and `auto`, and nothing for
+  design (`TTS.swift:9-13`). Each package takes the description its own way: `.auto` plus `emotion.textDescription`,
+  or `metaData.instruct`, which is the slot emotion also uses. A `.design(description)` case would let `design_voice`
+  and emotion coexist on Qwen3-TTS.
+- **Cues aren't declared.** `TTSControls` has no cue list. VoxCPM2 performs `[laughing]` and `[sigh]` but declares
+  neither, and Dia2's 50 live only in its tokenizer. Packages should declare cues, ideally under the profile's names.
+- **Speech edits (AB-A-0188).** AuK's content edits (replace, insert, remove words), speed, pitch, volume, timbre,
+  de-accent and nonverbal add or remove are in its core, not in `SpeechEditOperation`. AB-A-0188 also asks for an
+  optional transcript and `targetDuration` on `SpeechEditRequest`. Contract 1.55 has none of it.
+- **Qwen3-TTS's preset list.** The sources disagree on CustomVoice's speakers:
+  - the API reference lists 10;
+  - E6 says 9;
+  - vendored mlx-audio docs list 7.
+
+  At run time the ids come from `config.json` `spk_id`, so the voice-list helper should read them there.
+- **A licence note to check.** `EmotionPresets.swift:10-14` in IndexTTS-2.5 still calls the baked matrices
+  "NonCommercial", while the package declares `LicenseRef-Bilibili-Model-Use`.
 
 ## 7. Video and Audio share time
 
@@ -351,9 +584,10 @@ inherits whatever it chose.
 
 | # | Question | Recommendation |
 |---|---|---|
-| A-1 | Reopen OQ-6 for audio: streamed output in Base? | Yes, as the `streaming` feature (§3.2), output only |
-| A-2 | Assets, so a voice can be reused and its encoding cached? | Yes, as a Base feature, also usable by Image (§3.1) |
-| A-3 | Live sessions in MES? | Not in 0.x. Live STT and voice chat stay embedded (§3.6) |
-| A-4 | Per-offer `supports` and `voices`? | Yes, in Base, with keys defined per profile (§3.3) |
+| A-1 | Reopen OQ-6 for audio: streamed output in Base? | Yes, as the `streaming` feature (§3.2), output only. RFC 0002 |
+| A-2 | Assets, so a voice can be reused and its encoding cached? | Yes, as a Base feature, also usable by Image (§3.1). RFC 0001 |
+| A-3 | Live sessions in MES? | **Decided:** not in 0.x. Voice chat stays embedded, and speech-to-text is out of the spec (§3.6) |
+| A-4 | Per-offer `supports` and `voices`? | Yes, in Base, with keys defined per profile (§3.3). **Decided:** a named model's voices are listed by `GET` and `mes_list_voices`, not inline. RFC 0003 |
+| A-7 | What does Audio 0.1 cover? | **Decided:** generative only. Voice design, speech with a built-in or cloned voice, speech editing modelled on AuK, and normalized emotions and nonverbal cues (§4). Tools later; STT and other interpretive models out |
 | A-5 | Order: Audio before Video, or shared time conventions first? | Shared conventions in Base first (§7), then whichever profile has a client waiting |
 | A-6 | Licences that allow commercial use only below a revenue or user threshold? | Add `commercial_use: "conditional"`, with the threshold in `notice`. `license: commercial-use` admits it only once the operator has accepted the terms (`accepted_required`) |

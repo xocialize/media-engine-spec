@@ -233,8 +233,9 @@ data: {"outputs":[{"index":0,"name":"audio","media_type":"audio/wav","duration_s
 
 ## Open questions
 
-- **Other kinds.** Transcript segments as they're decoded (`data`), and video frames (VID-2). The event's shape allows
-  them through new encodings, such as `json` items, but this draft defines audio only.
+- **Other kinds.** Video frames (VID-2), or structured items as a model makes them. The event's shape allows them
+  through new encodings, such as `json` items, but this draft defines audio only. Speech-to-text is out of MES's scope
+  for now (it stays client-side), so streamed transcripts aren't a case.
 - **Outputs with several values**, such as separation stems. A chunk would need the value's position as well as the
   output's name.
 - **Compressed streams** (`opus` packets) for clients on slow links.

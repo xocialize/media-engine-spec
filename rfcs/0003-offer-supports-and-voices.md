@@ -41,16 +41,19 @@ declare is refused before admission (`checkDeclaredControls`). This RFC carries 
 
 ## Proposal
 
-A model offer gains three optional fields:
+A model offer gains two optional fields:
 - `supports`: facts about what the model accepts;
-- `limits`: its own, narrower limits;
-- `voices`: the preset voices it offers.
+- `limits`: its own, narrower limits.
+
+A model's preset voices aren't in the descriptor. A client that has chosen a model asks for its voices with
+`GET {path}/operations/{operation}/models/{model}/voices`, or over MCP with the `mes_list_voices` helper. The offer
+only says how many there are (`supports.voices`). Search, filters, favourites and caching stay in the client.
 
 A request then implies the offers that can serve it, as adapters already do (§6.3 rule 2).
 
 ### §6 Capability descriptors
 
-The `models` row of the table gains `supports?`, `limits?` and `voices?` (§6.4, §6.5).
+The `models` row of the table gains `supports?` and `limits?` (§6.4). Voices are listed separately (§6.5).
 
 ### §6.4 What an offer supports (new)
 
@@ -95,6 +98,7 @@ Rules:
 |---|---|---|---|---|
 | `stream` | boolean | `false` | Gate: a request's `stream` ([RFC 0002](0002-streamed-output.md)) | The model can stream its output |
 | `seed` | boolean | `true` | Warn: `seed_ignored` | `false`: the result doesn't depend on a seed, e.g. greedy decoding |
+| `voices` | integer | `0` | Fact (the voice rules are in §6.5) | How many preset voices the model offers. Above 0, the client can list them (§6.5). |
 
 ### §6.5 Voices (new)
 
@@ -102,16 +106,27 @@ A **voice** is a speaker identity a model offers by name: a preset voice. Engine
 the operator installed. A client's own voice is a reference input, and an asset when reused
 ([RFC 0001](0001-assets.md)), not a voice.
 
-`voices` on a model offer lists them, each with:
+**Listing.** `GET {path}/operations/{operation}/models/{model}/voices` returns `{voices: [Voice], etag}` for a model
+whose `supports.voices` is above 0. It supports `ETag` and `If-None-Match`, as `GET {path}/operations` does. A model
+the operation doesn't offer is 404 `not_found`, and so is a model with no voices.
+
+Each Voice has:
 
 | Field | Meaning |
 |---|---|
-| `id`, `title` | The voice. An id names the same voice in every offer that lists it. |
+| `id`, `title` | The voice. An id names the same voice in every model that lists it. |
 | `languages` | OPTIONAL. The BCP 47 tags the voice speaks well. When absent, the model's own languages apply. |
 | `tags` | OPTIONAL. Descriptive words for pickers and agents: e.g. `female`, `british`, `calm`, `narration`. A profile MAY suggest a vocabulary. |
 | `notes` | OPTIONAL. Usage guidance, as for model offers (§6 rule 5) |
 | `sample` | OPTIONAL. An `href` on the engine to a short audio sample of the voice. It is fetched with the usual authorization. |
 | `license` | OPTIONAL. The voice's own terms (§10.2), on top of its model's, such as a voice actor's consent terms |
+
+**Changes.** When an operator adds or removes voices, `supports.voices` changes, and with it the descriptor. That
+change is announced with `engine.operations_changed` (§6 rule 3, §11). A client that keeps a model's list revalidates
+it with its `etag`.
+
+**The catalogue is the client's.** The engine serves the list and nothing more. Searching, filtering by language or
+tag, favourites, recently used and caching belong to the client, which is free to present the list any way it likes.
 
 Rules:
 1. **Requests.** A profile parameter names the voice by id (Audio: `voice`). Base adds no request field.
@@ -124,11 +139,11 @@ Rules:
 
 ### §6.1 UI hints
 
-`widget` gains `voice`: a picker filled from the offers' `voices`, which can play each `sample`.
+`widget` gains `voice`: a picker filled from the chosen model's voice list (§6.5), which can play each `sample`.
 
 ### §10.1 Results
 
-`provenance` gains `voice? {id, title?, license?}`, present when a job used a voice from `voices`.
+`provenance` gains `voice? {id, title?, license?}`, present when a job used one of the model's voices (§6.5).
 
 ### §10.3 Policy
 
@@ -138,14 +153,14 @@ doesn't, the request is 422 `policy_unmet`, as for adapters.
 ### §15 MCP binding
 
 - **Model lines.** Each model's line in the tool description gains its gate keys and limits in short form, e.g.
-  `supports: stream, emotion=label`.
-- **Voices** follow on lines of their own, as adapters do: each with its id, title, languages and licence. An engine
-  MAY list only the first 20 of a model's voices, say how many more there are, and leave the rest to
-  `mes_list_operations`.
+  `supports: stream, emotion=label`. A model with voices says how many, e.g. `10 voices (mes_list_voices)`.
+- **Helper tools** gain `mes_list_voices {operation, model}`. It returns the model's voice list (§6.5): one line per
+  voice in the text content (id, title, languages, tags, licence), and the list as `structuredContent`. An agent
+  names a model, lists its voices, then calls the operation's tool with `model` and `voice`.
 
 ### §18 Registries
 
-- A new registry, **Base `supports` keys**, holds `stream` and `seed`.
+- A new registry, **Base `supports` keys**, holds `stream`, `seed` and `voices`.
 - Profiles register their own keys, with their limit fields.
 - UI widgets gain `voice`.
 
@@ -155,23 +170,25 @@ doesn't, the request is 422 `policy_unmet`, as for adapters.
 |---|---|
 | `descriptor.schema.json` | `ModelOffer.supports`: an object, with `propertyNames` `^([a-z][a-z0-9_]*|x-[a-z0-9]+\.[a-z0-9_]+)$`. The Base keys are typed, and profile schemas type their own. |
 | `descriptor.schema.json` | `ModelOffer.limits`: the descriptor's `limits` object, open to profile limit fields |
-| `descriptor.schema.json` | `ModelOffer.voices: [VoiceOffer]`; `VoiceOffer` is `{id, title, languages?, tags?, notes?, sample?, license?}` |
+| `voices.schema.json` (new) | `{voices: [Voice], etag}`; `Voice` is `{id, title, languages?, tags?, notes?, sample?, license?}` |
 | `descriptor.schema.json` | `UiHints.widget` gains `voice` |
 | `job.schema.json` | `provenance.voice?` (a new `VoiceRef` in `common.schema.json`) |
 
 ### How the profiles would use it (illustrative, not part of this RFC)
 
-**Audio 0.1 draft, `audio.speak`.** These keys come from the evaluation's §3.3 table. The Audio profile defines them.
+**Audio 0.1 draft, `audio.speak`.** The Audio profile defines these keys. The full list, with the normalized emotion,
+style and cue labels, is in the evaluation's §4.3–§4.6.
 
 | Key | Type | Absent | Class |
 |---|---|---|---|
 | `languages` | `[BCP 47]` | Any | Gate: `language` |
-| `voice_ref` | `none` · `clip` · `clip_with_text` | `none` | Gate: the `voice_ref` input; `clip_with_text` also needs `voice_ref_text` |
-| `voice_design` | boolean | `false` | Gate: `voice_description` |
-| `emotion` | any of `label`, `reference`, `description` | none | Gate: `emotion` and `emotion_ref`, by mode |
-| `emotion_labels` | `[string]` | none | Gate: `emotion.label`'s value |
+| `default_voice` | boolean | `false` | Gate: a request with neither `voice` nor `voice_ref` |
+| `voice_ref` | boolean | `false` | Gate: the `voice_ref` input |
+| `voice_ref_text` | `unused` · `optional` · `required` | `unused` | Gate: `required` needs `voice_ref_text` |
+| `emotions` | `[label]`, from the profile's list (`happy`, `sad`, `angry`, `afraid`, …) | `[neutral]` | Gate: `emotion.label` |
+| `emotion_intensity` | boolean | `false` | Warn: `emotion_intensity_ignored` |
+| `cues` | `[cue]`, from the profile's list (`laugh`, `cough`, `sigh`, …) | `[pause]` | Warn: `cue_unsupported` |
 | `target_duration` | boolean | `false` | Gate: `target_duration_s` |
-| `cues` | `[string]` | none | Warn: `cue_unsupported` |
 | `sample_rate` | integer | none | Fact |
 
 Limit fields: `max_text_chars` and `max_voice_ref_s`.
@@ -181,19 +198,28 @@ Three of the offers from the example:
 ```json
 [
   {"id": "kokoro-82m", "title": "Kokoro 82M", "quality_tiers": ["draft"], "license": {…},
-   "supports": {"seed": false, "languages": ["en-US", "en-GB"], "voice_ref": "none", "sample_rate": 24000},
-   "limits": {"max_text_chars": 2000},
-   "voices": [
-     {"id": "af_heart", "title": "Heart", "languages": ["en-US"], "tags": ["female", "american"]},
-     {"id": "bm_george", "title": "George", "languages": ["en-GB"], "tags": ["male", "british"]}
-   ]},
+   "supports": {"seed": false, "voices": 10, "languages": ["en-US", "en-GB"], "default_voice": true,
+                "sample_rate": 24000},
+   "limits": {"max_text_chars": 2000}},
   {"id": "gepard-1.0", "title": "Gepard 1.0", "quality_tiers": ["standard"], "license": {…},
-   "supports": {"stream": true, "seed": false, "languages": ["en"], "voice_ref": "clip", "sample_rate": 22050}},
+   "supports": {"stream": true, "seed": false, "languages": ["en"], "voice_ref": true, "sample_rate": 22050}},
   {"id": "indextts-2.5", "title": "IndexTTS 2.5", "quality_tiers": ["best"], "license": {…},
-   "supports": {"languages": ["zh", "en", "ja", "es", "ar"], "voice_ref": "clip", "emotion": ["label"],
-                "emotion_labels": ["happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm"],
-                "target_duration": true, "sample_rate": 22050}}
+   "supports": {"languages": ["zh", "en", "ja", "es", "ar"], "voice_ref": true,
+                "emotions": ["neutral", "happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised",
+                             "calm"],
+                "emotion_intensity": true, "target_duration": true, "sample_rate": 22050}}
 ]
+```
+
+A client that picks Kokoro asks for its voices, `GET {path}/operations/audio.speak/models/kokoro-82m/voices`:
+
+```json
+{"etag": "\"v1\"",
+ "voices": [
+   {"id": "af_heart", "title": "Heart", "languages": ["en-US"], "tags": ["female", "american"],
+    "sample": "/mes/v0/operations/audio.speak/models/kokoro-82m/voices/af_heart/sample"},
+   {"id": "bm_george", "title": "George", "languages": ["en-GB"], "tags": ["male", "british"]}
+ ]}
 ```
 
 With these, the example request routes as expected:
@@ -209,21 +235,25 @@ are changes to the Image profile, not to this RFC.
 
 | `supports` key | From |
 |---|---|
-| `emotion` | `TTSControls.emotionModes` |
+| `emotions`, `emotion_description` | `TTSControls.emotionModes`, with the package's labels mapped to the profile's (the E12 packages already share them) |
 | `target_duration` | `TTSControls.supportsTargetDuration` |
-| `speakers` (for `audio.speak_dialog`) | `TTSControls.maxSpeakers` |
 | `stream` | `StreamGranularity.audioChunk` |
-| Transcribe keys | `STTControls.attributesSpeakers`, `STTControls.supportsContextBiasing` |
 
 Three things aren't declared anywhere in MLXEngine yet: voice catalogues (E6's speaker half), languages per surface,
 and output sample rate per surface (evaluation §6). Until they are, the adapter would need a table per package, which
 the contract set out to retire.
 
+**A voice-list helper on our packages.** The voice list endpoint needs something to read. Each TTS package with
+presets would gain a helper the adapter calls when a client names that model and asks for its voices, e.g.
+`voices() -> [VoiceInfo]` (id, title, languages, tags, an optional sample clip). Kokoro's 10 voices (`KokoroVoice`) and
+Qwen3-TTS CustomVoice's 9 are hardcoded in their packages and in clients today. This is the speaker half of E6, and
+it belongs to the MLXEngine contract and the audio packages, not to this RFC.
+
 ## Compatibility
 
 - **Additive.** It lands in the Base 0.1 draft in the next minor release, with RFCs 0001 and 0002.
-- **Older engines** declare no `supports`, `limits` or `voices`. Their offers behave as each key's absence says, which
-  rule 1 makes their current behaviour.
+- **Older engines** declare no `supports` or `limits`, and serve no voice lists. Their offers behave as each key's
+  absence says, which rule 1 makes their current behaviour.
 - **Older clients** ignore the new fields when they decode. A client that names a model, and asks it for something
   the offer now says it doesn't support, gets 422 where it used to get a silent fallback. §6 rule 4 already required
   that, so this is a fix.
@@ -232,24 +262,30 @@ the contract set out to retire.
 
 ### What it takes to implement
 
-- **MESCore:** `ModelOffer` gains `supports`, `limits` and `voices`, and the profile tables gain their keys, with each
-  key's class and what it gates.
-- **MESEngineCore:** model choice (`JobRegistry`, where adapters already narrow the candidates) filters offers by gate
-  keys, limits and voices before §6 rule 2 picks. `defaultModel(for:…)` keeps getting only offers that admit the
-  request. Warn keys produce their warnings through the kit, so engines don't each implement them.
+- **MESCore:** `ModelOffer` gains `supports` and `limits`, a `Voice` type, and the profile tables gain their keys,
+  with each key's class and what it gates.
+- **MESEngineCore:**
+  - Model choice (`JobRegistry`, where adapters already narrow the candidates) filters offers by gate keys, limits and
+    voices before §6 rule 2 picks. `defaultModel(for:…)` keeps getting only offers that admit the request. Warn keys
+    produce their warnings through the kit, so engines don't each implement them.
+  - `MediaEngine` gains `voices(operation:model:) async -> [Voice]`, with a default that returns none. The kit serves
+    the route, its ETag and `mes_list_voices` from it.
+- **MESClientKit:** `voices(operation:model:)`, revalidated by ETag. The catalogue UI is the app's.
 - **MESFormsUI:** the `voice` widget, and controls hidden or disabled for what the chosen model doesn't support.
 
 ## Conformance
 
 | Test | Checks | Spec |
 |---|---|---|
-| BASE-014 | Offers' declarations are consistent: known keys of the right types; offer limits within the operation's; voice ids unique within an offer, and one id names one voice everywhere | §6.4, §6.5 |
+| BASE-014 | Offers' declarations are consistent: known keys of the right types; offer limits within the operation's | §6.4 |
+| BASE-018 | Voice lists: a model with `supports.voices` above 0 serves that many voices with an ETag, and If-None-Match answers 304; ids are unique, and one id names one voice in every model; a model without voices, or not offered, is 404 | §6.5 |
 | BASE-015 | A gate the named model doesn't support, or a limit it doesn't allow, is 422 `unsupported_parameter` or `out_of_limits`; with no model named, the plan names an offer that admits the request | §6.4 rules 2–3 |
 | BASE-016 | A voice implies its model: the plan names an offer that lists it; an unlisted voice, or one the named model doesn't list, is 422; provenance names the voice | §6.5, §10.1 |
 | BASE-017 | `supports.seed: false`: a request with a seed runs, and warns `seed_ignored` | §6.4 |
 
 The mock engine can carry these on Image: two `image.generate` offers that differ in `negative_prompt` and
-`limits.max_megapixels`. The voice test needs the Audio draft, or a mock offer with voices.
+`limits.max_megapixels`. The voice tests (BASE-016, BASE-018) need the Audio draft, or a mock offer with voices.
+BASE-080 extends to the `mes_list_voices` helper.
 
 ## Alternatives considered
 
@@ -263,6 +299,10 @@ The mock engine can carry these on Image: two `image.generate` offers that diffe
 5. **Voices as a profile-only concept.** Voices are Audio's for now. But Video with sound (LTX, VID-2) will take a
    voice, and voices have the same shape as adapters (an id, a licence, a model they imply), so Base defines the shape
    once. This follows A-4.
+6. **Voices inline in the descriptor,** like adapters (the first draft of this RFC). A client then has every model's
+   catalogue in one fetch, but the descriptor grows with every preset, and a model with hundreds of voices makes it
+   large. Fetching a named model's voices when asked keeps descriptors small. It also keeps the catalogue, how it's
+   searched and shown, in the client.
 
 ## Open questions
 
@@ -271,5 +311,7 @@ The mock engine can carry these on Image: two `image.generate` offers that diffe
 - **Voices across tiers.** Qwen3-TTS's presets exist at more than one quantization. One id across offers covers it,
   but a voice listed by both a `draft` and a `best` offer then routes by tier, which may surprise a client that
   picked the voice for its sound.
-- **Big catalogues.** A model with hundreds of voices makes the descriptor large. A separate
-  `GET {path}/operations/{op}/voices` could page them.
+- **Paging.** A model with thousands of voices would want `?after=` paging on the list. Our largest has 10, so this
+  draft leaves it out.
+- **One list for the operation.** A client that wants a voice before it picks a model would need
+  `GET {path}/operations/{op}/voices` across models. This draft keeps the list per model: name the model, then list.
