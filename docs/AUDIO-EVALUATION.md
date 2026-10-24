@@ -4,7 +4,7 @@
 |---|---|
 | **Date** | 2026-10-24 |
 | **Spec** | Base 0.1, Image 0.1 (media-engine-spec v0.4.0) |
-| **Models** | The audio rows of the MLXEngine registry (`MLXEngine/mlx-engine-swift/docs/model-registry.md` § Audio), `mlxengine-audio/PROD`, `mlx-vibevoice-asr-swift` |
+| **Models** | The audio rows of the MLXEngine registry (`MLXEngine/mlx-engine-swift/docs/model-registry.md` § Audio), `mlxengine-audio/PROD`, `mlx-vibevoice-asr-swift`; for music, `mlxengine-audio/WIP/music-survey/MUSIC-MODEL-SURVEY.md` (AB-R-0604) |
 | **Engine contract** | MLXToolKit 1.50 (`TTS.swift`, `Streaming.swift`, `LiveSTT.swift`, `SpeechEdit.swift`, `ToolDescriptor.swift`) |
 | **Status** | Evaluation. Nothing here changes the spec yet; §8 lists the decisions it needs. RFCs [0001](../rfcs/0001-assets.md), [0002](../rfcs/0002-streamed-output.md) and [0003](../rfcs/0003-offer-supports-and-voices.md) draft A-2, A-1 and A-4. |
 
@@ -21,6 +21,10 @@ win, and §4, §5 and §8 have been revised to match.
   - **Speech editing:** basic edits, with AuK as the model of what to cover.
   - **Sound generation:** non-verbal audio from a description, such as foley, ambience and effects (MOSS-SoundEffect).
     Sounds, not voices.
+- **Music is an operation of its own, `audio.compose`** (§4.7; decided 2026-10-24, A-10), with three offers: ACE-Step
+  1.5 (MIT) as the commercial default, YuE2-3B research-only (`named_only`), and MiniMax Music 3 under the community
+  licence the operator accepted the same day (AB-D-0157). It joins Audio 0.1 if ACE-Step's package is ready when the
+  profile is published, and the first addition after otherwise.
 - **Controls are normalized** across models (§4.3, §4.4):
   - emotions such as anger and sadness;
   - nonverbal sounds such as a cough or laughter.
@@ -196,7 +200,9 @@ honour belongs in the descriptor. There's nowhere per offer to put any of this.
   (§10.1, `job.schema.json`).
 - **Progress** gains `media_s`: seconds of audio produced or consumed. An autoregressive TTS doesn't know its length
   until the stop token, so `fraction` is absent. `LiveSTT.swift` calls `processedSeconds` "the only honest progress
-  axis".
+  axis". It also gains `phase`, a short id for the part of the run in progress (`plan`, `generate`, `denoise`,
+  `decode`), with `step` and `steps` counting within the phase: a song runs several stages of different kinds
+  (§4.7.3), and `message` is no place for a client to read which.
 - **Decoded limits** (§17): engines enforce `max_duration_s` and sample counts on decoded audio. A small FLAC can
   decode to hours.
 
@@ -229,7 +235,8 @@ only.
 ### 3.7 Licence notices on results
 
 A non-commercial model's terms reach the user only if a client shows them, and reach the file only if something
-writes them in. YuE2 (§4.6) makes both concrete. They apply equally to AuK and to Image's research-licensed offers.
+writes them in. YuE2 (§4.7.5) makes both concrete. They apply equally to AuK and to Image's research-licensed
+offers, and MiniMax Music 3 (§4.7.5) shows that a commercial licence can carry a display duty too.
 
 1. **Showing the notice is optional.** Base §10.2 calls `notice` text "the client should show", and nothing says
    where. A client can show it in the model picker and never with the result. **Proposal (A-8):** when a result's
@@ -245,6 +252,15 @@ writes them in. YuE2 (§4.6) makes both concrete. They apply equally to AuK and 
 
    It MAY do the same for every output. The output's `sha256` covers the file as written, tags included. The same
    tags could carry an AI-generated marker, which some jurisdictions now require for synthetic audio.
+3. **A display duty on a commercial licence.** MiniMax Music 3's licence permits commercial use and still requires a
+   commercial product that uses the model to display `MiniMax-Music3` prominently (§4.7.5). Keyed to
+   `commercial_use`, A-8 would let a client skip the one notice that licence insists on. **Revised A-8:** `notice` is
+   text the client MUST show: on the offer, with every result whose provenance carries it, and in the MCP text
+   summary, whatever `commercial_use` says. A licence has a `notice` only when its terms require something shown (an
+   attribution, a display name, a non-commercial restriction); advisory text goes in the offer's `notes`. When
+   `commercial_use` isn't `true` and there is no notice, the client shows `spdx` and `terms_url` instead. **Revised
+   A-9:** the engine SHOULD write `spdx` and `notice` into the file whenever a job's licences carry a notice or
+   aren't all `commercial_use: true`. Base §10.2's "text the client should show" becomes that MUST.
 
 ### 3.8 Kit (code, not spec)
 
@@ -267,6 +283,7 @@ lists come from the packages as they are on 2026-10-24 (MLXToolKit contract 1.55
 | `audio.speak` | `text` (required, may carry cues, §4.4); `voice_ref` (audio, 0–1); `voice_ref_text` (text, optional) | `voice`, `language`, `emotion`, `style`, `speed`, `target_duration_s`, `seed`, `quality`, `output` | `audio` | `tts` | Kokoro, MOSS-TTS-Nano, Gepard, Audio8, Qwen3-TTS, MOSS-TTS-Local, IndexTTS-2.5, VoxCPM2; AuK (`named_only`) |
 | `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (one edit, §4.5), `seed`, `quality`, `output` | `audio`; `transcript` (data, when the edit changes the words or cues) | `speechEdit` | Step-Audio-EditX; AuK (`named_only`) |
 | `audio.generate` | `prompt` (text, required) | `negative_prompt`, `duration_s`, `seed`, `count`, `quality`, `output` | `sounds` (audio, `count`) | `soundEffect` | MOSS-SoundEffect v2.0 |
+| `audio.compose` (§4.7; scheduled by A-10) | `caption` (text, required); `lyrics` (text, 0–1); `score` (text, 0–1); `reference` (audio, 0–1); `source` (audio, 0–1) | `duration_s`, `language`, `planning`, `edit`, `anchors`, `timestamps`, `seed`, `quality`, `output` | `song` (audio); `score` (text, 0–1); `timestamps` (data, 0–1) | music (AB-A-0201, AB-A-0202) | ACE-Step 1.5 (default); MiniMax Music 3; YuE2-3B (`named_only`) |
 
 **A voice, three ways.** `audio.speak` takes exactly one of these, and a request with more than one is 400:
 - `voice`: a built-in voice, by id from the named model's list (RFC 0003 §6.5);
@@ -472,23 +489,221 @@ MOSS-SoundEffect-v2.0 is Apache-2.0, weights and port both. It is 48 kHz mono, a
 (5.4 GB int4 or 7.4 GB bf16 resident, plus about 18 GB transient). It's the only sound model in the registry today.
 
 **Not in it:**
-- **Music.** YuE2-3B is ported as a non-commercial offer (below), but music isn't one of Audio 0.1's operations
-  (A-7).
+- **Music.** Songs are `audio.compose` (§4.7): lyrics, a style caption and optionally a score, a reference or a
+  recording to rework are inputs a sound doesn't take.
 - **Sound under speech.** MOSS-TTS-Local's core prompt has `soundEvent` and `ambientSound` fields that its package
   doesn't expose (`MossTTSLocal.swift:166-173`). Dia2's sound cues (`(applause)`, `(thunder)`) belong with dialog.
   Mixing a generated sound under speech is a client's job for now.
 
-**Music: YuE2-3B, a non-commercial offer.** E17's YuE2-3B was passed for its CC BY-NC 4.0 weights, and the pass was
-reversed on 2026-10-24 (AB-D-0073). It turns lyrics and a style prompt into a full song with vocals, 48 kHz stereo,
-through an editable ABC score. The operation's shape is open. Music can join `audio.generate` with a `supports` key
-for what it makes, or become an operation of its own, since lyrics, a style and a score are inputs that sounds don't
-take. Whatever the shape, these are the offer's licence fields (its other fields are left out):
+### 4.7 Music
+
+`audio.compose` makes a song: vocals and arrangement from lyrics and a description of the style, or an instrumental
+from the description alone. The output is stereo music, minutes long. Three offers serve it, under three licences
+(§4.7.5): ACE-Step 1.5 (MIT, the default), YuE2-3B (CC BY-NC 4.0, `named_only`) and MiniMax Music 3 (a community
+licence that permits commercial use and requires a displayed name). The survey that chose them is
+`mlxengine-audio/WIP/music-survey/MUSIC-MODEL-SURVEY.md` (AB-R-0604); the operator's licence decisions are AB-D-0073
+(reversed, YuE2) and AB-D-0157 (MiniMax).
+
+**Its own operation, not a `supports` key on `audio.generate`.** §4.6 left the shape open. It is decided for an
+operation of its own (2026-10-24, AB-D-0158), for these reasons:
+
+1. **The inputs differ in kind, not degree.** A sound takes one prompt. A song takes a caption, lyrics with section
+   tags, and optionally a score to render, a recording whose timbre to take, and a recording to rework. Base §6 rule 1
+   says `params` MUST NOT require model-specific parameters, and rule 4 says what a model can't honour belongs in the
+   descriptor. Folding music into `generate` would put a dozen fields no sound model honours on every `generate`
+   descriptor, and `prompt` would mean a sound description on one offer and a style caption on another.
+2. **A default is per operation.** Base §6 rule 2 picks a default offer when the request names none. One operation
+   has one default: for sounds it is MOSS-SoundEffect, for songs ACE-Step 1.5. Routing a `generate` request to a
+   music offer because it carries `lyrics` would make the default depend on which inputs are present, and an
+   instrumental request has no lyrics to route by.
+3. **Three licence postures on one tool.** `audio.generate` is Apache-2.0 throughout. Music carries a non-commercial
+   offer and a licence with a display duty. The MCP binding makes one tool per operation (Base §15), so the three
+   licence lines sit on `audio_compose`, where an agent composing a song reads them, and never clutter the sound tool.
+4. **Different work, different progress.** A sound is one denoise of a known step count. A song runs a planner, then
+   an autoregressive or flow stage, then a decode, and the phases have counts of their own (§4.7.3).
+5. **Precedent.** Image keeps `image.generate` and `image.edit` apart although both diffuse, because their inputs
+   and defaults differ. The same line runs between sounds and songs.
+
+The cost is one more descriptor. The two operations share the conventions of §4.2, `seed`, `quality`, `output`, and
+the warning vocabulary. A `supports` key on `generate` would have saved the descriptor and cost every one of the
+points above.
+
+#### 4.7.1 Inputs and parameters
+
+Inputs:
+
+| Input | Kind | Count | Meaning |
+|---|---|---|---|
+| `caption` | text | required | The style: genre, mood, instrumentation, era, tempo in words, a description of the voice. Free text |
+| `lyrics` | text | 0–1 | The words, in sections (§4.7.2). Absent: an instrumental, on an offer with `supports.instrumental` |
+| `score` | text | 0–1 | An ABC score to render, chord-annotated or melody only (`supports.score`). A client edits the score a previous job returned, and renders it again |
+| `reference` | audio | 0–1 | A recording whose timbre or style the song should take (`supports.reference`). It isn't reworked |
+| `source` | audio | 0–1 | The recording an `edit` reworks (`supports.edits`) |
+
+Parameters (vocabulary):
+
+| Parameter | Type | Meaning |
+|---|---|---|
+| `duration_s` | number | The target length. Absent: the model plans one from the caption and lyrics. Reported as `effective.duration_s` either way. Within the offer's `limits.min_duration_s` and `max_duration_s` |
+| `language` | BCP 47 | The language the vocals are sung in. Absent: inferred from the lyrics and reported as `effective.language`. Gate: `supports.languages` |
+| `planning` | `full` · `melody` · `off` | Whether the model writes a score before it sings: chord-annotated, melody only, or none. Default: the offer's own. Ignored when `score` is given, since the score is the plan. Gate: `supports.score` |
+| `edit` | object | `{kind, strength?, start_s?, end_s?, before_s?, after_s?}`, see below. Needs `source`. Gate: `supports.edits` |
+| `anchors` | object | `{bpm?, key?, time_signature?}`: musical anchors the plan should keep. `bpm` is a number; `key` a tonic and mode (`"F# minor"`); `time_signature` a fraction (`"4/4"`). Warn: `anchors_ignored` |
+| `timestamps` | boolean | Asks for word and line timestamps (§4.7.3). Warn: `timestamps_unavailable` |
+| `seed`, `quality`, `output` | | As §4.2 and §4.7.4 |
+
+**Edits** rework `source` (ACE-Step 1.5 today):
+- **`cover`:** a new performance of the source's song in the caption's style. `strength` 0–1 says how far from the
+  source it may go (default 0.5).
+- **`repaint`:** the span `start_s`–`end_s` of the source is made again, and the rest is kept. The span is at most
+  `limits.max_repaint_s`.
+- **`extend`:** `before_s` and/or `after_s` seconds of music are added around the source, which plays unchanged in
+  the middle.
+
+A request with `edit` and no `source`, or `source` and no `edit`, is 400 `invalid_request`. A `score` without
+`lyrics` is 400 too: the words the score was planned from travel with it. How a supplied score and the lyrics
+combine is the port's call (AB-T-0350); the engine reports the words it sang in `effective.lyrics` when they differ
+from the request.
+
+**No `count`.** A song is minutes of audio, and two of the three offers take longer than real time to make one. A
+client that wants variations submits jobs, each with its own seed.
+
+#### 4.7.2 Section tags
+
+Lyrics are plain text, one sung line per line, in sections introduced by a tag on a line of its own:
+
+`[intro]`, `[verse]`, `[pre-chorus]`, `[chorus]`, `[bridge]`, `[solo]`, `[instrumental]`, `[outro]`
+
+A tag may carry a short direction after a dash: `[chorus - anthemic, full band]`. Tags are case-insensitive.
+Lyrics with no tag are one `[verse]`. This is the profile's one label set (§4.2 rule 10): the engine writes each
+model's own syntax, YuE2's lowercase `[verse]`, ACE-Step's `[Verse]` and `[Chorus - …]`, MiniMax's tags. A tag the
+offer's `supports.sections` doesn't list is mapped to the nearest one it does, or dropped, with `section_unsupported`.
+
+#### 4.7.3 Outputs, effective values and progress
+
+Outputs:
+
+| Output | Kind | Count | Meaning |
+|---|---|---|---|
+| `song` | audio | 1 | Stereo, at the model's rate: `supports.sample_rate` and `channels` say which, and the output reports `sample_rate`, `channels` and `duration_s` (§3.4). ACE-Step and YuE2 are 48 kHz; MiniMax's native rate is 32 or 44.1 kHz (the port resolves it). A client that needs 48 kHz asks through `output.sample_rate` and gets `audio_resampled` where the model can't |
+| `score` | text | 0–1 | ABC: the score the model planned, or the one it was given. The editable artifact. Only from an offer with `supports.score` |
+| `timestamps` | data | 0–1 | `{lines: [{text, start_s, end_s}], words?: [{text, start_s, end_s}]}`, when `timestamps: true` on an offer with `supports.timestamps`. ACE-Step emits LRC lines; `words` where the model has them |
+
+**Effective values.** `effective.seed` is always reported, and an unseeded request gets a seed the engine picks (as
+§4.6: never a fixed default). `effective.duration_s` is always reported. `effective.language` when inferred,
+`effective.anchors` when the planner chose or changed them (the bpm, key and time signature the song has), and
+`effective.lyrics` when the words sung differ from the request.
+
+**Warnings:**
+- `song_truncated`: the model hit its length or token cap before the lyrics ended (YuE2's 9000 semantic tokens,
+  ACE-Step's 600 s). `effective.duration_s` says where it stopped, and the message names the last section sung;
+- `duration_missed`: `duration_s` wasn't met within the offer's tolerance (reused from `speak`);
+- `section_unsupported`, `anchors_ignored` and `timestamps_unavailable`, above;
+- `audio_resampled` and `audio_downmixed` for `reference` and `source`, as §4.2.
+
+An `edit` span outside the source, or longer than `max_repaint_s`, is 422 `out_of_limits`. A `reference` or
+`source` longer than the offer's `max_reference_s` or `max_source_s` is 422 too, not trimmed: trimming a song
+changes what it is.
+
+**Progress.** The three models run phases of different kinds, so an honest progress report names the phase and
+counts within it:
+
+| Offer | Phases |
+|---|---|
+| YuE2-3B | `plan` (score tokens) → `generate` (semantic tokens, up to 9000) → `synthesize` (ODE steps × chunks) → `decode` (VAE tiles) |
+| ACE-Step 1.5 | `plan` (planner tokens; skipped at `draft`) → `denoise` (8 steps turbo, 50 base) → `decode` (VAE) |
+| MiniMax Music 3 | `plan` (global LM tokens) → `detail` (local LM, per frame) → `denoise` (flow steps) → `decode` (VAE) |
+
+Within Base's `running` stage the engine reports `step` and `steps` for the current phase, names the phase in
+`message`, and sets `fraction` only once the whole is estimable, which is after the plan fixes the duration. §3.4's
+`media_s` applies to the decode. A `phase` field on progress, a short id from this list, would serve clients
+better than parsing `message`; §3.4 now proposes it. Cancelling stops at the next token or step. None of the three
+streams (`supports.stream: false`): a song's first seconds exist only after its plan.
+
+**MCP.** The tool is `audio_compose`. `lyrics`, `caption` and `score` are plain strings; `reference` and `source`
+are data URLs or `upload:<id>`. A song is never under 1 MB, so the result carries a `resource_link` and the text
+summary, never an inline `audio` block (§3.5). The three licence lines, with the notices and notes of §4.7.5, are on
+the tool's description (Base §15).
+
+**MLXEngine capability.** AB-A-0201 and AB-A-0202 ask mlx-engine for one music `Capability` covering the three
+models. The operation maps onto the request surface those asks propose field for field, so the adapter has nothing
+to invent:
+
+| Operation | Capability (AB-A-0201, AB-A-0202) |
+|---|---|
+| `caption` | `style` / `caption` |
+| `lyrics`, section tags (§4.7.2) | `lyrics`, with the engine writing each model's tag syntax |
+| `score`, `planning` | `score`, `planning` (`.full` / `.melody` / `.off`) |
+| `reference` | `referenceAudio` |
+| `source` + `edit` | `sourceAudio` + `editMode` (`cover` / `repaint` / `extend`) with its strength or span |
+| `anchors` | `anchors` (`bpm`, `key`, `timeSignature`) |
+| `duration_s` | `durationSeconds` / `maxSeconds` |
+| `language` | `vocalLanguage` |
+| `timestamps` | timestamps out |
+| `quality` | steps, `guidanceScale` and the checkpoint, by the mapping in §4.7.4; raw values only as extensions (`x-acestep.steps`) |
+| `song`, `score`, `timestamps` out; `song_truncated` | `audio`, `score`, timestamps, `truncated` |
+| `supports` keys (§4.8) | the per-package feature flags the asks call for (`score`, `referenceAudio`, `sourceAudio`, `anchors`, timestamps) |
+| Progress phases | the named phases with counts the asks propose |
+
+#### 4.7.4 Quality
+
+`quality` picks the step count, the guidance and, where the operator installed more than one checkpoint, the
+checkpoint, as Image does (OQ-4). Clients never send diffusion settings. The mapping below is the recommendation for
+the MLXEngine adapter; the ports settle the numbers at their gates (E25, AB-T-0350, AB-T-0351), and an offer lists
+only the tiers it serves.
+
+| Offer | `draft` | `standard` | `best` |
+|---|---|---|---|
+| ACE-Step 1.5 | Turbo, 8 Euler steps, no CFG, planner off: the caption, lyrics and anchors drive the DiT directly. The fastest song in the fleet, 2–3× real time on an M3 Max | Turbo, 8 steps, the 1.7B planner on | The base or sft checkpoint, 50 steps, CFG 7: offered only when the operator installed it |
+| YuE2-3B | — | The package's default ODE steps; CFG 1.0 with a score (`full`, `melody`), 1.01 without (`off`) | More ODE steps and CFG 1.2, the card's knob. Best-of-n is a client's job: n jobs, n seeds |
+| MiniMax Music 3 | — | The port's default flow steps on the mxfp8 weights, which the port recommends for lyric fidelity | The same steps on the bf16 weights |
+
+**A fixed-step turbo.** ACE-Step's turbo checkpoint is distilled for 8 steps, so `quality` can't buy it more steps;
+the tiers change what else runs (the planner) or which checkpoint. An engine that wants to expose the step count
+anyway does it as an extension. MXFP4 weights are never a tier for MiniMax: mlx-audio warns they drop or alter
+requested words.
+
+#### 4.7.5 The three offers and their licences
+
+The offers, with their licence fields, `supports` and `limits` (other fields left out; the language lists are cut
+short, the packages declare the full ones):
+
+```json
+{
+  "id": "ace-step-1.5",
+  "title": "ACE-Step 1.5",
+  "default": true,
+  "quality_tiers": ["draft", "standard"],
+  "memory_class": "large",
+  "speed_class": "fast",
+  "license": {
+    "spdx": "MIT",
+    "commercial_use": true,
+    "terms_url": "https://github.com/ace-step/ACE-Step-1.5/blob/main/LICENSE"
+  },
+  "notes": "Write the caption yourself and set language: the planner's own captions can drift off-topic or into the wrong language, and the base checkpoint sometimes skips verse lines. Covers and supplied lyrics may need the original song's rights; this model's licence doesn't grant them.",
+  "supports": {
+    "languages": ["en", "zh", "ja", "ko", "es", "fr", "de", "it", "pt", "ru"],
+    "instrumental": true,
+    "reference": true,
+    "edits": ["cover", "repaint", "extend"],
+    "anchors": ["bpm", "key", "time_signature"],
+    "timestamps": true,
+    "sample_rate": 48000,
+    "channels": 2
+  },
+  "limits": {"min_duration_s": 10, "max_duration_s": 600, "max_repaint_s": 90}
+}
+```
 
 ```json
 {
   "id": "yue2-3b",
   "title": "YuE2 3B",
   "named_only": true,
+  "quality_tiers": ["standard", "best"],
+  "memory_class": "large",
+  "speed_class": "slow",
   "license": {
     "spdx": "CC-BY-NC-4.0",
     "commercial_use": false,
@@ -496,17 +711,62 @@ take. Whatever the shape, these are the offer's licence fields (its other fields
     "accepted_required": true,
     "notice": "YuE2-3B by M-A-P (huggingface.co/m-a-p/YuE2-3B), CC BY-NC 4.0. Non-commercial use only: don't sell, license or monetize songs made with it, or use them in paid or client work."
   },
-  "notes": "Covers and supplied lyrics may need the original song's rights; this model's licence doesn't grant them."
+  "notes": "Covers and supplied lyrics may need the original song's rights; this model's licence doesn't grant them.",
+  "supports": {
+    "languages": ["en", "zh"],
+    "score": "optional",
+    "sample_rate": 48000,
+    "channels": 2
+  },
+  "limits": {"max_duration_s": 360}
 }
 ```
 
-- **`named_only`.** The model is never chosen by default (Base §6 rule 2), so a client that names no model never
-  gets a non-commercial song.
+```json
+{
+  "id": "minimax-music3",
+  "title": "MiniMax Music 3",
+  "quality_tiers": ["standard", "best"],
+  "memory_class": "xlarge",
+  "speed_class": "standard",
+  "license": {
+    "spdx": "LicenseRef-MiniMax-Music3-Community",
+    "commercial_use": true,
+    "terms_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
+    "accepted_required": true,
+    "notice": "Made with MiniMax-Music3 (huggingface.co/MiniMaxAI/MiniMax-Music3), under the MiniMax-Music3 Community License."
+  },
+  "notes": "Commercial use needs MiniMax's written authorization only above USD 20M aggregate yearly revenue from products that use it (licence §3.2). Anyone offering this engine as a hosted generation service must keep technical and organizational safeguards against infringing outputs (§4), and the acceptable-use policy asks that machine-generated content be disclosed in public settings. The best lyric adherence of the three; no reference audio, score or edits. Covers and supplied lyrics may need the original song's rights; this model's licence doesn't grant them.",
+  "supports": {
+    "languages": ["en", "zh"],
+    "instrumental": true,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "limits": {"max_duration_s": 300}
+}
+```
+
+The operation's own `limits.max_duration_s` is 600, the most any offer allows; each offer narrows it (RFC 0003 §6.4).
+
+**ACE-Step 1.5: the commercial default.** The offer a client that names no model gets, at `draft` and `standard`.
+- **`spdx: MIT`, `commercial_use: true`.** The weights' grant is the GitHub LICENSE, the HF card's licence tag and
+  the card's own sentence on commercial use; the HF repos carry no LICENSE file, and the Oobleck VAE's initialisation
+  isn't stated (survey §3.1). Both go in the package manifest, not the offer: MIT asks for nothing to be shown with a
+  song, so the offer has no `notice`.
+- **`notes`** carry the two things a client should know before it trusts the planner (survey §3.1): its own captions
+  drift, so a client writes the caption and sets `language`; and the base checkpoint can skip lines. The covers line is
+  the same as YuE2's, because the problem is the same for every music model.
+- **`quality_tiers`** list `best` only when the operator installed the base or sft checkpoint.
+
+**YuE2-3B: research only.** Unchanged from the decision of 2026-10-24 (AB-D-0073 reversed, AB-A-0200):
+- **`named_only`.** Never chosen by default (Base §6 rule 2), so a client that names no model never gets a
+  non-commercial song.
 - **`accepted_required`.** The operator accepts the terms before first use. The text they accept should say the
   outputs are non-commercial, not only name the licence.
 - **`commercial_use: false`.** A request with `policy.license: commercial-use` is refused with 422 `policy_unmet`
-  (Base §10.3). A commercial client should send that policy by default, and drop it only in a mode the user chooses
-  for personal, non-commercial work.
+  (Base §10.3). A commercial client sends that policy by default, and drops it only in a mode the user chooses for
+  personal, non-commercial work.
 - **`notice`.** Running the model copies the weights, and CC BY-NC 4.0 §2(a)(1) licenses that only for
   non-commercial purposes. So the songs are non-commercial whoever runs the engine. MES keeps the weights out of the
   client, so a commercial client doesn't distribute them, but that doesn't make the songs commercially usable. A
@@ -516,11 +776,41 @@ take. Whatever the shape, these are the offer's licence fields (its other fields
   which no model licence grants. That's usage guidance rather than the model's terms, so it goes in `notes` (Base §6
   rule 5).
 
-Base shows the notice on the offer, on the model's line in the MCP tool description (§15), and in every result's
-`provenance.model.license`. It doesn't yet require a client to show it with the result, and nothing carries it in
-the saved file (§3.7).
+**MiniMax Music 3: commercial, with a name to display.** The operator accepted the MiniMax-Music3 Community License
+on 2026-10-24 (AB-D-0157): the USD 20 M revenue threshold, the UI display requirement and the hosted-service
+safeguards duty.
+- **`spdx: LicenseRef-MiniMax-Music3-Community`**, `terms_url` the HF LICENSE. The licence is MIT-shaped with
+  conditions, and its lineage is permissive throughout (Qwen3-8B Apache-2.0, a stable-audio-tools DiT and a DAC VAE,
+  both MIT).
+- **`commercial_use: true`.** The licence grants commercial use. Its §3.2 threshold binds the operator's revenue,
+  not each song, and the operator has accepted it; so a `policy.license: commercial-use` request may run here.
+  `accepted_required: true` records that acceptance, as A-6 asks for every licence with a threshold.
+- **`notice`** carries `MiniMax-Music3`, because §3.1 of the licence requires a commercial product that uses the
+  model to display that name prominently. The notice is the text a client shows, so it is the display: a model
+  picker line, a line with the result, a credit in an export. It names the model as the licence spells it.
+- **`notes`** carry what binds an operator rather than a user: the §3.2 threshold, the §4 safeguards duty on anyone
+  who hosts the engine as a service, and the acceptable-use policy's disclosure item. None of it changes a request,
+  so none of it is `notice` (Base §6 rule 5).
 
-### 4.7 `supports` keys (RFC 0003)
+**A-8 and A-9 when `commercial_use` is `true`.** §3.7's proposals keyed the duty to show a notice to
+`commercial_use` not being `true`. MiniMax breaks that key: commercial use is allowed, and the one thing its licence
+insists on is a displayed name. So A-8 and A-9 are revised (§3.7, §8):
+- a client MUST show `license.notice` with a result whose provenance carries it, whatever `commercial_use` says, and
+  the MCP text summary carries it; `notice` is reserved for text the terms require to be shown (an attribution, a
+  display name, a non-commercial restriction), and advisory text goes in `notes`;
+- the engine SHOULD write `spdx` and `notice` into the output file whenever a job's licences carry a notice or
+  aren't all `commercial_use: true`.
+
+For MiniMax, that puts `MiniMax-Music3` on the offer, on the MCP tool's model line (Base §15), on every result, and
+in the file's tags. The engine operator's own UI shows it on the model's card (MESEngineUI), so the operator's
+product meets §3.1 too.
+
+**What the three have in common.** The covers sentence is in every `notes`, since no music licence grants rights
+to a song someone else wrote. Every offer declares `sample_rate` and `channels`, so a client knows before it asks
+what it will get. And every offer's weights stay in the engine: a client distributes none of them, whichever licence
+applies.
+
+### 4.8 `supports` keys (RFC 0003)
 
 | Key | Operations | Type | Absent | Class |
 |---|---|---|---|---|
@@ -538,27 +828,37 @@ the saved file (§3.7).
 | `edits` | `edit_speech` | `[kind]` | `[]` | Gate: `edit.kind` |
 | `transcript` | `edit_speech` | `required` · `optional` · `unused` | `optional` | Gate: `required` needs `transcript` |
 | `keeps_length` | `edit_speech` | boolean | `false` | Fact |
+| `instrumental` | `compose` | boolean | `false` | Gate: a request without `lyrics` |
+| `score` | `compose` | `unused` · `optional` | `unused` | Gate: the `score` input and `planning`. Fact: the `score` output |
+| `reference` | `compose` | boolean | `false` | Gate: the `reference` input |
+| `edits` | `compose` | `[kind]` | `[]` | Gate: `edit.kind`, and the `source` input |
+| `sections` | `compose` | `[tag]` | the eight of §4.7.2 | Warn: `section_unsupported` |
+| `anchors` | `compose` | `[field]` | `[]` | Warn: `anchors_ignored` |
+| `timestamps` | `compose` | boolean | `false` | Warn: `timestamps_unavailable` |
 | `sample_rate` | all | integer | — | Fact |
-| `channels` | `generate` | integer | — | Fact |
+| `channels` | `generate`, `compose` | integer | — | Fact |
 
-Limit fields: `max_text_chars`, `max_voice_ref_s`, and `max_duration_s`: an edit's input, or a generated
-sound's length.
+Limit fields: `max_text_chars`, `max_voice_ref_s`, and `max_duration_s`: an edit's input, a generated sound's
+length, or a song's. For `compose` also `min_duration_s`, `max_lyrics_chars`, `max_reference_s`, `max_source_s` and
+`max_repaint_s` (§4.7.3).
 
 The Base keys `stream`, `seed` and `voices` apply too.
 
-### 4.8 Warnings and helper roles
+### 4.9 Warnings and helper roles
 
 - **Warnings:**
   - `audio_resampled` and `audio_downmixed`;
   - `voice_ref_trimmed`: the reference was clipped to the model's limit;
   - `duration_missed`: `target_duration_s` wasn't met within the offer's tolerance;
   - `cue_unsupported`: a cue was removed;
-  - `emotion_intensity_ignored`.
+  - `emotion_intensity_ignored`;
+  - `song_truncated`, `section_unsupported`, `anchors_ignored` and `timestamps_unavailable` (§4.7.3).
 - **Effective values:** a language the model detected, when the request named none, is reported as
-  `effective.language`.
+  `effective.language`. A song reports `effective.duration_s` always, and `effective.anchors` and `effective.lyrics`
+  when the plan changed them (§4.7.3).
 - **Helper role:** `prompt_enhance`, as in Image, for a model that rewrites a voice description or an instruction.
 
-### 4.9 Conformance ideas (AUDIO-nnn)
+### 4.10 Conformance ideas (AUDIO-nnn)
 
 - Outputs report `sample_rate`, `channels` and `duration_s`, and the file agrees.
 - Every MUST input type is accepted.
@@ -570,14 +870,19 @@ The Base keys `stream`, `seed` and `voices` apply too.
   sample used as `voice_ref` with `effective.text` speaks.
 - `generate` returns `count` sounds, each `duration_s` long to the frame, each with its seed; the same seed
   reproduces a sound; an unseeded request reports the seed it used.
+- `compose` returns one song with `sample_rate`, `channels`, `duration_s` and its seed, and `effective.duration_s`;
+  the same seed reproduces it; an unseeded request reports the seed it used; `edit` without `source` and `score`
+  without `lyrics` are 400; a `score`, `reference` or `edit` sent to an offer without the key is 422
+  `unsupported_parameter`; a request that names no model never gets YuE2-3B; a result from an offer whose licence has
+  a `notice` carries that notice in the MCP text summary (A-8); an `extend` result is `before_s` + source + `after_s`
+  long, to the frame.
 - Streamed chunks concatenate to the final output, sample-exact (RFC 0002).
 - An asset survives two jobs and is gone after `DELETE` (RFC 0001).
 
-### 4.10 Later, and outside
+### 4.11 Later, and outside
 
 - **Later (generative):**
-  - `audio.speak_dialog`: two-speaker scenes, Dia2, with a structured `script` so clients never write `[S1]`;
-  - music: YuE2-3B, as a non-commercial offer (§4.6).
+  - `audio.speak_dialog`: two-speaker scenes, Dia2, with a structured `script` so clients never write `[S1]`.
 - **Later (tools):**
   - `audio.separate`: HTDemucs, Mel-Band-RoFormer;
   - `audio.enhance`: AudioPolishKit loudness, and AuK's enhancement family;
@@ -612,7 +917,9 @@ model. Resident sizes are the packages' declared `residentBytes`, with the decla
 | Model | Resident | Operation | Why later |
 |---|---|---|---|
 | Dia2-2B | 4.5 + 3.0 GB | `speak_dialog`: two speakers, English, up to 120 s | Generative, but scenes aren't in the first set. `(laughs)` is accepted and rarely performed |
-| YuE2-3B | ≈8.5 GB bf16, estimated (no package yet) | Music: lyrics and a style prompt to a song with vocals, 48 kHz stereo | Music isn't in the first set (A-7). Non-commercial (CC BY-NC 4.0), `named_only` (§4.6) |
+| ACE-Step 1.5 (turbo + 1.7B planner) | ≈18.7 GB bf16 peak (full tier), ≈12.5 GB (lite tier): estimated, from the arraypress MLX-Swift measurements on an M3 Max; no package yet (E25, V0 running) | `compose`, the default: caption and lyrics, reference audio, cover/repaint/extend, bpm/key/time-signature anchors, word timestamps; 10–600 s, 48 kHz stereo | Joins with its package (A-10). MIT, `commercial_use: true` (§4.7.5) |
+| YuE2-3B | ≈8.5 GB bf16: estimated, no package yet (AB-T-0350) | `compose`, `named_only`: lyrics and a style caption to a song with vocals through an editable ABC score; up to 360 s, 48 kHz stereo | Non-commercial (CC BY-NC 4.0), `accepted_required` (§4.7.5) |
+| MiniMax Music 3 | ≈28.5 GB bf16, ≈15 GB mxfp8: estimated, from the mlx-community shards; no package yet (AB-T-0351, queued behind E25) | `compose`: caption and lyrics; up to 300 s; stereo at 32 or 44.1 kHz (the port resolves which) | Community licence accepted (AB-D-0157): `commercial_use: true`, a `MiniMax-Music3` notice to display (§4.7.5). 32 GB Macs are the floor at 8-bit |
 | HTDemucs v4 / Mel-Band-RoFormer | 0.9 + 6.7 GB / 0.3–0.7 GB | `separate`: vocals and instrumental, 44.1 kHz stereo | Tools |
 | AudioPolishKit | no weights (DSP) | `enhance`: loudness, with input and output LUFS | Tools |
 | Mimi codec | 0.8 GB | Encode and decode codes | Tools, if ever: codes mean nothing across engines |
@@ -702,6 +1009,7 @@ inherits whatever it chose.
 | A-4 | Per-offer `supports` and `voices`? | Yes, in Base, with keys defined per profile (§3.3). **Decided:** a named model's voices are listed by `GET` and `mes_list_voices`, not inline. RFC 0003 |
 | A-7 | What does Audio 0.1 cover? | **Decided:** generative only. Voice design, speech with a built-in or cloned voice, speech editing modelled on AuK, sound generation (non-verbal, MOSS-SoundEffect), and normalized emotions and nonverbal cues (§4). Tools later; STT and other interpretive models out |
 | A-5 | Order: Audio before Video, or shared time conventions first? | Shared conventions in Base first (§7), then whichever profile has a client waiting |
-| A-6 | Licences that allow commercial use only below a revenue or user threshold? | Add `commercial_use: "conditional"`, with the threshold in `notice`. `license: commercial-use` admits it only once the operator has accepted the terms (`accepted_required`) |
-| A-8 | Must a client show a non-commercial licence's notice with the result? | Yes: a MUST in Base §10.2 whenever a licence in `provenance` isn't `commercial_use: true`, and the MCP text summary carries the notice (§3.7) |
-| A-9 | Should the licence travel in the output file? | Yes: the engine SHOULD write the `spdx` id and `notice` into the file's metadata when a job's licences aren't all commercial, and MAY for every output (§3.7) |
+| A-6 | Licences that allow commercial use only below a revenue or user threshold? | Add `commercial_use: "conditional"`, with the threshold in `notice`. `license: commercial-use` admits it only once the operator has accepted the terms (`accepted_required`). MiniMax Music 3 shows the accepted case: the operator accepted its threshold (AB-D-0157), so the offer declares `true` with `accepted_required` and the threshold in `notes` (§4.7.5). `conditional` is for a threshold nobody has accepted |
+| A-8 | Must a client show a licence's notice with the result? | Yes, and not only for non-commercial licences: a MUST in Base §10.2 whenever a licence in `provenance` has a `notice`, and the MCP text summary carries it. A `notice` exists only when the terms require something shown; a non-commercial licence without one is shown as `spdx` and `terms_url` (§3.7, revised for MiniMax's display duty) |
+| A-9 | Should the licence travel in the output file? | Yes: the engine SHOULD write the `spdx` id and `notice` into the file's metadata when a job's licences carry a notice or aren't all commercial, and MAY for every output (§3.7) |
+| A-10 | Music: a `supports` key on `audio.generate`, or an operation of its own? And when? | **Decided (2026-10-24, AB-D-0158):** its own operation, `audio.compose` (§4.7), with ACE-Step 1.5 as the commercial default, YuE2-3B `named_only` and MiniMax Music 3 under its accepted community licence (§4.7.5). Schedule, recommended: it ships in Audio 0.1 if ACE-Step's engine package exists when the profile is published (E25), else as the first addition after. The operation is defined now so the MLXEngine music capability (AB-A-0201, AB-A-0202) maps onto it |

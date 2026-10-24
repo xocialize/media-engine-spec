@@ -395,3 +395,17 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
       the transport then resumed that POST stream instead of opening the standalone one. The engine now drops a
       `Last-Event-ID` from a session's first GET.
     - Progress sent before the stream opens now waits and goes out once it does.
+
+## Next: the Audio profile
+
+Drafting, from [`docs/AUDIO-EVALUATION.md`](AUDIO-EVALUATION.md) and RFCs 0001–0003. The profile has no schemas or
+examples yet: `schemas/v0/profiles/` holds Image only.
+
+- **TODO (A-10, 2026-10-24):** when `spec/profiles/audio.md` is drafted, add `schemas/v0/profiles/audio/operations.json`
+  and `vocabulary.schema.json` covering `audio.compose` (evaluation §4.7: `caption`, `lyrics`, `score`, `reference`,
+  `source`; `duration_s`, `language`, `planning`, `edit`, `anchors`, `timestamps`; outputs `song`, `score`,
+  `timestamps`), and under `examples/v0/` a `job-request-compose.json`, an `operations-audio-compose.json` descriptor
+  with the three offers of §4.7.5 (ACE-Step 1.5 default, YuE2-3B `named_only`, MiniMax Music 3 with its display
+  notice), and a `job-holding-compose.json` showing `effective.duration_s`, `effective.anchors` and `song_truncated`.
+  Base needs `supports` and per-offer `limits` on the offer schema first (RFC 0003), `min_duration_s` in limits, and
+  `phase` and `media_s` on progress (evaluation §3.4).
