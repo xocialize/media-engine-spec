@@ -395,6 +395,36 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
       the transport then resumed that POST stream instead of opening the standalone one. The engine now drops a
       `Last-Event-ID` from a session's first GET.
     - Progress sent before the stream opens now waits and goes out once it does.
+- **`v0.5.0`** (2026-10-27; AB-A-0207, Gaea G-7, G-14, G-16, G-18, G-19): MESKit for Gaea, a server whose models are
+  plugins that each run in a process of their own. The spec is unchanged.
+  - **MESEngineUI, Plugins page:** an engine attaches an `EnginePluginBackend` (`console.attach(backend, plugins:)`) and
+    the console gains a Plugins section. Add a plugin by Git repo URL, see its version and a newer release, update it,
+    roll it back, switch it or any of its models on and off, and remove it. A plugin signed by a team that isn't
+    trusted yet comes back as `PluginInstallOutcome.needsTrust`, and the operator trusts the team or declines. The
+    trusted teams are listed, and any but the engine's own can be removed. Types: `EnginePlugin`, `EngineTeam`,
+    `EngineTrustedTeam`, `PluginTrustRequest`, `EngineUpdate`.
+  - **MESEngineUI, System page across processes:** `SystemMonitorStore(processes:)` takes an `EngineProcessSource`:
+    `.currentProcess` (the default, as before), `.processes` (the engine lists its host and worker pids, read with
+    `proc_pid_rusage` `ri_phys_footprint`), or `.readings` (the engine supplies the numbers). The Memory tab shows one
+    row per process and the total, and the footprint history is the total. `processSource` can be set after the engine
+    starts its workers. `SystemTab` is public and the selected tab lives on the store (`store.tab`).
+  - **`EngineModel`:** `plugin`, `version` and `update`. The Models page shows them, links a model to its plugin, and
+    its Download action is documented as download without load (Gaea's GPP `materialize`).
+  - **`ModelEnablement` behind `ModelEnablementStore`:** `init(store:)` loads from any store (Gaea's is its database)
+    and throws what the store throws; `JSONFileEnablementStore` is the default and `init(file:)` is unchanged, as is the
+    JSON.
+  - **MESClientKit, `EnginePicker`:** for a client that knows several servers. Per job it keeps the candidates that
+    offer the operation, the named model (or one that serves the requested tier) and the requested adapters, and that
+    are reachable and not `unavailable`. It ranks the pinned server first, then by jobs ahead (waiting plus running),
+    counting `loadPenalty` (2) more where the model isn't resident. `EnginePin.prefer` falls back and `.only` refuses.
+    `EngineCandidate.available(pairings:discovered:)` keeps only paired engines that discovery sees.
+  - **Galleries and tests:** `mes-console-gallery` puts the mock's models in two mock plugins and runs two real worker
+    processes, so the Plugins page and the per-process System page work over the mock engine. `--snapshot <dir>`
+    renders the pages offscreen. New tests: the picker against two live mock servers that offer different models, and
+    a new MESEngineUITests target (the Plugins page model, process readings, enablement stores). 89 tests pass (72
+    before); the mock engine still conforms (39 passed, 5 skipped in open mode) and so does `mes` (11 of 11).
+  - **Source changes for consumers:** `ConsoleSection` gains `.plugins`, so an exhaustive `switch` over it needs a case.
+    Iterate `console.sections` instead of `ConsoleSection.allCases`.
 
 ## Next: the Audio profile
 

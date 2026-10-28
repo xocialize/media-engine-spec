@@ -330,6 +330,12 @@ private struct ModelCard: View {
                     }
                     if let bytes = model.footprintBytes { Pill(text: ConsoleFormat.memory(bytes), symbol: "memorychip") }
                     if let speed = model.speedClass { Pill(text: speed.rawValue.capitalized, symbol: "speedometer") }
+                    if let plugin = model.plugin {
+                        Pill(text: [plugin.title, model.version].compactMap { $0 }.joined(separator: " "),
+                             symbol: "puzzlepiece.extension")
+                    } else if let version = model.version {
+                        Pill(text: version, symbol: "tag")
+                    }
                     ForEach(model.tags, id: \.self) { Pill(text: $0) }
                 }
             }
@@ -364,6 +370,7 @@ private struct ModelCard: View {
         if model.roles.contains(where: \.isDefault) && model.enabled { out.append(("Default", "star.fill", Tokens.Color.accent)) }
         if model.optIn { out.append(("Opt-in", "checkmark.seal", Tokens.Color.working)) }
         if model.resident { out.append(("In memory", "bolt.fill", Tokens.Color.ready)) }
+        if let update = model.update { out.append(("\(update.version) available", "arrow.down.circle", Tokens.Color.accent)) }
         if model.unavailable != nil { out.append(("Unavailable", "exclamationmark.triangle.fill", Tokens.Color.failure)) }
         return out
     }
@@ -411,7 +418,13 @@ struct ModelActions: View {
 
     var body: some View {
         if case .notDownloaded = console.install(of: model) {
-            Button("Download Now", systemImage: "arrow.down.circle") { console.download(model: model.id) }
+            Button("Download Without Loading", systemImage: "arrow.down.circle") { console.download(model: model.id) }
+        }
+        if let plugin = model.plugin, console.hasPlugins {
+            Button("Show Plugin", systemImage: "puzzlepiece.extension") {
+                console.selectedPluginID = plugin.id
+                console.section = .plugins
+            }
         }
         if model.resident {
             Button("Release from Memory", systemImage: "eject") { console.unload(model: model.id) }

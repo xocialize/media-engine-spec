@@ -24,8 +24,9 @@ swift run mes-conformance engine https://192.168.1.20:17600/mes/v0 --pair
 **Client tests** run the client against a scenario-mode mock engine that records every request and plays a
 situation: busy, no capacity, a failed or cancelled job, an unknown error code, or outputs gone. For each scenario the
 client does one task, generating an image from a prompt and saving it. The suite then judges it from the engine's
-side: what it sent and when, what it left holding, and how it exited. The default client is `mes`. Any command-line
-client can be tested with a shell template:
+side: what it sent and when, what it left holding, and how it exited. The default client is `mes`. Gaea Lab, the reference
+client (Gaea G-14), is the app the suite runs against, taking that role over from Pixel Agency Lite. Any command-line client
+can be tested with a shell template:
 
 ```bash
 swift run mes-conformance client

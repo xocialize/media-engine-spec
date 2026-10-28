@@ -5,7 +5,7 @@ import Observation
 
 /// The console's sections.
 public enum ConsoleSection: String, CaseIterable, Identifiable, Sendable {
-    case queue, models, system
+    case queue, models, plugins, system
 
     public var id: String { rawValue }
 
@@ -13,6 +13,7 @@ public enum ConsoleSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .queue: "Queue"
         case .models: "Models"
+        case .plugins: "Plugins"
         case .system: "System"
         }
     }
@@ -21,6 +22,7 @@ public enum ConsoleSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .queue: "list.bullet.rectangle"
         case .models: "shippingbox"
+        case .plugins: "puzzlepiece.extension"
         case .system: "gauge.with.dots.needle.50percent"
         }
     }
@@ -79,9 +81,23 @@ public final class EngineConsoleModel {
     private(set) var downloads: [String: Double?] = [:]
     /// The last failure of a console action, shown until dismissed.
     var actionError: String?
-    var selectedModelID: String?
+    /// The model whose card is open on the Models page.
+    public var selectedModelID: String?
+
+    /// Installed plugins, when the engine has a Plugins page (`attach(_:plugins:)`).
+    public internal(set) var plugins: [EnginePlugin] = []
+    public internal(set) var trustedTeams: [EngineTrustedTeam] = []
+    /// Whether the console shows the Plugins page.
+    public private(set) var hasPlugins = false
+    /// Adds, updates and rollbacks in flight, by plugin id (or repo URL for an add): fraction done, nil while unknown.
+    var pluginWork: [String: Double?] = [:]
+    /// A plugin signed by a team that isn't trusted yet, waiting for the operator.
+    var trustPrompt: PluginTrustRequest?
+    /// The plugin highlighted on the Plugins page.
+    public var selectedPluginID: String?
 
     @ObservationIgnored private var backend: (any EngineConsoleBackend)?
+    @ObservationIgnored var pluginBackend: (any EnginePluginBackend)?
     @ObservationIgnored private var activityTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
@@ -89,9 +105,17 @@ public final class EngineConsoleModel {
         self.info = info
     }
 
-    /// Connects the console to the running engine: follows its activity and loads its models.
-    public func attach(_ backend: any EngineConsoleBackend) {
+    /// The sections this engine has: Plugins only when it was attached with a plugin backend.
+    public var sections: [ConsoleSection] {
+        ConsoleSection.allCases.filter { $0 != .plugins || hasPlugins }
+    }
+
+    /// Connects the console to the running engine: follows its activity and loads its models, and its plugins when it
+    /// has a Plugins page.
+    public func attach(_ backend: any EngineConsoleBackend, plugins: (any EnginePluginBackend)? = nil) {
         self.backend = backend
+        pluginBackend = plugins
+        hasPlugins = plugins != nil
         status = .serving
         activityTask?.cancel()
         activityTask = Task { [weak self] in
@@ -111,6 +135,7 @@ public final class EngineConsoleModel {
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshModels()
+                await self?.refreshPlugins()
                 try? await Task.sleep(for: .seconds(15))
             }
         }

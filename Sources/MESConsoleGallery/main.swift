@@ -7,20 +7,25 @@ import MockEngineCore
 import SwiftUI
 
 // mes-console-gallery: MESEngineUI's console over the mock engine, with a job submitted every few seconds, so the Queue,
-// the Models' enabled set, the System page and the menu-bar item can be seen without real models. It's also the smallest
-// worked example of an engine app: a server, an enabled set, a backend, the window and the menu-bar item.
+// the Models' enabled set, the Plugins page, the System page and the menu-bar item can be seen without real models. It's
+// also the smallest worked example of an engine app: a server, an enabled set, a backend, the window and the menu-bar
+// item. Its models come in mock plugins (MockPlugins.swift), as Gaea's do, and two real worker processes hold memory, so
+// the System page sums a host and its workers.
 //
 //     swift run mes-console-gallery
+//     swift run mes-console-gallery --snapshot /tmp/console   # renders the pages to PNGs offscreen, then quits
 
-/// The mock engine behind an enabled set, as a real engine's `descriptors()` honours one.
+/// The mock engine behind an enabled set, as a real engine's `descriptors()` honours one: a model is offered when it's
+/// on and its plugin is on and trusted.
 struct EnabledMockEngine: MediaEngine {
     let inner: MockImageEngine
     let enablement: ModelEnablement
+    let plugins: MockPluginStore
 
     func descriptors() async -> [Descriptor] {
         await inner.descriptors().compactMap { descriptor in
             var d = descriptor
-            d.models = d.models.filter { enablement.isEnabled($0.id, optIn: $0.namedOnly == true) }
+            d.models = d.models.filter { enablement.isEnabled($0.id, optIn: $0.namedOnly == true) && plugins.runs($0.id) }
             return d.models.isEmpty ? nil : d
         }
     }
@@ -33,6 +38,7 @@ struct MockConsoleBackend: EngineConsoleBackend {
     let server: MESEngineServer
     let engine: MockImageEngine
     let enablement: ModelEnablement
+    let plugins: MockPluginStore
 
     func activity() -> AsyncStream<EngineActivity> { server.activity() }
     func cancel(job id: String) async throws { try await server.cancel(job: id) }
@@ -50,6 +56,7 @@ struct MockConsoleBackend: EngineConsoleBackend {
                 let role = EngineModel.Role(operation: descriptor.operation, qualityTiers: offer.qualityTiers,
                                             isDefault: isDefault, namedOnly: optIn)
                 if byID[offer.id] == nil {
+                    let plugin = plugins.plugin(of: offer.id)
                     byID[offer.id] = EngineModel(
                         id: offer.id, title: offer.title.hasPrefix("Mock image") ? "Mock Image Model" : offer.title,
                         summary: optIn ? "A stand-in for a research-licensed model: offered only when named."
@@ -61,7 +68,9 @@ struct MockConsoleBackend: EngineConsoleBackend {
                         footprintBytes: optIn ? 9 << 30 : 512 << 20, install: optIn ? .notDownloaded(bytes: 6 << 30) : .builtIn,
                         resident: !optIn, source: optIn ? "example/mock-research" : nil,
                         sourceURL: optIn ? URL(string: "https://huggingface.co/example/mock-research") : nil,
-                        tags: optIn ? ["Work in progress"] : [])
+                        tags: optIn ? ["Work in progress"] : [],
+                        plugin: plugin.map { EngineModel.Plugin(id: $0.id, title: $0.title) }, version: plugin?.version,
+                        update: plugin?.update)
                 }
                 byID[offer.id]?.roles.append(role)
             }
@@ -91,13 +100,30 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
     private let menuBar = MenuBarPreferences()
     private var window: EngineConsoleWindowController?
     private var statusItem: EngineStatusItemController?
+    private var workers: [(process: Process, plugin: EnginePlugin)] = []
+    /// `--snapshot <dir>`: render the pages offscreen into `dir`, then quit.
+    private let snapshotDirectory: URL? = CommandLine.arguments.firstIndex(of: "--snapshot").flatMap { i in
+        i + 1 < CommandLine.arguments.count ? URL(fileURLWithPath: CommandLine.arguments[i + 1]) : nil
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = Self.mainMenu()
-        let window = EngineConsoleWindowController(console: console, system: system, menuBar: menuBar)
-        self.window = window
-        statusItem = EngineStatusItemController(console: console, system: system, menuBar: menuBar) { window.show($0) }
-        window.show(.queue)
+        let pluginStore = MockPluginStore()
+        // One worker per plugin, as Gaea runs them, each holding some memory; the System page reads them by pid.
+        workers = MockWorkers.start(pluginStore.plugins.enumerated().map { ($1, [640, 1536][$0 % 2]) })
+        let workerList = workers.map { ($0.process.processIdentifier, $0.plugin) }
+        system.processSource = .processes {
+            [EngineProcess.current(title: "MES Mock Engine")]
+                + workerList.map { pid, plugin in
+                    EngineProcess(id: plugin.id, title: plugin.title, detail: plugin.models.joined(separator: ", "), pid: pid)
+                }
+        }
+        if snapshotDirectory == nil {
+            let window = EngineConsoleWindowController(console: console, system: system, menuBar: menuBar)
+            self.window = window
+            statusItem = EngineStatusItemController(console: console, system: system, menuBar: menuBar) { window.show($0) }
+            window.show(.queue)
+        }
 
         let engine = MockImageEngine(stepDelay: .milliseconds(250), steps: 24)
         let enablement = ModelEnablement(file: nil)
@@ -106,18 +132,24 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
                                          spoolDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("mes-console-gallery"))
         config.advertise = false
         config.handlesShutdownSignals = false
-        let server = MESEngineServer(engine: EnabledMockEngine(inner: engine, enablement: enablement), configuration: config)
-        let backend = MockConsoleBackend(server: server, engine: engine, enablement: enablement)
+        let server = MESEngineServer(engine: EnabledMockEngine(inner: engine, enablement: enablement, plugins: pluginStore),
+                                     configuration: config)
+        let backend = MockConsoleBackend(server: server, engine: engine, enablement: enablement, plugins: pluginStore)
+        let pluginBackend = MockPluginBackend(store: pluginStore) { await server.reloadDescriptors() }
         let console = self.console
+        let snapshotDirectory = self.snapshotDirectory
         Task {
             do {
                 try await server.run { port in
                     await MainActor.run {
                         console.endpoint = "http://127.0.0.1:\(port)/mes/v0"
                         console.modeSummary = "Open mode · this Mac only"
-                        console.attach(backend)
+                        console.attach(backend, plugins: pluginBackend)
                     }
                     Task { await Self.submitJobs(port: port) }
+                    if let snapshotDirectory {
+                        Task { @MainActor in await self.renderSnapshots(to: snapshotDirectory) }
+                    }
                 }
             } catch {
                 await MainActor.run { console.status = .failed("\(error)") }
@@ -126,6 +158,48 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        for worker in workers { worker.process.terminate() }
+    }
+
+    /// Renders the console's pages offscreen (no screen recording needed) as `<dir>/<page>-<appearance>.png`.
+    private func renderSnapshots(to directory: URL) async {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        await console.refreshModels()
+        await console.refreshPlugins()
+        await system.sampleNow()
+        try? await Task.sleep(for: .seconds(1))
+        await system.sampleNow()
+        let pages: [(String, () -> Void)] = [
+            ("plugins", { self.console.section = .plugins }),
+            ("models", { self.console.section = .models; self.console.selectedModelID = "mock-research" }),
+            ("system-memory", { self.console.section = .system; self.system.tab = .memory }),
+        ]
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            for (name, select) in pages {
+                select()
+                // The window's own background doesn't draw offscreen, so the snapshot paints it.
+                let view = NSHostingView(rootView: EngineConsoleView(console: console, system: system, menuBar: menuBar)
+                    .background(Color(nsColor: .windowBackgroundColor)))
+                view.appearance = NSAppearance(named: appearance)
+                view.frame = NSRect(x: 0, y: 0, width: 1320, height: 1000)
+                let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+                window.appearance = NSAppearance(named: appearance)
+                window.contentView = view
+                view.layoutSubtreeIfNeeded()
+                try? await Task.sleep(for: .milliseconds(800))
+                view.layoutSubtreeIfNeeded()
+                guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let suffix = appearance == .aqua ? "light" : "dark"
+                let file = directory.appendingPathComponent("console-\(name)-\(suffix).png")
+                try? rep.representation(using: .png, properties: [:])?.write(to: file)
+                print("wrote \(file.path)")
+            }
+        }
+        NSApp.terminate(nil)
+    }
 
     /// A few jobs to begin with, then one every few seconds, so the queue has a running job and some waiting.
     private static func submitJobs(port: Int) async {
@@ -186,6 +260,7 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+MockWorkers.runIfWorker()
 let app = NSApplication.shared
 let delegate = GalleryDelegate()
 app.delegate = delegate

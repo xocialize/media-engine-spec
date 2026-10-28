@@ -5,12 +5,13 @@ import SwiftUI
 // monitor (MIT, see THIRD-PARTY-NOTICES.md); the Memory page adds what an engine operator needs, the engine's own
 // footprint and the GPU working set models must fit in.
 
-enum SystemTab: String, CaseIterable, Identifiable {
+/// The System page's tabs.
+public enum SystemTab: String, CaseIterable, Identifiable, Sendable {
     case overview, cpu, gpu, memory, disk, sensors
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var title: String {
+    public var title: String {
         switch self {
         case .overview: "Overview"
         case .cpu: "CPU"
@@ -21,7 +22,7 @@ enum SystemTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var symbol: String {
+    public var symbol: String {
         switch self {
         case .overview: "square.grid.2x2"
         case .cpu: "cpu"
@@ -35,10 +36,9 @@ enum SystemTab: String, CaseIterable, Identifiable {
 
 /// Live performance and hardware health for this Mac. Samples while it's on screen.
 public struct SystemMonitorView: View {
-    let store: SystemMonitorStore
+    @Bindable var store: SystemMonitorStore
     let menuBar: MenuBarPreferences
     @State private var observer = UUID()
-    @State private var tab: SystemTab = .overview
 
     public init(store: SystemMonitorStore, menuBar: MenuBarPreferences) {
         self.store = store
@@ -69,7 +69,7 @@ public struct SystemMonitorView: View {
                 .help("Refresh now")
             }
             Separator(.horizontal)
-            ConsoleTabBar(tabs: SystemTab.allCases, selection: $tab, title: \.title, symbol: \.symbol)
+            ConsoleTabBar(tabs: SystemTab.allCases, selection: $store.tab, title: \.title, symbol: \.symbol)
             Separator(.horizontal)
             page.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -79,7 +79,7 @@ public struct SystemMonitorView: View {
 
     @ViewBuilder private var page: some View {
         let s = store.snapshot
-        switch tab {
+        switch store.tab {
         case .overview: OverviewPage(snapshot: s)
         case .cpu: CPUPage(snapshot: s, history: store.cpuHistory)
         case .gpu: GPUPage(snapshot: s, gpuHistory: store.gpuHistory, aneHistory: store.aneHistory, fpsHistory: store.fpsHistory)
@@ -285,9 +285,13 @@ private struct MemoryPage: View {
                     }
                 }
             }
+            if snapshot.processes.count > 1 {
+                EngineProcessesCard(processes: snapshot.processes, totalMemory: memory.totalBytes)
+            }
             AdaptivePair {
                 InfoCard(title: "This Engine") {
-                    InfoRow("Engine process", value: ConsoleFormat.memory(snapshot.processFootprintBytes))
+                    InfoRow(snapshot.processes.count > 1 ? "Engine, \(snapshot.processes.count) processes" : "Engine process",
+                            value: ConsoleFormat.memory(snapshot.processFootprintBytes))
                     InfoRow("GPU working set", value: ConsoleFormat.memory(snapshot.identity.gpuWorkingSetBytes))
                     InfoRow("GPU allocated", value: ConsoleFormat.memory(snapshot.gpu.allocatedMemoryBytes))
                     InfoRow("Pressure", value: memory.pressureLabel)
@@ -301,7 +305,7 @@ private struct MemoryPage: View {
                 }
             }
             ValueHistoryChart(title: "Engine Footprint History", samples: footprintHistory, color: ConsolePalette.memory,
-                              seriesName: "Engine process", format: { ConsoleFormat.memory(UInt64(max($0, 0))) },
+                              seriesName: snapshot.processes.count > 1 ? "All engine processes" : "Engine process", format: { ConsoleFormat.memory(UInt64(max($0, 0))) },
                               axisStep: Double(4 << 30), axisMinimum: Double(4 << 30))
             PercentHistoryChart(title: "Memory Usage History", samples: memoryHistory, color: ConsolePalette.cpu)
             PercentHistoryChart(title: "Swap History", samples: swapHistory, color: ConsolePalette.swap,
@@ -325,6 +329,80 @@ private struct MemoryPage: View {
         default: Tokens.Color.failure
         }
     }
+}
+
+/// The engine's processes, one row each with its share of memory, and their total: the host and each worker it runs.
+struct EngineProcessesCard: View {
+    let processes: [ProcessFootprint]
+    let totalMemory: UInt64
+
+    private static let colors: [Color] = [ConsolePalette.memory, ConsolePalette.cpu, ConsolePalette.gpu, ConsolePalette.disk,
+                                          ConsolePalette.cooling, ConsolePalette.write]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Engine Processes").font(Tokens.Font.headline)
+                Spacer()
+                Text("\(ConsoleFormat.memory(total)) in \(processes.count) processes")
+                    .font(Tokens.Font.caption.weight(.semibold))
+                    .foregroundStyle(Tokens.Color.secondaryLabel)
+            }
+            SegmentedBar(segments: ordered.enumerated().map { index, process in
+                (fraction(process.bytes), color(index))
+            })
+            VStack(spacing: 0) {
+                ForEach(Array(ordered.enumerated()), id: \.element.id) { index, process in
+                    HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.m) {
+                        RoundedRectangle(cornerRadius: 2).fill(color(index)).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                Text(process.process.title).font(Tokens.Font.body)
+                                if process.process.role == .host { Pill(text: "Host") }
+                            }
+                            if let detail = process.process.detail {
+                                Text(detail).font(Tokens.Font.caption).foregroundStyle(Tokens.Color.secondaryLabel).lineLimit(1)
+                            }
+                        }
+                        Spacer(minLength: Tokens.Space.l)
+                        if let pid = process.process.pid {
+                            Text("pid \(pid)").font(Tokens.Font.monoSmall).foregroundStyle(Tokens.Color.tertiaryLabel)
+                        }
+                        Text(ConsoleFormat.memory(process.bytes))
+                            .font(Tokens.Font.body.weight(.medium))
+                            .monospacedDigit()
+                            .frame(minWidth: 80, alignment: .trailing)
+                    }
+                    .padding(.vertical, Tokens.Space.s)
+                    .overlay(alignment: .bottom) { Separator(.horizontal) }
+                    .accessibilityElement(children: .combine)
+                }
+                HStack {
+                    Text("Total").font(Tokens.Font.body.weight(.semibold))
+                    Spacer()
+                    Text(ConsoleFormat.memory(total))
+                        .font(Tokens.Font.body.weight(.semibold))
+                        .monospacedDigit()
+                }
+                .padding(.vertical, Tokens.Space.s)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(Tokens.Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+    }
+
+    /// The host first, then workers by footprint, largest first.
+    private var ordered: [ProcessFootprint] {
+        processes.sorted { ($0.process.role == .host ? 0 : 1, -Int64(clamping: $0.bytes)) < ($1.process.role == .host ? 0 : 1, -Int64(clamping: $1.bytes)) }
+    }
+
+    private var total: UInt64 { processes.reduce(0) { $0 + $1.bytes } }
+
+    private func fraction(_ bytes: UInt64) -> Double { totalMemory > 0 ? Double(bytes) / Double(totalMemory) : 0 }
+
+    private func color(_ index: Int) -> Color { Self.colors[index % Self.colors.count] }
 }
 
 // MARK: - Disk

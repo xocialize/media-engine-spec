@@ -162,7 +162,7 @@ public final class EngineStatusItemController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        for (index, section) in ConsoleSection.allCases.enumerated() {
+        for (index, section) in console.sections.enumerated() {
             let item = action("Open \(section.title)", key: "\(index + 1)") { [weak self] in self?.open(section) }
             item.image = NSImage(systemSymbolName: section.symbol, accessibilityDescription: nil)
             menu.addItem(item)

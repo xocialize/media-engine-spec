@@ -155,9 +155,15 @@ struct SystemMonitorSnapshot: Equatable, Sendable {
     var disk = SystemDiskMetrics()
     var thermal = SystemThermalMetrics()
     var power = SystemPowerMetrics()
-    /// This process's physical footprint: the engine and the models it holds.
-    var processFootprintBytes: UInt64?
+    /// The engine's processes and their physical footprints: this process alone, or the host and its workers
+    /// (`EngineProcessSource`).
+    var processes: [ProcessFootprint] = []
     var uptime: TimeInterval = ProcessInfo.processInfo.systemUptime
+
+    /// The engine's footprint summed over its processes: the engine and the models it holds.
+    var processFootprintBytes: UInt64? {
+        processes.isEmpty ? nil : processes.reduce(0) { $0 + $1.bytes }
+    }
 }
 
 /// Samples once a second while anything observes it (the System page, or metrics in the menu bar), and not otherwise.
@@ -178,9 +184,15 @@ public final class SystemMonitorStore {
     private(set) var powerHistory: [SystemHistorySample] = []
     private(set) var isSampling = false
     private(set) var isPaused = false
+    /// The System page's tab, kept here so it survives leaving the page.
+    public var tab: SystemTab = .overview
 
     /// Called on the main actor after every sample (the menu-bar item redraws from it).
     @ObservationIgnored public var onSample: (() -> Void)?
+
+    /// Where the engine's memory comes from: this process (the default), or the host and its worker processes. Set it
+    /// when the engine starts its workers; the next sample uses it.
+    @ObservationIgnored public var processSource: EngineProcessSource
 
     @ObservationIgnored private let collector = SystemMetricsCollector()
     @ObservationIgnored private let displayFPSSampler = SystemDisplayFPSSampler()
@@ -189,7 +201,9 @@ public final class SystemMonitorStore {
     @ObservationIgnored private var observers: Set<UUID> = []
     private let historyLimit = 300
 
-    public init() {}
+    public init(processes: EngineProcessSource = .currentProcess) {
+        processSource = processes
+    }
 
     isolated deinit { samplingTask?.cancel() }
 
@@ -220,8 +234,17 @@ public final class SystemMonitorStore {
     func refresh() {
         Task { [weak self] in
             guard let self else { return }
-            apply(await collector.collect())
+            var next = await collector.collect()
+            next.processes = await processSource.read()
+            apply(next)
         }
+    }
+
+    /// Takes one sample now, without the clock: tests, and apps that render the page offscreen.
+    public func sampleNow() async {
+        var next = await collector.collect()
+        next.processes = await processSource.read()
+        apply(next)
     }
 
     private func startSampling() {
@@ -233,6 +256,7 @@ public final class SystemMonitorStore {
             while !Task.isCancelled {
                 guard let self else { return }
                 var next = await collector.collect()
+                next.processes = await processSource.read()
                 next.gpu.framesPerSecond = displayFPSSampler.takeFramesPerSecond()
                 next.gpu.aneUsage = aneSampler.takeUtilization()
                 apply(next)
@@ -427,8 +451,7 @@ private actor SystemMetricsCollector {
 
         return SystemMonitorSnapshot(recordedAt: now, identity: resolvedIdentity, cpu: cpu, gpu: Self.gpuMetrics(),
                                      memory: Self.memoryMetrics(), disk: disk, thermal: sensors.thermalMetrics(),
-                                     power: sensors.powerMetrics(), processFootprintBytes: Self.processFootprint(),
-                                     uptime: ProcessInfo.processInfo.systemUptime)
+                                     power: sensors.powerMetrics(), uptime: ProcessInfo.processInfo.systemUptime)
     }
 
     private static func captureIdentity() -> SystemMonitorIdentity {
@@ -539,18 +562,6 @@ private actor SystemMetricsCollector {
                                    compressedBytes: compressed, cachedBytes: UInt64(statistics.inactive_count) * page,
                                    freeBytes: total > used ? total - used : 0,
                                    swapUsedBytes: hasSwap ? swap.xsu_used : 0, swapTotalBytes: hasSwap ? swap.xsu_total : 0)
-    }
-
-    /// `phys_footprint`, the number Activity Monitor shows as Memory for a process.
-    private static func processFootprint() -> UInt64? {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        return result == KERN_SUCCESS ? info.phys_footprint : nil
     }
 
     private static func gpuMetrics() -> SystemGPUMetrics {

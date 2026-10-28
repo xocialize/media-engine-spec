@@ -3,8 +3,8 @@ import DesignScaffold
 import DesignScaffoldStatus
 import SwiftUI
 
-/// An engine's console window: a sidebar of sections (Queue, Models, System) with the engine's status and address, and
-/// the selected section beside it.
+/// An engine's console window: a sidebar of sections (Queue, Models, Plugins when the engine has them, System) with the
+/// engine's status and address, and the selected section beside it.
 public struct EngineConsoleView: View {
     @Bindable var console: EngineConsoleModel
     let system: SystemMonitorStore
@@ -43,7 +43,7 @@ public struct EngineConsoleView: View {
             .padding(.top, Tokens.Space.s)
             .padding(.bottom, Tokens.Space.m)
             List(selection: Binding(get: { console.section }, set: { if let s = $0 { console.section = s } })) {
-                ForEach(ConsoleSection.allCases) { section in
+                ForEach(console.sections) { section in
                     Label(section.title, systemImage: section.symbol)
                         .badge(badge(section))
                         .tag(section)
@@ -62,6 +62,8 @@ public struct EngineConsoleView: View {
             return count > 0 ? Text("\(count)") : nil
         case .models:
             return console.models.isEmpty ? nil : Text("\(console.enabledCount)")
+        case .plugins:
+            return console.updatesAvailable > 0 ? Text("\(console.updatesAvailable)") : nil
         case .system:
             return nil
         }
@@ -117,6 +119,7 @@ public struct EngineConsoleView: View {
             switch console.section {
             case .queue: EngineQueueView(console: console)
             case .models: EngineModelsView(console: console)
+            case .plugins: EnginePluginsView(console: console)
             case .system: SystemMonitorView(store: system, menuBar: menuBar)
             }
         }

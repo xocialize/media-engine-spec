@@ -10,14 +10,17 @@ import PackageDescription
 //   MESEngineKit   the engine side of Base 0.1 on Hummingbird 2: routes, uploads, SSE, WebSocket, MCP, TLS and
 //                  pairing, DNS-SD, the origin guard. Re-exports MESEngineCore.
 //   MESClientKit   the client side: discovery, pairing with a pinned certificate, jobs, uploads, downloads, SSE and
-//                  WebSocket events, a grant server. Foundation, CryptoKit and Network only.
+//                  WebSocket events, a grant server, and an engine picker for apps that know several servers.
+//                  Foundation, CryptoKit and Network only.
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
 //                  extensions (DesignScaffold tokens). `mes-forms-gallery` previews every mock descriptor.
 //   MESEngineUI    an engine app's own console (Engines-PRD ENG-9): the queue, the enabled set of models with a card
 //                  per model, a System monitor and the menu-bar item. Every Pixel Agency engine shares it. The
 //                  `SystemSensors` trait (default on) adds temperatures, fans and power, read through private
-//                  interfaces; an App Store build turns it off. `mes-console-gallery` previews it over the mock engine.
+//                  interfaces; an App Store build turns it off. A Plugins page for engines whose models come as plugins,
+//                  and engine memory summed over a host and its worker processes (Gaea). `mes-console-gallery` previews
+//                  it over the mock engine.
 //   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn) and `mes-conformance`, its CLI.
 //   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
@@ -135,6 +138,7 @@ let package = Package(
             name: "MESFormsUITests",
             dependencies: ["MESFormsUI", "MESInProcess", "MESEngineCore", "MockEngineCore"]
         ),
+        .testTarget(name: "MESEngineUITests", dependencies: ["MESEngineUI", "MESEngineCore", "MESCore"]),
         .testTarget(
             name: "MESConformanceTests",
             dependencies: ["MESConformance", "MESEngineKit", "MESEngineCore", "MockEngineCore"]

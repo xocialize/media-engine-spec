@@ -25,6 +25,7 @@ struct ModelDetailView: View {
                 whatItDoes
                 usage
                 licence
+                if model.plugin != nil || model.version != nil { provenance }
                 onThisMac
             }
             .padding(Tokens.Space.l)
@@ -184,6 +185,36 @@ struct ModelDetailView: View {
         }
     }
 
+    private var provenance: some View {
+        DetailSection(title: "Version") {
+            if let plugin = model.plugin {
+                HStack {
+                    Text("Plugin").foregroundStyle(Tokens.Color.secondaryLabel)
+                    Spacer()
+                    if console.hasPlugins {
+                        Button(plugin.title) {
+                            console.selectedPluginID = plugin.id
+                            console.section = .plugins
+                        }
+                        .buttonStyle(.link)
+                        .help("Show it on the Plugins page")
+                    } else {
+                        Text(plugin.title)
+                    }
+                }
+                .font(Tokens.Font.body)
+                .padding(.vertical, Tokens.Space.s)
+            }
+            InfoRow("Installed", value: model.version ?? missingValue)
+            if let update = model.update {
+                Callout(symbol: "arrow.down.circle.fill", tint: Tokens.Color.accent,
+                        text: "Version \(update.version) is available"
+                            + (model.plugin.map { " in an update to \($0.title), on the Plugins page." } ?? ".")
+                            + (update.notes.map { "\n\n" + $0 } ?? ""))
+            }
+        }
+    }
+
     private var onThisMac: some View {
         DetailSection(title: "On this Mac") {
             HStack {
@@ -191,10 +222,16 @@ struct ModelDetailView: View {
                 Spacer()
                 if case .notDownloaded = console.install(of: model) {
                     Button("Download Now") { console.download(model: model.id) }
+                        .help("Download the weights now without loading the model: it loads when a job needs it")
                 }
                 if model.resident {
                     Button("Release from Memory") { console.unload(model: model.id) }
                 }
+            }
+            if case .notDownloaded = console.install(of: model) {
+                Text("Downloading doesn't load it: it stays out of memory until a job needs it.")
+                    .font(Tokens.Font.caption)
+                    .foregroundStyle(Tokens.Color.secondaryLabel)
             }
             InfoRow("In memory", value: model.resident ? "Yes" : "No")
             InfoRow("Memory when loaded", value: ConsoleFormat.memory(model.footprintBytes))
