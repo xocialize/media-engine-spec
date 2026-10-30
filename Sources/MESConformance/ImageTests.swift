@@ -65,7 +65,9 @@ enum ImageTests {
         ConformanceTest("IMAGE-003", "Image operations keep the input size (except upscale and extend)", spec: "Image §1.8, §3",
                         applies: { p in sizeKeeping(p).isEmpty ? "no size-keeping image operation is offered" : nil }) { p in
             for d in sizeKeeping(p) {
-                let job = try await p.succeed(withImage(p, d, Fixtures.png(width: 72, height: 40)))
+                var request = withImage(p, d, Fixtures.png(width: 72, height: 40))
+                if d.operation == "image.decompose" { request.params = draft(d) }
+                let job = try await p.succeed(request)
                 for output in job.result!.outputs where output.kind == .image || output.kind == .mask {
                     let out = try DecodedImage(try await p.output(job, output.index).1)
                     try check(out.width == 72 && out.height == 40, "\(d.operation) output \(output.name) is \(out.width)×\(out.height), not 72×40")
@@ -255,7 +257,7 @@ enum ImageTests {
             let composite = offersComposite(d)
             for n in asked {
                 var request = decomposeRequest(p, d)
-                var params: [String: JSONValue] = [:]
+                var params = request.params ?? [:]
                 if let n { params[ImageProfile.Param.layerCount] = .number(Double(n)) }
                 if composite { params[ImageProfile.Param.outputs] = ["layers", "composite"] }
                 request.params = params.isEmpty ? nil : params
@@ -316,7 +318,7 @@ enum ImageTests {
             let d = p.descriptor("image.decompose")!
             var request = decomposeRequest(p, d)
             let composite = offersComposite(d)
-            if composite { request.params = [ImageProfile.Param.outputs: ["layers", "composite"]] }
+            if composite { request.params = (request.params ?? [:]).merging([ImageProfile.Param.outputs: ["layers", "composite"]]) { $1 } }
             let job = try await p.succeed(request)
             let source = try DecodedImage(Fixtures.png(width: 72, height: 40))
             var layers: [DecodedImage] = [], frame: DecodedImage?
@@ -337,11 +339,19 @@ enum ImageTests {
         },
     ]
 
-    /// A decompose request with just the image (no plan), so the engine chooses or follows `layer_count`.
+    /// A decompose request with just the image (no plan), so the engine chooses or follows `layer_count`, at `draft`
+    /// where offered: decompose models are slow, and a conformance probe needs the shape of the result, not its finish.
     static func decomposeRequest(_ p: Probe, _ d: Descriptor) -> JobRequest {
         var request = withImage(p, d, Fixtures.png(width: 72, height: 40))
         request.inputs?["prompt"] = nil
+        request.params = draft(d)
         return request
+    }
+
+    /// `quality: draft` when the descriptor offers that tier and takes `quality`, else no params.
+    static func draft(_ d: Descriptor) -> [String: JSONValue]? {
+        guard d.qualityTiers.contains(.draft), d.params["properties"]?[ImageProfile.Param.quality] != nil else { return nil }
+        return [ImageProfile.Param.quality: .string(QualityTier.draft.rawValue)]
     }
 
     /// Whether decompose offers `composite`: an output, and allowed by its `outputs` parameter (Image §3.2).

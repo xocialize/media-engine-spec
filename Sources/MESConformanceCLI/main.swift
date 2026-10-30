@@ -30,6 +30,7 @@ struct EngineCommand: AsyncParsableCommand {
     @Flag(help: "Pair as part of the run (tests pairing; the engine's operator approves). Unpairs at the end.") var pair = false
     @Option(help: "Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.") var maxTTLWait = 30
     @Option(help: "This machine's address as a LAN engine sees it, for the grants test.") var grantHost: String?
+    @Option(help: "Seconds to wait for each job before failing its test; a slow model may need more.") var jobTimeout = 180
     @Option(help: "Only these tests, comma-separated (e.g. BASE-020,IMAGE-001).") var only: String?
     @Option(name: .shortAndLong, help: "Directory for report.json and report.md.") var out = "mes-conformance-report"
 
@@ -40,6 +41,8 @@ struct EngineCommand: AsyncParsableCommand {
         var options = Probe.Options()
         options.maxTTLWait = maxTTLWait
         options.grantHost = grantHost
+        guard jobTimeout > 0 else { throw ValidationError("--job-timeout must be positive.") }
+        options.jobTimeout = TimeInterval(jobTimeout)
         var wire = Wire(baseURL: base, token: token, pinned: pin.flatMap(Self.data(hex:)))
 
         if let pairedState {

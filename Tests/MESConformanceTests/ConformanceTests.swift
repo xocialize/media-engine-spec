@@ -71,6 +71,24 @@ struct MockConformanceTests {
         }
     }
 
+    @Test("decompose is asked at draft (IMAGE-003, -014, -016); a slow one fails at the job timeout, is released, and passes with a longer one")
+    func slowDecompose() async throws {
+        let engine = SlowDecomposeEngine(delay: .seconds(3))
+        try await serve(mockConfig(), engine: engine) { port in
+            let wire = Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!)
+            var options = Probe.Options()
+            options.jobTimeout = 1
+            let short = await ConformanceRunner.run(try await Probe.connect(wire, options: options), only: ["IMAGE-016"])
+            #expect(short.results.first?.status == .fail)
+            #expect(short.results.first?.detail?.contains("after 1 s (released") == true, "\(failures(short))")
+            options.jobTimeout = 30
+            let long = await ConformanceRunner.run(try await Probe.connect(wire, options: options), only: ["IMAGE-003", "IMAGE-014", "IMAGE-016"])
+            #expect(long.results.map(\.status) == [.pass, .pass, .pass], "\(failures(long))")
+        }
+        let qualities = await engine.qualities.all
+        #expect(qualities.count >= 5 && qualities.allSatisfy { $0 == .draft }, "decompose ran at \(qualities)")
+    }
+
     @Test("An un-offered output is refused with 422 unsupported_parameter (IMAGE-010) on an engine that narrows output")
     func unofferedOutput() async throws {
         try await serve(mockConfig(), engine: NarrowOutputEngine()) { port in
@@ -237,6 +255,24 @@ struct NoCompositeEngine: MediaEngine {
 
     func validate(_ request: JobRequest, descriptor: Descriptor) throws { try mock.validate(request, descriptor: descriptor) }
     func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
+}
+
+/// The mock with a slow `image.decompose` that records the tier each decompose ran at.
+struct SlowDecomposeEngine: MediaEngine {
+    actor Qualities { var all: [QualityTier] = []; func add(_ q: QualityTier) { all.append(q) } }
+    let mock = MockImageEngine()
+    let delay: Duration
+    let qualities = Qualities()
+
+    func descriptors() async -> [Descriptor] { await mock.descriptors() }
+    func validate(_ request: JobRequest, descriptor: Descriptor) throws { try mock.validate(request, descriptor: descriptor) }
+    func run(_ context: RunContext) async throws -> RunOutput {
+        if context.operation == "image.decompose" {
+            await qualities.add(context.quality)
+            try await Task.sleep(for: delay)
+        }
+        return try await mock.run(context)
+    }
 }
 
 @Suite("The mock's decompose")

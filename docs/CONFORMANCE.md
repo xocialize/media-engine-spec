@@ -18,6 +18,8 @@ swift run mes-conformance engine https://192.168.1.20:17600/mes/v0 --pair
 - **Retention:** checked by observation. Output expiry (BASE-071) is observed when `outputs_ttl_s` is at most
   `--max-ttl-wait` (30 s by default).
 - **Grants on a LAN engine:** `--grant-host` gives this machine's address as the engine sees it.
+- **Slow models:** each job may run `--job-timeout` seconds (180 by default) before its test fails; a job that runs
+  out of time is released. Decompose tests ask for `quality: draft` where the operation offers it.
 - **Reports:** `report.json` and `report.md` are written to `-o <dir>`. The command exits 0 when the engine
   conforms.
 

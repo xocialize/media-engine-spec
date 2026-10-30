@@ -38,6 +38,8 @@ public final class Probe: @unchecked Sendable {
         public var pairing: PairingRun?
         /// This machine's address as the engine sees it, for grants (BASE-040). Loopback engines need none.
         public var grantHost: String?
+        /// How long `run` and `settle` wait for a job to leave the active states. A slow but correct model may need more.
+        public var jobTimeout: TimeInterval = 180
         public init() {}
     }
 
@@ -94,7 +96,7 @@ public final class Probe: @unchecked Sendable {
     }
 
     /// Submits (expecting 201) and long-polls until the job leaves the active states.
-    public func run(_ request: JobRequest, timeout: TimeInterval = 180, idempotencyKey: String? = nil) async throws -> Job {
+    public func run(_ request: JobRequest, timeout: TimeInterval? = nil, idempotencyKey: String? = nil) async throws -> Job {
         var headers: [String: String] = [:]
         if let idempotencyKey { headers["Idempotency-Key"] = idempotencyKey }
         let reply = try await wire.json("POST", "jobs", request, headers: headers)
@@ -102,12 +104,19 @@ public final class Probe: @unchecked Sendable {
         return try await settle(try reply.decode(Job.self), timeout: timeout)
     }
 
-    public func settle(_ job: Job, timeout: TimeInterval = 180) async throws -> Job {
+    /// Long-polls until the job leaves the active states, or `timeout` (default `options.jobTimeout`) passes. A job that
+    /// runs out of time is released, so the tests after it don't queue behind it.
+    public func settle(_ job: Job, timeout: TimeInterval? = nil) async throws -> Job {
         var current = job
+        let timeout = timeout ?? options.jobTimeout
         let deadline = Date().addingTimeInterval(timeout)
         while [.received, .fetching, .waiting, .running].contains(current.state) {
-            try check(Date() < deadline, "\(job.id) was still \(current.state.rawValue) after \(Int(timeout)) s.")
-            let reply = try await wire.send("GET", "jobs/\(job.id)?wait=10", timeout: 40)
+            if Date() >= deadline {
+                _ = try? await wire.send("DELETE", "jobs/\(job.id)")
+                throw Failure("\(job.id) was still \(current.state.rawValue) after \(Int(timeout)) s (released; --job-timeout waits longer).")
+            }
+            let wait = min(10, max(1, Int(deadline.timeIntervalSinceNow.rounded(.up))))
+            let reply = try await wire.send("GET", "jobs/\(job.id)?wait=\(wait)", timeout: 40)
             try expect(reply, 200, "GET jobs/\(job.id)", schemas: schemas)
             current = try reply.decode(Job.self)
         }

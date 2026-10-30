@@ -447,6 +447,18 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   - **Source changes for consumers:** `ImageProfile.operations` has 15 operations, and `ImageProfile.Param.layerCount`
     is new. A client or test that counted 14 operations, or switched exhaustively over the mock's operation ids, needs
     the new one.
+- **`v0.6.1`** (2026-10-30; AB-A-0231, Gaea AB-T-0390): the suite is usable with slow but correct models. Ming-Image
+  Design-Layer takes about 6 minutes for a 4-layer decompose at its 1024 bucket, and the suite waited 180 s per job, so
+  IMAGE-003, -014 and -016 failed on a working engine, and IMAGE-004 failed queued behind them.
+  - **`mes-conformance engine --job-timeout <s>`** (default 180; `Probe.Options.jobTimeout`): how long each job may
+    run before its test fails. `run` and `settle` default to it, and the long poll waits no longer than the time left.
+  - **A job that times out is released** (`DELETE jobs/{id}`), and the failure says so, so later tests don't queue
+    behind it.
+  - **Decompose is asked at `draft`** where the descriptor offers that tier and takes `quality` (IMAGE-003's decompose
+    case, IMAGE-014, IMAGE-016): a probe needs the shape of the result, not its finish. Ming's draft is its 512
+    bucket, about 1 minute.
+  - **Tests:** a slow decompose fails at a 1 s job timeout and is released, then passes IMAGE-003, -014 and -016 at
+    30 s, every run at `draft`. 94 tests pass (93 before). No spec or schema change.
 
 ## Next: the Audio profile
 
