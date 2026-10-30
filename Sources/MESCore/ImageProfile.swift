@@ -12,6 +12,7 @@ public enum ImageProfile {
         public static let count = "count", scale = "scale", content = "content", output = "output", canvas = "canvas"
         public static let kind = "kind", outputs = "outputs", language = "language", preset = "preset"
         public static let promptEnhance = "prompt_enhance", targetOperation = "target_operation", targetModel = "target_model"
+        public static let layerCount = "layer_count"
     }
 
     /// `prompt_enhance` (§1.9, §2): whether the engine may rewrite a prompt or instruction before the model sees it.

@@ -331,6 +331,38 @@
         "target_model",
         "seed"
       ]
+    },
+    "image.decompose": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "layers": {
+          "kind": "image"
+        },
+        "composite": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "layer_count",
+        "outputs",
+        "quality",
+        "seed",
+        "output",
+        "prompt_enhance"
+      ],
+      "keeps_input_size": true,
+      "vocabulary_defs": {
+        "outputs": "decompose_outputs"
+      }
     }
   }
 }

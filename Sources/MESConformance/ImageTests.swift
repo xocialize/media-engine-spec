@@ -247,7 +247,125 @@ enum ImageTests {
             await p.confirm(job)
             return nil
         },
+        ConformanceTest("IMAGE-014", "decompose returns exactly layer_count layers, each an RGBA PNG the input's size; effective.layer_count is the count",
+                        spec: "Image §3.2", applies: offers("image.decompose")) { p in
+            let d = p.descriptor("image.decompose")!
+            let schema = d.params["properties"]?[ImageProfile.Param.layerCount]
+            let asked: [Int?] = schema.map { s in [min(max(2, s["minimum"]?.intValue ?? 1), s["maximum"]?.intValue ?? 32), nil] } ?? [nil]
+            let composite = offersComposite(d)
+            for n in asked {
+                var request = decomposeRequest(p, d)
+                var params: [String: JSONValue] = [:]
+                if let n { params[ImageProfile.Param.layerCount] = .number(Double(n)) }
+                if composite { params[ImageProfile.Param.outputs] = ["layers", "composite"] }
+                request.params = params.isEmpty ? nil : params
+                let job = try await p.succeed(request)
+                let outputs = job.result?.outputs ?? []
+                let layers = outputs.filter { $0.name == "layers" }
+                if let n { try check(layers.count == n, "layer_count \(n) returned \(layers.count) layers") }
+                try check(!layers.isEmpty, "no layers")
+                let reported = job.result?.effective[ImageProfile.Param.layerCount]?.intValue
+                try check(reported == layers.count,
+                          "effective.layer_count is \(reported.map(String.init) ?? "missing"), but \(layers.count) layers came back")
+                for layer in layers {
+                    try check(layer.mediaType == "image/png", "layer \(layer.index) is \(layer.mediaType), not image/png")
+                    let image = try DecodedImage(try await p.output(job, layer.index).1)
+                    try check(image.hasAlpha, "layer \(layer.index) has no alpha")
+                    try check(image.width == 72 && image.height == 40, "layer \(layer.index) is \(image.width)×\(image.height), not 72×40")
+                }
+                if composite {
+                    let frames = outputs.filter { $0.name == "composite" }
+                    try check(frames.count == 1, "outputs [layers, composite] returned \(frames.count) composites")
+                    let image = try DecodedImage(try await p.output(job, frames[0].index).1)
+                    try check(image.width == 72 && image.height == 40, "the composite is \(image.width)×\(image.height), not 72×40")
+                }
+                await p.confirm(job)
+            }
+            return nil
+        },
+        ConformanceTest("IMAGE-015", "decompose refuses a layer_count above its maximum (422), outputs without layers (400) and an un-offered composite (422)",
+                        spec: "Image §3.2, Base §6 rule 4", applies: offers("image.decompose")) { p in
+            let d = p.descriptor("image.decompose")!
+            let properties = d.params["properties"]
+            var request = decomposeRequest(p, d)
+            var skipped: [String] = []
+            if let max = properties?[ImageProfile.Param.layerCount]?["maximum"]?.intValue {
+                request.params = [ImageProfile.Param.layerCount: .number(Double(max + 1))]
+                try expect(try await p.wire.json("POST", "jobs", request), 422, code: "out_of_limits",
+                           "layer_count \(max + 1), above the maximum \(max)", schemas: p.schemas)
+            } else {
+                skipped.append("decompose declares no layer_count maximum")
+            }
+            if properties?[ImageProfile.Param.outputs] == nil {
+                skipped.append("decompose declares no outputs")
+            } else if offersComposite(d) {
+                request.params = [ImageProfile.Param.outputs: ["composite"]]
+                try expect(try await p.wire.json("POST", "jobs", request), 400, code: "invalid_request",
+                           "outputs [composite], without layers", schemas: p.schemas)
+                skipped.append("composite is offered, so its refusal doesn't apply")
+            } else {
+                request.params = [ImageProfile.Param.outputs: ["layers", "composite"]]
+                try expect(try await p.wire.json("POST", "jobs", request), 422, code: "unsupported_parameter",
+                           "outputs [layers, composite], with composite not offered", schemas: p.schemas)
+                skipped.append("composite isn't offered, so outputs without layers wasn't sent")
+            }
+            return skipped.isEmpty ? nil : Note(skipped.joined(separator: "; ") + ".")
+        },
+        ConformanceTest("IMAGE-016", "decompose's layers, composited back to front, approximate the input: the error is reported, never failed",
+                        spec: "Image §3.2", applies: offers("image.decompose")) { p in
+            let d = p.descriptor("image.decompose")!
+            var request = decomposeRequest(p, d)
+            let composite = offersComposite(d)
+            if composite { request.params = [ImageProfile.Param.outputs: ["layers", "composite"]] }
+            let job = try await p.succeed(request)
+            let source = try DecodedImage(Fixtures.png(width: 72, height: 40))
+            var layers: [DecodedImage] = [], frame: DecodedImage?
+            for output in job.result?.outputs ?? [] {
+                let image = try DecodedImage(try await p.output(job, output.index).1)
+                if output.name == "layers" { layers.append(image) } else if output.name == "composite" { frame = image }
+            }
+            await p.confirm(job)
+            guard !layers.isEmpty, layers.allSatisfy({ $0.width == source.width && $0.height == source.height }) else {
+                return Note("The layers can't be recomposed: \(layers.count) came back, not all \(source.width)×\(source.height) (IMAGE-014 checks this).")
+            }
+            var text = String(format: "%d layers recompose to the input with a mean absolute error of %.2f/255 per channel",
+                              layers.count, meanAbsoluteError(recompose(layers), source.rgba))
+            if let frame, frame.width == source.width, frame.height == source.height {
+                text += String(format: "; the composite's is %.2f/255", meanAbsoluteError(frame.rgba, source.rgba))
+            }
+            return Note(text + ".")
+        },
     ]
+
+    /// A decompose request with just the image (no plan), so the engine chooses or follows `layer_count`.
+    static func decomposeRequest(_ p: Probe, _ d: Descriptor) -> JobRequest {
+        var request = withImage(p, d, Fixtures.png(width: 72, height: 40))
+        request.inputs?["prompt"] = nil
+        return request
+    }
+
+    /// Whether decompose offers `composite`: an output, and allowed by its `outputs` parameter (Image §3.2).
+    static func offersComposite(_ d: Descriptor) -> Bool {
+        guard d.outputs.contains(where: { $0.name == "composite" }),
+              let outputs = d.params["properties"]?[ImageProfile.Param.outputs] else { return false }
+        return outputs["items"]?["enum"]?.arrayValue?.contains(.string("composite")) ?? true
+    }
+
+    /// Straight-alpha "over", back to front (the last layer first), in the premultiplied RGBA that DecodedImage holds.
+    static func recompose(_ layers: [DecodedImage]) -> [UInt8] {
+        var out = [Double](repeating: 0, count: layers[0].rgba.count)
+        for layer in layers.reversed() {
+            for i in stride(from: 0, to: out.count, by: 4) {
+                let keep = 1 - Double(layer.rgba[i + 3]) / 255
+                for c in 0..<4 { out[i + c] = Double(layer.rgba[i + c]) + out[i + c] * keep }
+            }
+        }
+        return out.map { UInt8(min(255, max(0, $0.rounded()))) }
+    }
+
+    static func meanAbsoluteError(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        zip(a, b).reduce(0) { $0 + abs(Double($1.0) - Double($1.1)) } / Double(max(1, min(a.count, b.count)))
+    }
 
     /// An operation the suite can drive that declares `prompt_enhance` with `off`, and its text input.
     static func enhanceable(_ p: Probe) -> (Descriptor, JobRequest, String)? {

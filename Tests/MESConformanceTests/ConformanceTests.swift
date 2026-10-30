@@ -5,7 +5,7 @@ import ImageIO
 import MESCore
 import MESEngineCore
 import MESEngineKit
-import MockEngineCore
+@testable import MockEngineCore
 import Testing
 import UniformTypeIdentifiers
 
@@ -50,9 +50,24 @@ struct MockConformanceTests {
             #expect(report.failed == 0, "\(failures(report))")
             #expect(report.conformsToBase && report.conformsToImage == true)
             let skipped = Set(report.results.filter { $0.status == .skip }.map(\.id))
-            // IMAGE-010 needs an operation that narrows `output`; the mock offers the whole vocabulary (see below).
-            #expect(skipped == ["BASE-005", "BASE-006", "BASE-071", "BASE-090", "IMAGE-010"], "skipped: \(skipped.sorted())")
+            // IMAGE-010 runs on decompose, whose `output` leaves out JPEG (no alpha, Image §3.2).
+            #expect(skipped == ["BASE-005", "BASE-006", "BASE-071", "BASE-090"], "skipped: \(skipped.sorted())")
             #expect(report.markdown.contains("✅ conforms"))
+            // The mock's bands recompose to the input exactly; it offers composite, so IMAGE-015 skips that refusal.
+            let notes = Dictionary(uniqueKeysWithValues: report.results.map { ($0.id, $0.detail ?? "") })
+            #expect(notes["IMAGE-016"]?.contains("error of 0.00/255") == true, "\(notes["IMAGE-016"] ?? "")")
+            #expect(notes["IMAGE-016"]?.contains("the composite's is 0.00/255") == true, "\(notes["IMAGE-016"] ?? "")")
+            #expect(notes["IMAGE-015"]?.contains("composite is offered") == true, "\(notes["IMAGE-015"] ?? "")")
+        }
+    }
+
+    @Test("decompose without a composite refuses one with 422 unsupported_parameter (IMAGE-015), and still passes IMAGE-014")
+    func decomposeWithoutComposite() async throws {
+        try await serve(mockConfig(), engine: NoCompositeEngine()) { port in
+            let probe = try await Probe.connect(Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!))
+            let report = await ConformanceRunner.run(probe, only: ["IMAGE-014", "IMAGE-015", "IMAGE-016"])
+            #expect(report.results.map(\.status) == [.pass, .pass, .pass], "\(failures(report))")
+            #expect(report.results.first { $0.id == "IMAGE-015" }?.detail?.contains("composite isn't offered") == true)
         }
     }
 
@@ -200,6 +215,72 @@ struct ClientConformanceTests {
                 "failed: \(failed.sorted())")
         #expect(!failed.contains("CLIENT-002") && !failed.contains("CLIENT-005"), "it does submit a valid request and fetch the output")
         #expect(!report.conforms && report.markdown.contains("❌ does not conform"))
+    }
+}
+
+/// The mock with `image.decompose`'s composite withdrawn: no `composite` output, and `outputs` only `layers`.
+struct NoCompositeEngine: MediaEngine {
+    let mock = MockImageEngine()
+
+    func descriptors() async -> [Descriptor] {
+        await mock.descriptors().map { d in
+            guard d.operation == "image.decompose", case .object(var params) = d.params,
+                  case .object(var properties)? = params["properties"] else { return d }
+            var d = d
+            properties["outputs"] = ["type": "array", "minItems": 1, "items": ["enum": ["layers"]]]
+            params["properties"] = .object(properties)
+            d.params = .object(params)
+            d.outputs.removeAll { $0.name == "composite" }
+            return d
+        }
+    }
+
+    func validate(_ request: JobRequest, descriptor: Descriptor) throws { try mock.validate(request, descriptor: descriptor) }
+    func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
+}
+
+@Suite("The mock's decompose")
+struct MockDecomposeTests {
+    let descriptor = MockImageEngine.descriptor("image.decompose")
+
+    func request(_ plan: String?, count: Int? = nil, outputs: [String]? = nil) -> JobRequest {
+        var inputs: [String: RequestInput] = ["image": .one(.inline(mediaType: "image/png", data: Fixtures.png()))]
+        if let plan { inputs["prompt"] = .text(plan) }
+        var params: [String: JSONValue] = [:]
+        if let count { params[ImageProfile.Param.layerCount] = .number(Double(count)) }
+        if let outputs { params[ImageProfile.Param.outputs] = .array(outputs.map { .string($0) }) }
+        return JobRequest(operation: "image.decompose", inputs: inputs, params: params)
+    }
+
+    func refusal(_ request: JobRequest) -> MESError? {
+        do { try MockImageEngine().validate(request, descriptor: descriptor); return nil } catch { return error as? MESError }
+    }
+
+    @Test("A plan's stated count meets layer_count's rules: a contradiction is 400, above the maximum is 422 (Image §3.2)")
+    func statedCount() {
+        let plan = "Layer 1: the headline. Layer 2: the badge. Layer 3: the background."
+        #expect(MockImageEngine.statedLayerCount(plan) == 3)
+        #expect(refusal(request(plan)) == nil)
+        #expect(refusal(request(plan, count: 3)) == nil)
+        #expect(refusal(request(plan, count: 2))?.code == "invalid_request")
+        #expect(refusal(request("Layer 1: text. Layer 9: the background."))?.code == "out_of_limits")
+        #expect(refusal(request("a poster")) == nil)
+    }
+
+    @Test("outputs without layers is 400 invalid_request (Image §3.2)")
+    func outputsNeedLayers() {
+        #expect(refusal(request(nil, outputs: ["composite"]))?.code == "invalid_request")
+        #expect(refusal(request(nil, outputs: ["layers", "composite"])) == nil)
+    }
+
+    @Test("The descriptor narrows layer_count to the mock's maximum and output to formats with alpha")
+    func descriptorNarrows() {
+        let properties = descriptor.params["properties"]
+        #expect(properties?["layer_count"]?["maximum"]?.intValue == MockImageEngine.maxLayers)
+        let types = properties?["output"]?["properties"]?["media_type"]?["enum"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        #expect(!types.isEmpty && !types.contains("image/jpeg"))
+        #expect(descriptor.outputs.first { $0.name == "composite" }?.min == 0)
+        #expect(descriptor.outputs.first { $0.name == "layers" }?.max == MockImageEngine.maxLayers)
     }
 }
 

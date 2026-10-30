@@ -174,7 +174,7 @@ struct FormModelTests {
             if job.outcome == .succeeded { ran.append(d.operation) }
             _ = try? await engine.confirm(job.id)
         }
-        #expect(ran.count == 14)
+        #expect(ran.count == 15)
         await engine.stop()
     }
 

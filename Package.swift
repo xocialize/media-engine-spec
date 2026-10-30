@@ -22,7 +22,7 @@ import PackageDescription
 //                  and engine memory summed over a host and its worker processes (Gaea). `mes-console-gallery` previews
 //                  it over the mock engine.
 //   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn) and `mes-conformance`, its CLI.
-//   MockEngineCore the 13 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
+//   MockEngineCore the 15 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
 //   MockEngine     `mes-mock-engine`, the executable.
 //   MESCLI         `mes`, the command-line client on MESClientKit.
 let package = Package(

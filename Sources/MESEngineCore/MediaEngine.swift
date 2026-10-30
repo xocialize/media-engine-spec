@@ -166,6 +166,12 @@ public enum ImageProfileRules {
             }
         }
         try validateSlots(request, descriptor: descriptor)
+        // §3.2: `decompose`'s outputs always include its layers (a rule outside the vocabulary schema's subset).
+        if descriptor.operation == "image.decompose", let outputs = params[ImageProfile.Param.outputs]?.arrayValue,
+           !outputs.contains(.string("layers")) {
+            throw MESError(.invalidRequest, "image.decompose's outputs must include layers; composite is an addition to them.",
+                           param: ImageProfile.Param.outputs)
+        }
     }
 
     /// §1.10: `ic` adapters' required slots are filled, in order, from the operation's adapter input.

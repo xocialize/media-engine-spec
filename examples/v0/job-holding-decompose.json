@@ -1,0 +1,121 @@
+{
+  "id": "job_01J9ZV",
+  "operation": "image.decompose",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "ming-image-layer",
+      "title": "Ming-Image 0.1 Design-Layer (int8)",
+      "license": {
+        "spdx": "MIT",
+        "commercial_use": true,
+        "terms_url": "https://huggingface.co/inclusionAI/Ming-Image-0.1-Design-Layer/blob/main/LICENSE"
+      }
+    },
+    "effective": {
+      "quality": "standard",
+      "seed": 42,
+      "layer_count": 3,
+      "outputs": [
+        "layers",
+        "composite"
+      ],
+      "prompt_enhance": "off"
+    }
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "layers",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 412877,
+        "sha256": "ff5eba71a8188ea1e1d463b58f6ad20fb3736ae6e2fe50bc84a5a2c672c95e35",
+        "href": "/mes/v0/jobs/job_01J9ZV/outputs/0",
+        "width": 2160,
+        "height": 3840
+      },
+      {
+        "index": 1,
+        "name": "layers",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 1530442,
+        "sha256": "922badbaf192e1a4a5af64df422de6d73e96e70d0ab52245bd3d692bcea9cfad",
+        "href": "/mes/v0/jobs/job_01J9ZV/outputs/1",
+        "width": 2160,
+        "height": 3840
+      },
+      {
+        "index": 2,
+        "name": "layers",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 6120931,
+        "sha256": "6bdb18f83935f1d97220ee8035e6ccd7e764c32102587be4488f940f943ebda6",
+        "href": "/mes/v0/jobs/job_01J9ZV/outputs/2",
+        "width": 2160,
+        "height": 3840
+      },
+      {
+        "index": 3,
+        "name": "composite",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 7012284,
+        "sha256": "da0002e0cd62c639edf0b88ba0216b00084f5abf275328f44d39784450a625f4",
+        "href": "/mes/v0/jobs/job_01J9ZV/outputs/3",
+        "width": 2160,
+        "height": 3840
+      }
+    ],
+    "effective": {
+      "quality": "standard",
+      "seed": 42,
+      "layer_count": 3,
+      "outputs": [
+        "layers",
+        "composite"
+      ],
+      "prompt_enhance": "off",
+      "model_params": {
+        "bucket": 1024,
+        "steps": 12,
+        "guidance": 2.0
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_6f1c2a",
+        "name": "Studio Image Engine",
+        "implementation": "pixel-agency-image-engine",
+        "version": "0.1.0"
+      },
+      "operation": "image.decompose",
+      "profile_version": "0.1",
+      "model": {
+        "id": "ming-image-layer",
+        "title": "Ming-Image 0.1 Design-Layer (int8)",
+        "license": {
+          "spdx": "MIT",
+          "commercial_use": true,
+          "terms_url": "https://huggingface.co/inclusionAI/Ming-Image-0.1-Design-Layer/blob/main/LICENSE"
+        }
+      },
+      "seed": 42,
+      "timings": {
+        "received_at": "2026-10-30T17:00:00Z",
+        "run_ms": 118400
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-30T18:02:00Z",
+    "record_expires_at": "2026-10-31T17:02:00Z"
+  },
+  "created_at": "2026-10-30T17:00:00Z",
+  "updated_at": "2026-10-30T17:02:00Z"
+}

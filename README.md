@@ -32,7 +32,7 @@ client conformance role before Lite is deprecated.
 | Path | What |
 |---|---|
 | [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• model offers and their adapters (e.g. LoRA);<br/>• jobs, uploads, grants and events;<br/>• results, provenance (models, adapters, helpers) and licence policy;<br/>• retention guarantees, errors and the MCP binding. |
-| [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 14 operations (including `image.enhance_prompt`, a preview of a prompt rewrite), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
+| [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, the Image vocabulary, and the operations table |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |

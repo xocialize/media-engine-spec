@@ -50,6 +50,8 @@ MANIFEST = {
     "job-holding-generate-enhanced.json": "base/job.schema.json",
     "job-holding-enhance-prompt.json": "base/job.schema.json",
     "job-holding-edit-adapters.json": "base/job.schema.json",
+    "operations-image-decompose.json": "base/operations-list.schema.json",
+    "job-holding-decompose.json": "base/job.schema.json",
 }
 
 _cache = {}

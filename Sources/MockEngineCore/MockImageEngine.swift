@@ -2,9 +2,13 @@ import Foundation
 import MESCore
 import MESEngineCore
 
-/// A mock Image-profile engine (MES R0b). It offers all 14 operations with synthetic results that obey the profile's
+/// A mock Image-profile engine (MES R0b). It offers all 15 operations with synthetic results that obey the profile's
 /// rules: fill and erase keep black-mask pixels byte-identical, upscale is exactly ×scale, mattes are 8-bit grey,
 /// and the same seed gives the same result. Clients and the conformance suite test against it; it runs no model.
+///
+/// - **Decompose** (Image §3.2): a background layer (the input) and one layer per vertical band in front of it, so the
+///   stack recomposes to the input exactly; up to `maxLayers`, with the composite on request. A plan's "Layer N" lines
+///   state a count, held to the same rules as `layer_count`.
 ///
 /// - **Prompt enhancement** (Image §1.9): every prompted operation declares `prompt_enhance`. The mock's models are
 ///   ones whose makers don't ask for it, so `auto` leaves prompts alone; `on` rewrites the prompt with the mock
@@ -45,6 +49,9 @@ public struct MockImageEngine: MediaEngine {
     /// The revision the mock reports for every adapter it applies (provenance `revision`).
     public static let adapterRevision = "mock-r1"
 
+    /// The most layers `image.decompose` returns (its descriptor's `layer_count` maximum), and how many without a count.
+    public static let maxLayers = 8, defaultLayers = 3
+
     /// The operations whose prompts the mock can enhance: those whose vocabulary has `prompt_enhance`.
     static let enhanceable: [String] = ImageProfile.operations.operations
         .filter { $0.value.vocabulary.contains(ImageProfile.Param.promptEnhance) }.keys.sorted()
@@ -73,6 +80,20 @@ public struct MockImageEngine: MediaEngine {
             properties[ImageProfile.Param.preset] = ["enum": ["soft", "golden_hour", "studio"],
                                                      "x-mes-ui": ["label": "Preset", "widget": "picker"]]
         }
+        if operation == "image.decompose" {
+            // §3.2: at most `maxLayers`, and only output formats that carry alpha.
+            if case .object(var count)? = properties[ImageProfile.Param.layerCount] {
+                count["maximum"] = .number(Double(maxLayers))
+                properties[ImageProfile.Param.layerCount] = .object(count)
+            }
+            if case .object(var output)? = properties[ImageProfile.Param.output], case .object(var fields)? = output["properties"],
+               case .object(var mediaType)? = fields["media_type"] {
+                mediaType["enum"] = .array(imageTypes.filter { $0 != "image/jpeg" }.map { .string($0) })
+                fields["media_type"] = .object(mediaType)
+                output["properties"] = .object(fields)
+                properties[ImageProfile.Param.output] = .object(output)
+            }
+        }
         if case .object(var target)? = properties[ImageProfile.Param.targetOperation] {
             target["enum"] = .array(enhanceable.map { .string($0) })
             target["pattern"] = nil
@@ -80,8 +101,8 @@ public struct MockImageEngine: MediaEngine {
         }
         let outputs = spec.outputs.sorted { $0.key < $1.key }.map { name, io in
             OutputSpec(name: name, kind: io.kind, mediaTypes: io.kind == .data ? ["application/json"] : ["image/png"],
-                       min: name == "images" || name == "masks" ? 1 : (operation == "image.matte" ? 0 : 1),
-                       max: name == "images" || name == "masks" ? 8 : 1)
+                       min: ["images", "masks", "layers"].contains(name) ? 1 : (operation == "image.matte" || name == "composite" ? 0 : 1),
+                       max: name == "layers" ? maxLayers : name == "images" || name == "masks" ? 8 : 1)
         }
         var models = [ModelOffer(id: "mock", title: "Mock \(operation)", license: mockLicense, memoryClass: .small,
                                  speedClass: .fast, qualityTiers: [.draft, .standard, .best], isDefault: true,
@@ -120,7 +141,8 @@ public struct MockImageEngine: MediaEngine {
         ["image.generate": "Generate", "image.edit": "Edit", "image.fill": "Generative fill", "image.erase": "Erase",
          "image.extend": "Extend canvas", "image.upscale": "Upscale", "image.restore": "Restore", "image.relight": "Relight",
          "image.colorize": "Colorize", "image.matte": "Select subject", "image.segment": "Select by prompt",
-         "image.describe": "Describe", "image.score": "Quality score", "image.enhance_prompt": "Enhance prompt"][op] ?? op
+         "image.describe": "Describe", "image.score": "Quality score", "image.enhance_prompt": "Enhance prompt",
+         "image.decompose": "Decompose into layers"][op] ?? op
     }
 
     static func ui(_ name: String, order: Int) -> [String: JSONValue] {
@@ -128,7 +150,7 @@ public struct MockImageEngine: MediaEngine {
                                          "size": "size", "aspect": "aspect", "megapixels": "slider", "strength": "slider",
                                          "count": "stepper", "scale": "picker", "content": "picker", "kind": "picker",
                                          "outputs": "picker", "language": "text", "prompt_enhance": "picker",
-                                         "target_operation": "picker", "target_model": "text"]
+                                         "target_operation": "picker", "target_model": "text", "layer_count": "stepper"]
         var hints: [String: JSONValue] = ["label": .string(name.replacingOccurrences(of: "_", with: " ").capitalized),
                                           "order": .number(Double(order))]
         if let w = widgets[name] { hints["widget"] = .string(w) }
@@ -136,10 +158,41 @@ public struct MockImageEngine: MediaEngine {
         return hints
     }
 
-    /// `image.enhance_prompt`'s target model must be one the target operation offers (Image §3.1).
+    /// `image.enhance_prompt`'s target model must be one the target operation offers (Image §3.1). A decompose plan's
+    /// stated count meets `layer_count`'s rules (§3.2).
     public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
         try ImageProfileRules.validate(request, descriptor: descriptor)
         if descriptor.operation == "image.enhance_prompt" { _ = try Self.enhanceTarget(request.params ?? [:]) }
+        if descriptor.operation == "image.decompose", case .text(let plan)? = request.inputs?["prompt"],
+           let stated = Self.statedLayerCount(plan) {
+            if let asked = request.params?[ImageProfile.Param.layerCount]?.intValue, asked != stated {
+                throw MESError(.invalidRequest, "layer_count \(asked) contradicts the prompt, which plans \(stated) layers.",
+                               param: ImageProfile.Param.layerCount)
+            }
+            if stated > Self.maxLayers {
+                throw MESError(.outOfLimits, "The prompt plans \(stated) layers; the mock returns at most \(Self.maxLayers).",
+                               param: ImageProfile.Param.layerCount)
+            }
+        }
+    }
+
+    /// The count a layer plan states: its highest "Layer N".
+    static func statedLayerCount(_ plan: String) -> Int? {
+        plan.matches(of: /(?i)\blayer\s+(\d+)/).compactMap { Int($0.1) }.max()
+    }
+
+    /// A background (the input) behind `count - 1` vertical bands of it, front-most first: the stack recomposes to the
+    /// input exactly, and keeps its alpha.
+    static func decompose(_ input: Raster, count: Int) -> [Raster] {
+        let bands = count - 1
+        let front = (0..<bands).map { i in
+            var layer = Raster(width: input.width, height: input.height, fill: (0, 0, 0, 0))
+            for y in 0..<input.height {
+                for x in (i * input.width / bands)..<((i + 1) * input.width / bands) { layer[x, y] = input[x, y] }
+            }
+            return layer
+        }
+        return front + [input]
     }
 
     static func enhanceTarget(_ params: [String: JSONValue]) throws -> (operation: String, model: String) {
@@ -343,6 +396,14 @@ public struct MockImageEngine: MediaEngine {
                                   "alt_text": .string("Mock description of a \(orientation) image"),
                                   "tags": ["mock", .string(orientation)], "language": .string(language)], name: "description"))
 
+        case "image.decompose":
+            let input = try loadImage("image")
+            let count = context.param(ImageProfile.Param.layerCount)?.intValue ?? Self.statedLayerCount(prompt) ?? Self.defaultLayers
+            effective[ImageProfile.Param.layerCount] = .number(Double(count))
+            for (i, layer) in Self.decompose(input, count: count).enumerated() { outputs.append(try png(layer, "layers", i)) }
+            let wanted = context.param(ImageProfile.Param.outputs)?.arrayValue?.compactMap(\.stringValue) ?? ["layers"]
+            if wanted.contains("composite") { outputs.append(try png(input, "composite")) }
+
         case "image.enhance_prompt":
             let target = try Self.enhanceTarget(context.params)
             effective[ImageProfile.Param.targetOperation] = .string(target.operation)
@@ -361,7 +422,7 @@ public struct MockImageEngine: MediaEngine {
         }
         return RunOutput(outputs: outputs, effective: effective,
                          seed: ["image.generate", "image.edit", "image.fill", "image.relight", "image.colorize", "image.extend",
-                                "image.enhance_prompt"].contains(context.operation) ? seed : nil,
+                                "image.enhance_prompt", "image.decompose"].contains(context.operation) ? seed : nil,
                          warnings: warnings, helpers: helpers,
                          revisions: Dictionary(context.adapters.map { ($0.id, Self.adapterRevision) }, uniquingKeysWith: { a, _ in a }))
     }

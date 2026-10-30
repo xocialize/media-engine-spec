@@ -7,7 +7,7 @@
 | **Requires** | [Base](../base.md) 0.1 |
 | **Schemas** | [`schemas/v0/profiles/image/`](../../schemas/v0/profiles/image/) |
 
-The Image profile defines fourteen operations on still images, the parameter vocabulary they share, and the
+The Image profile defines fifteen operations on still images, the parameter vocabulary they share, and the
 conventions every image engine follows. An engine implementing this profile MAY offer any subset of the
 operations. For each operation it offers, it MUST honour that operation's required inputs, outputs and behaviour.
 
@@ -24,6 +24,7 @@ operations. For each operation it offers, it MUST honour that operation's requir
 5. **Alpha.** Alpha is **straight** (not premultiplied).
    - Operations that don't change transparency preserve it.
    - When a model can't carry alpha, the engine re-applies the input's alpha channel and warns `alpha_reapplied`.
+   - `image.decompose` returns every layer with straight alpha (§3.2).
 6. **Masks.** A mask is an 8-bit greyscale PNG the same size as its image.
    - **White (255) means change, black (0) means keep,** and values in between blend.
    - An engine MAY resample a mask of another size, with the warning `mask_resampled`.
@@ -74,6 +75,8 @@ These names MUST be used in descriptors whenever the operation exposes the conce
 | `prompt_enhance` | `auto` · `on` · `off` | Whether the engine may rewrite the `prompt` or `instruction` before the model sees it (§1.9). `auto` (default): as the model's makers recommend, typically for short prompts; `on`: whenever the engine has an enhancer for the model; `off`: the model receives the text as typed. |
 | `target_operation` | operation id | `enhance_prompt`: the operation the prompt is for. Default `image.generate`. |
 | `target_model` | model id | `enhance_prompt`: the model the prompt is for, one of the target operation's offers |
+| `layer_count` | integer, 1 – 32 | `decompose`: how many layers to return, excluding `composite`. The descriptor narrows the range to what its offers allow. |
+| `outputs` | array of output names | `matte`: any of `mask`, `extract` (default both). `decompose`: any of `layers`, `composite`, with `layers` required (default `["layers"]`). |
 
 `size` and `aspect` are mutually exclusive: a request with both is 400 `invalid_request`. Model-specific knobs
 (guidance, steps, scheduler) are never vocabulary. Engines expose them, if at all, as extensions (Base §6.2).
@@ -95,11 +98,12 @@ The required inputs, outputs and parameters of each operation are listed in
 | `image.restore` | `image` | `kind`: `general` · `denoise` · `deblur` · `faces` · `scratches`; `quality` | `image` | Same size |
 | `image.relight` | `image`; `prompt` (text, optional) | `preset` (engine-defined enum), `strength`, `quality`, `seed`, `prompt_enhance` | `image` | Same size and composition |
 | `image.colorize` | `image` | `quality`, `seed` | `image` | Same size |
-| `image.matte` | `image` | `outputs`: any of `mask`, `extract` (default both) | `mask` (mask); `extract` (image, RGBA cut-out) | The mask follows §1.6; `extract` is the input with alpha set from the mask |
+| `image.matte` | `image` | `outputs` (§2) | `mask` (mask); `extract` (image, RGBA cut-out) | The mask follows §1.6; `extract` is the input with alpha set from the mask |
 | `image.segment` | `image`; `prompt` (text, optional); `points` (data, optional) | `count` (masks to return) | `masks` (mask, 1–n) | At least one of `prompt` or `points`. Points are `[{x, y, label: include\|exclude}]`, normalized 0–1. |
 | `image.describe` | `image` | `language` (BCP 47, default `en`) | `description` (data: `{caption, alt_text, tags[]}`) | Tags are lowercase |
 | `image.score` | `image` | — | `score` (data: `{score, scale}`) | `score` is normalized 0–1, higher is better; `scale` names the method |
 | `image.enhance_prompt` | `prompt` (text, required); `images` (image, 0–n) | `target_operation`, `target_model`, `seed` | `enhanced` (data: `{prompt, applied, size?}`) | Returns the text the target would run, without running it (§3.1) |
+| `image.decompose` | `image`; `prompt` (text, optional: the layer plan) | `layer_count`, `outputs`, `quality`, `seed`, `output`, `prompt_enhance` | `layers` (image, 1–n, front-most first); `composite` (image, optional) | A stack of layers that composites back to the input (§3.2) |
 
 ### 3.1 Previewing a prompt enhancement
 
@@ -121,9 +125,48 @@ The required inputs, outputs and parameters of each operation are listed in
 - **Models.** The operation's model offers are the enhancers (e.g. a small text model), with their licences. A job
   with a seed SHOULD reproduce its rewrite.
 
-**Variants and versions.** `upscale`, `restore` and `matte` keep an image's content, so clients such as Pixel Agency
-Desktop store their results as variants. `generate`, `edit`, `fill`, `extend` and `relight` change content, so their
-results are new images. The profile doesn't impose this distinction; it describes it.
+### 3.2 Decomposing an image
+
+`image.decompose` returns an image as a stack of layers that composites back to it, for layer-decomposition models
+([RFC 0004](../../rfcs/0004-image-decompose.md)).
+- **Order.** `layers` is front-most first, and the last layer is the background. Compositing the layers back to
+  front, last to first, with straight-alpha "over" (§1.5), approximates the input. How closely is the model's quality,
+  not a conformance rule (IMAGE-016 reports it).
+- **Every layer** is an RGBA image with straight alpha, the same size as the input (§1.8). An engine whose model works
+  at a smaller size scales the layers back up. Outputs are PNG unless the request's `output` asks for another format
+  that carries alpha. A descriptor's `output` leaves out formats without alpha (`image/jpeg`), so asking for one is
+  422 `unsupported_parameter` (§1.2).
+- **Hidden pixels.** A layer holds its whole element, including the parts that layers in front of it cover, as far as
+  the model can infer them.
+- **Count.** `layer_count` is how many layers to return, excluding `composite`. With it, the engine MUST return
+  exactly that many, or refuse the request. Without it, the engine chooses, from the prompt or a model default. Either
+  way it reports the count in `effective.layer_count`.
+  - The descriptor's `layer_count` schema states the most layers its offers allow (Base §6 rule 4). A request above
+    that, or above what a named model allows, is 422 `out_of_limits`.
+  - An engine whose model returns another number of layers fails the job with `engine_error`. It MUST NOT pad or drop
+    layers to meet the count.
+- **The prompt** is the layer plan, front-most first: what each layer holds ("Layer 1: the headline 'SALE'. Layer 2:
+  the red badge behind it …"). It may be rough.
+  - When the plan lists layers, `layers[i]` SHOULD hold its (i + 1)-th entry, so the plan is how a client names its
+    layers.
+  - A count the engine reads from the prompt is held to the same rules as `layer_count`: one that contradicts
+    `layer_count` is 400 `invalid_request`, and one above the maximum is 422 `out_of_limits`.
+  - `prompt_enhance` (§1.9) applies: an enhancer may rewrite a rough plan into a precise one by looking at the image,
+    with the warning `prompt_rewritten`.
+- **`composite`** is the model's own reconstruction of the whole canvas, for a model that makes one. It is a check,
+  never needed to rebuild the stack.
+  - An engine offers it only when a model produces it: the descriptor's `outputs` lists `composite`, and its
+    `composite` output has `min: 0`.
+  - A client asks for it with `outputs: ["layers", "composite"]`. `outputs` defaults to `["layers"]`.
+  - An `outputs` without `layers` is 400 `invalid_request`. One the descriptor doesn't offer is 422
+    `unsupported_parameter`.
+- **An input with alpha.** Pixels that are transparent in the input SHOULD be transparent in every layer. An engine
+  whose model can't keep them re-applies the input's alpha to each layer and warns `alpha_reapplied` (§1.5).
+
+**Variants and versions.** `upscale`, `restore`, `matte` and `decompose` keep an image's content, so clients such as
+Pixel Agency Desktop store their results as variants (a decomposition as a layered version of its image). `generate`,
+`edit`, `fill`, `extend` and `relight` change content, so their results are new images. The profile doesn't impose
+this distinction; it describes it.
 
 ## 4. Warnings
 
@@ -165,3 +208,6 @@ An engine conforms to Image 0.1 for the operations it offers when:
 | IMAGE-011 | `enhance_prompt` returns `enhanced` data with `prompt` and `applied`, for a target model the target operation offers |
 | IMAGE-012 | With `prompt_enhance: off` the text goes as typed: no `prompt_rewritten` unless `prompt_enhance_ignored` says why |
 | IMAGE-013 | An `ic` adapter's required slots are counted: too few `references` or `images` is 400 |
+| IMAGE-014 | `decompose` with `layer_count` n returns exactly n `layers`, each an RGBA PNG the size of the input; without it, `effective.layer_count` equals the number returned; a `composite` asked for is one image the size of the input |
+| IMAGE-015 | `decompose`: `layer_count` above the descriptor's maximum is 422 `out_of_limits`; `outputs` without `layers` is 400 `invalid_request`; `composite` from a descriptor that doesn't offer it is 422 `unsupported_parameter` |
+| IMAGE-016 | `decompose`'s layers, composited back to front with straight-alpha "over", are close to the input: the mean absolute error is reported, never failed |

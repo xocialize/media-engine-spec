@@ -124,7 +124,7 @@ struct EngineTests {
             let ops = try await client.get("/operations")
             #expect(conforms(ops.body, to: "base/operations-list.schema.json").isEmpty)
             let list = try decode(OperationsList.self, ops.body)
-            #expect(list.operations.count == 14)
+            #expect(list.operations.count == 15)
             let etag = try #require(ops.headers[.eTag])
             #expect(try await client.get("/operations", headers: [.ifNoneMatch: etag]).status == .notModified)
             let fill = try await client.get("/operations/image.fill")

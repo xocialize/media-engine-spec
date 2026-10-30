@@ -1,0 +1,175 @@
+{
+  "etag": "\"ops-01d8b67e6e0a\"",
+  "operations": [
+    {
+      "operation": "image.decompose",
+      "profile": "image",
+      "profile_version": "0.1",
+      "title": "Decompose into layers",
+      "summary": "A flat design as editable RGBA layers, front-most first, that composite back to it.",
+      "inputs": [
+        {
+          "name": "image",
+          "kind": "image",
+          "required": true,
+          "max": 1,
+          "media_types": [
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+          ]
+        },
+        {
+          "name": "prompt",
+          "kind": "text",
+          "required": false
+        }
+      ],
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "layer_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12,
+            "x-mes-ui": {
+              "label": "Layers",
+              "widget": "stepper",
+              "order": 0
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "layers",
+                "composite"
+              ]
+            },
+            "default": [
+              "layers"
+            ],
+            "x-mes-ui": {
+              "label": "Outputs",
+              "widget": "picker",
+              "order": 1,
+              "advanced": true
+            }
+          },
+          "quality": {
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "default": "standard",
+            "x-mes-ui": {
+              "label": "Quality",
+              "widget": "picker",
+              "order": 2,
+              "help": "Draft works at 512 px, standard and best at 1024 px."
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-mes-ui": {
+              "label": "Seed",
+              "widget": "seed",
+              "advanced": true
+            }
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "image/png",
+                  "image/webp"
+                ]
+              },
+              "bit_depth": {
+                "enum": [
+                  8
+                ]
+              }
+            }
+          },
+          "prompt_enhance": {
+            "enum": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "default": "auto",
+            "x-mes-ui": {
+              "label": "Plan the layers",
+              "widget": "picker",
+              "advanced": true
+            }
+          }
+        }
+      },
+      "outputs": [
+        {
+          "name": "layers",
+          "kind": "image",
+          "media_types": [
+            "image/png",
+            "image/webp"
+          ],
+          "min": 1,
+          "max": 12
+        },
+        {
+          "name": "composite",
+          "kind": "image",
+          "media_types": [
+            "image/png",
+            "image/webp"
+          ],
+          "min": 0,
+          "max": 1
+        }
+      ],
+      "limits": {
+        "max_width": 4096,
+        "max_height": 4096,
+        "max_megapixels": 16
+      },
+      "quality_tiers": [
+        "draft",
+        "standard",
+        "best"
+      ],
+      "models": [
+        {
+          "id": "ming-image-layer",
+          "title": "Ming-Image 0.1 Design-Layer (int8)",
+          "license": {
+            "spdx": "MIT",
+            "commercial_use": true,
+            "terms_url": "https://huggingface.co/inclusionAI/Ming-Image-0.1-Design-Layer/blob/main/LICENSE"
+          },
+          "memory_class": "large",
+          "speed_class": "slow",
+          "quality_tiers": [
+            "draft",
+            "standard",
+            "best"
+          ],
+          "default": true,
+          "notes": "Write the plan front-most first, one line per layer: \"Layer 1: the headline. Layer 2: …\". Up to 12 layers."
+        }
+      ],
+      "remote": {
+        "possible": false
+      }
+    }
+  ]
+}

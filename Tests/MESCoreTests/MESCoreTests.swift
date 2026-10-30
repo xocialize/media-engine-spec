@@ -35,6 +35,8 @@ let manifest: [(String, String, any (Codable & Sendable).Type)] = [
     ("job-holding-generate-enhanced.json", "base/job.schema.json", Job.self),
     ("job-holding-enhance-prompt.json", "base/job.schema.json", Job.self),
     ("job-holding-edit-adapters.json", "base/job.schema.json", Job.self),
+    ("operations-image-decompose.json", "base/operations-list.schema.json", OperationsList.self),
+    ("job-holding-decompose.json", "base/job.schema.json", Job.self),
 ]
 
 func schema(_ target: String, loader: SchemaLoader) throws -> (JSONValue, URL, JSONValue) {
@@ -102,7 +104,7 @@ struct MESCoreTests {
         let canonical = try MESJSON.decoder.decode(ImageProfile.Table.self, from: Data(contentsOf:
             schemas.appendingPathComponent("profiles/image/operations.json")))
         #expect(ImageProfile.operations == canonical)
-        #expect(ImageProfile.operations.operations.count == 14)
+        #expect(ImageProfile.operations.operations.count == 15)
         #expect(ImageProfile.operations.operations["image.fill"]?.preservesUnmasked == true)
     }
 

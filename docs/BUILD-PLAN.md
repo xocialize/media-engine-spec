@@ -425,6 +425,28 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     before); the mock engine still conforms (39 passed, 5 skipped in open mode) and so does `mes` (11 of 11).
   - **Source changes for consumers:** `ConsoleSection` gains `.plugins`, so an exhaustive `switch` over it needs a case.
     Iterate `console.sections` instead of `ConsoleSection.allCases`.
+- **`v0.6.0`** (2026-10-30; AB-A-0228, [RFC 0004](../rfcs/0004-image-decompose.md) accepted, amended): `image.decompose`
+  joins the Image 0.1 draft, for layer-decomposition models such as Ming-Image 0.1 Design-Layer (MLXEngine
+  `layerDecompose`, contract 1.48.0). Additive; Base and Image stay 0.1 drafts.
+  - **The operation** (Image §3.2): an `image` and an optional `prompt` (the layer plan, front-most first) in; `layers`
+    out, front-most first with the background last, each straight-alpha RGBA at the input's size; `composite`, the
+    model's own reconstruction, on request (`outputs: ["layers", "composite"]`).
+  - **Vocabulary** (Image §2): `layer_count` (1–32, narrowed by the descriptor; exact, or refused), and `outputs` gains
+    `decompose_outputs`. `effective.layer_count` is always reported. A count the prompt states meets the same rules.
+  - **Refusals:** `layer_count` above the maximum is 422 `out_of_limits`; `outputs` without `layers` is 400
+    `invalid_request`; an `outputs` value the descriptor doesn't list is 422 `unsupported_parameter`. That last one is
+    a kit change that reaches `matte` too: MESEngineCore used to answer it `out_of_limits`. Schema errors on an array
+    item now name the parameter (`outputs`), not the item (`outputs[1]`).
+  - **Mock:** a background layer (the input) behind one vertical band per layer, up to 8, recomposing to the input
+    exactly; the composite on request; `output` without JPEG. A plan's "Layer N" lines state a count.
+  - **Conformance:** IMAGE-014 (count, size, alpha, `effective.layer_count`, the composite), IMAGE-015 (the refusals)
+    and IMAGE-016 (the recomposition error, reported, never failed). IMAGE-010 now runs on the mock, against
+    decompose's narrowed `output`. Examples: `operations-image-decompose.json`, `job-holding-decompose.json`.
+    93 tests pass (89 before); `mes-mock-engine` conforms with 43 passed and 4 skipped in open mode (39 and 5
+    before), IMAGE-016 reporting an error of 0.00/255; `mes` still passes 11 of 11 and `tools/smoke-cli.sh` end to end.
+  - **Source changes for consumers:** `ImageProfile.operations` has 15 operations, and `ImageProfile.Param.layerCount`
+    is new. A client or test that counted 14 operations, or switched exhaustively over the mock's operation ids, needs
+    the new one.
 
 ## Next: the Audio profile
 

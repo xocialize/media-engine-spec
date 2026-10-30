@@ -12,6 +12,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "examples" / "v0"
 H = lambda s: hashlib.sha256(s.encode()).hexdigest()  # noqa: E731
 
+MIT = {"spdx": "MIT", "commercial_use": True,
+       "terms_url": "https://huggingface.co/inclusionAI/Ming-Image-0.1-Design-Layer/blob/main/LICENSE"}
 APACHE = {"spdx": "Apache-2.0", "commercial_use": True, "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"}
 QWEN_RESEARCH = {"spdx": "LicenseRef-Qwen-Research", "commercial_use": False,
                  "terms_url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
@@ -297,6 +299,82 @@ examples = {
         "retention": {"outputs_expire_at": "2026-10-19T18:10:10Z", "record_expires_at": "2026-10-20T17:10:10Z"},
         "created_at": "2026-10-19T17:10:00Z",
         "updated_at": "2026-10-19T17:10:10Z",
+    },
+    # Image §3.2 (RFC 0004): Ming-Image Design-Layer narrows layer_count to its measured 12 and offers the composite;
+    # output leaves out JPEG, which carries no alpha.
+    "operations-image-decompose.json": {
+        "etag": "\"ops-" + H("ops-decompose")[:12] + "\"",
+        "operations": [{
+            "operation": "image.decompose",
+            "profile": "image",
+            "profile_version": "0.1",
+            "title": "Decompose into layers",
+            "summary": "A flat design as editable RGBA layers, front-most first, that composite back to it.",
+            "inputs": [
+                {"name": "image", "kind": "image", "required": True, "max": 1,
+                 "media_types": ["image/png", "image/jpeg", "image/webp"]},
+                {"name": "prompt", "kind": "text", "required": False},
+            ],
+            "params": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "layer_count": {"type": "integer", "minimum": 1, "maximum": 12,
+                                    "x-mes-ui": {"label": "Layers", "widget": "stepper", "order": 0}},
+                    "outputs": {"type": "array", "minItems": 1, "maxItems": 2,
+                                "items": {"enum": ["layers", "composite"]}, "default": ["layers"],
+                                "x-mes-ui": {"label": "Outputs", "widget": "picker", "order": 1, "advanced": True}},
+                    "quality": {"enum": ["draft", "standard", "best"], "default": "standard",
+                                "x-mes-ui": {"label": "Quality", "widget": "picker", "order": 2,
+                                             "help": "Draft works at 512 px, standard and best at 1024 px."}},
+                    "seed": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                             "x-mes-ui": {"label": "Seed", "widget": "seed", "advanced": True}},
+                    "output": {"type": "object", "additionalProperties": False,
+                               "properties": {"media_type": {"enum": ["image/png", "image/webp"]}, "bit_depth": {"enum": [8]}}},
+                    "prompt_enhance": {"enum": ["auto", "on", "off"], "default": "auto",
+                                       "x-mes-ui": {"label": "Plan the layers", "widget": "picker", "advanced": True}},
+                },
+            },
+            "outputs": [{"name": "layers", "kind": "image", "media_types": ["image/png", "image/webp"], "min": 1, "max": 12},
+                        {"name": "composite", "kind": "image", "media_types": ["image/png", "image/webp"], "min": 0, "max": 1}],
+            "limits": {"max_width": 4096, "max_height": 4096, "max_megapixels": 16},
+            "quality_tiers": ["draft", "standard", "best"],
+            "models": [
+                {"id": "ming-image-layer", "title": "Ming-Image 0.1 Design-Layer (int8)", "license": MIT,
+                 "memory_class": "large", "speed_class": "slow", "quality_tiers": ["draft", "standard", "best"],
+                 "default": True,
+                 "notes": "Write the plan front-most first, one line per layer: \"Layer 1: the headline. Layer 2: …\". "
+                          "Up to 12 layers."},
+            ],
+            "remote": {"possible": False},
+        }],
+    },
+    "job-holding-decompose.json": {
+        "id": "job_01J9ZV",
+        "operation": "image.decompose",
+        "state": "holding",
+        "outcome": "succeeded",
+        "plan": {"model": {"id": "ming-image-layer", "title": "Ming-Image 0.1 Design-Layer (int8)", "license": MIT},
+                 "effective": {"quality": "standard", "seed": 42, "layer_count": 3, "outputs": ["layers", "composite"],
+                               "prompt_enhance": "off"}},
+        "warnings": [],
+        "result": {
+            "outputs": [
+                {"index": i, "name": name, "kind": "image", "media_type": "image/png", "bytes": size,
+                 "sha256": H(f"layer-{i}"), "href": f"/mes/v0/jobs/job_01J9ZV/outputs/{i}", "width": 2160, "height": 3840}
+                for i, (name, size) in enumerate([("layers", 412877), ("layers", 1530442), ("layers", 6120931),
+                                                  ("composite", 7012284)])
+            ],
+            "effective": {"quality": "standard", "seed": 42, "layer_count": 3, "outputs": ["layers", "composite"],
+                          "prompt_enhance": "off", "model_params": {"bucket": 1024, "steps": 12, "guidance": 2.0}},
+            "provenance": {"engine": ENGINE, "operation": "image.decompose", "profile_version": "0.1",
+                           "model": {"id": "ming-image-layer", "title": "Ming-Image 0.1 Design-Layer (int8)", "license": MIT},
+                           "seed": 42,
+                           "timings": {"received_at": "2026-10-30T17:00:00Z", "run_ms": 118400}},
+        },
+        "retention": {"outputs_expire_at": "2026-10-30T18:02:00Z", "record_expires_at": "2026-10-31T17:02:00Z"},
+        "created_at": "2026-10-30T17:00:00Z",
+        "updated_at": "2026-10-30T17:02:00Z",
     },
 }
 
