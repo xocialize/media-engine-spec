@@ -587,8 +587,9 @@ says otherwise:
 
 ## 8. Engine-side work the plugins depend on
 
-These are asks for MLXEngine and the packages, not spec work. They are named here so Gaea's GPP work and the
-package owners can pick them up:
+These are asks for MLXEngine and the packages, not spec work. They were filed on 2026-10-31 as AB-A-0236
+(mlx-engine: items 1, 2 and 4, and the Video artifact's facts), AB-A-0237 (mlx-ltx: item 3's audio switch, and LTX's rows
+in §7) and AB-A-0238 (mlx-video: items 3, 5 and 6, and the frame-stream packages' rows in §7):
 
 1. **Typed time and keyframes in MLXToolKit:** a time span and a retake modality on `VEditRequest`, an extend length,
    and keyframes (`[{image, frame, strength}]`) on `T2VRequest`, so `metaData` keys and file paths go away.
