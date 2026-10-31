@@ -5,7 +5,9 @@ import MESEngineCore
 
 /// An engine in the client's own process, behind the same `EngineConnection` as engines on the network
 /// (MES:DLV-3, DESK:RUN-9). Desktop registers its built-in ForgeCore this way, so local and remote processing look
-/// and record the same: the same descriptors, validation, job lifecycle, events, retention and provenance.
+/// and record the same: the same descriptors, validation, job lifecycle, events, retention and provenance. Streamed
+/// outputs' chunks (Base §11 rule 3) arrive through `events` and `outputChunks` as they do over SSE, with no sockets;
+/// assets and voice lists are the registry's own.
 ///
 ///     let forge = try await InProcessEngine.start(engine: ForgeCoreEngine(), configuration: config)
 ///     let job = try await forge.run(request)
@@ -44,6 +46,31 @@ public final class InProcessEngine: EngineConnection, Sendable {
         try FileManager.default.copyItem(at: file, to: destination)
         let (sha, bytes) = try Hashing.sha256(of: destination)
         return await registry.createUpload(owner: Self.owner, mediaType: mediaType, file: destination, bytes: bytes, sha256: sha)
+    }
+
+    public func createAsset(contentsOf file: URL, mediaType: String, ttlSeconds: Int) async throws -> Asset {
+        guard ttlSeconds >= 60 else {
+            throw MESClientError.engine(MESError(.invalidRequest, "ttl_s is required: at least 60 seconds.", param: "ttl_s"),
+                                        status: 400, retryAfter: nil)
+        }
+        let id = IDs.make("ast_")
+        let destination = spool.assetFile(id)
+        try FileManager.default.copyItem(at: file, to: destination)
+        let (sha, bytes) = try Hashing.sha256(of: destination)
+        return try await engineCall {
+            try await registry.createAsset(owner: Self.owner, mediaType: mediaType, file: destination, bytes: bytes, sha256: sha,
+                                           ttlSeconds: ttlSeconds)
+        }
+    }
+
+    public func assets() async throws -> [Asset] { await registry.listAssets(owner: Self.owner) }
+
+    public func asset(_ id: String) async throws -> Asset { try await engineCall { try await registry.asset(id, owner: Self.owner) } }
+
+    public func deleteAsset(_ id: String) async throws { try await engineCall { try await registry.deleteAsset(id, owner: Self.owner) } }
+
+    public func voices(operation: String, model: String) async throws -> VoiceList {
+        try await engineCall { try await registry.voices(operation: operation, model: model) }
     }
 
     public func submit(_ request: JobRequest, idempotencyKey: String?) async throws -> Job {

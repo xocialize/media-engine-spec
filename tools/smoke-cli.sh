@@ -1,6 +1,8 @@
 #!/bin/zsh
 # R0c exit check: `mes` against the mock engine end to end — discovery, pairing, generate → matte → fill (each
-# output feeding the next), download and confirm, then unpair. Everything runs in a temporary directory.
+# output feeding the next), download and confirm; then Audio 0.1 — a designed voice kept as an asset, speech streamed
+# with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted; then
+# unpair. Everything runs in a temporary directory.
 #
 #   tools/smoke-cli.sh            # builds, then runs
 set -euo pipefail
@@ -59,7 +61,39 @@ step "Outputs"
 ls -l "$work/out" "$work/fill"
 file "$work/fill/$job-0.png"
 
+step "mes voices audio.speak mock-presets · mes describe audio.speak"
+mes voices audio.speak mock-presets | tee "$work/voices.txt"
+grep -q "^mock-tenor  Tenor" "$work/voices.txt"
+mes describe audio.speak | tee "$work/speak-describe.txt"
+grep -q "Streams (--stream): audio as pcm_s16le|pcm_f32le" "$work/speak-describe.txt"
+
+step "mes run audio.design_voice (a reference voice)"
+mes run audio.design_voice -i description="a calm, low narrator" -i text="This is the voice." -o "$work/voice" | tee "$work/design.txt"
+designed=$(grep '^saved ' "$work/design.txt" | head -1 | cut -c7-)
+
+step "mes run audio.speak --stream, the designed voice as an asset (asset:<file>), outputs kept"
+mes run audio.speak -i text="Streamed while it is spoken." -i voice_ref="asset:$designed" --stream -o "$work/speak" --no-confirm \
+  | tee "$work/speak.txt"
+streamed=$(grep '^streamed ' "$work/speak.txt" | head -1 | cut -c10-)
+spoken=$(grep '^saved ' "$work/speak.txt" | head -1 | cut -c7-)
+cmp "$streamed" "$spoken" && print "the chunks written as they arrived equal the finished output"
+speak_job=$(grep -m1 '  audio.speak  ' "$work/speak.txt" | cut -d' ' -f1)
+mes confirm "$speak_job" >/dev/null
+
+step "mes assets · reuse by id · mes assets rm"
+mes assets | tee "$work/assets.txt"
+asset=$(grep -m1 '^ast_' "$work/assets.txt" | cut -d' ' -f1)
+mes run audio.speak -i text="Again, by asset id." -i voice_ref="asset:$asset" -o "$work/speak2" > "$work/speak2.txt"
+grep -q '(succeeded)' "$work/speak2.txt"
+mes assets rm "$asset"
+mes assets > "$work/assets-after.txt"
+grep -q "No assets." "$work/assets-after.txt"
+
+step "mes run audio.speak with a preset voice"
+mes run audio.speak -i text="A preset voice." -p voice=mock-tenor -o "$work/preset" --json > "$work/preset.json"
+grep -q '"voice":{"id":"mock-tenor"' "$work/preset.json" && print "spoke with mock-tenor"
+
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → unpair"

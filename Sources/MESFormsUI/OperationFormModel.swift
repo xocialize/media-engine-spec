@@ -26,6 +26,17 @@ public final class OperationFormModel {
     public private(set) var extensions: [String: JSONValue] = [:]
     /// Whether the advanced parameters are shown.
     public var showsAdvanced = false
+    /// Where voice lists come from (Base §6.5). Without one, the `voice` widget takes a voice id as text.
+    public var voiceSource: VoiceSource?
+    /// The preset voices of `voicesModel`, once `loadVoices()` has run.
+    public private(set) var voices: [Voice] = []
+    /// The model `voices` were loaded for.
+    public private(set) var voicesModel: String?
+    /// Why the last voice list didn't load.
+    public private(set) var voicesError: String?
+    public private(set) var loadingVoices = false
+    /// Ask for every output that can to stream as it's made (§7.1, §11). Sent only when `canStream`.
+    public var stream = false
 
     public init(descriptor: Descriptor) {
         self.descriptor = descriptor
@@ -63,11 +74,12 @@ public final class OperationFormModel {
         values = updated
     }
 
-    /// Clears every parameter, the model and the extensions.
+    /// Clears every parameter, the model, the extensions and streaming.
     public func reset() {
         values = [:]
         model = nil
         extensions = [:]
+        stream = false
     }
 
     // MARK: - Extensions
@@ -96,6 +108,46 @@ public final class OperationFormModel {
         return descriptor.models.first { $0.isDefault == true } ?? descriptor.models.first
     }
 
+    // MARK: - Voices and streaming
+
+    /// Loads the effective model's voice list; a model without voices (`supports.voices` 0) has none to load. HTTP
+    /// connections revalidate with the ETag, so calling this on every model change is cheap.
+    public func loadVoices() async {
+        guard let model = effectiveModel, model.voiceCount > 0, let voiceSource else {
+            voices = []
+            voicesModel = effectiveModel?.id
+            voicesError = nil
+            return
+        }
+        loadingVoices = true
+        defer { loadingVoices = false }
+        do {
+            let list = try await voiceSource.voices(descriptor.operation, model.id)
+            guard effectiveModel?.id == model.id else { return }          // the person chose another model meanwhile
+            (voices, voicesModel, voicesError) = (list, model.id, nil)
+        } catch {
+            guard effectiveModel?.id == model.id else { return }
+            (voices, voicesModel, voicesError) = ([], model.id, String(describing: error))
+        }
+    }
+
+    /// What the `voice` widget shows: the effective model's voices, and how to play a sample.
+    public var voiceChoices: VoiceChoices {
+        VoiceChoices(voices: voicesModel == effectiveModel?.id ? voices : [], model: effectiveModel, loading: loadingVoices,
+                     error: voicesError, sample: voiceSource?.sample)
+    }
+
+    /// The outputs whose spec can stream (§6: an `audio` output whose `max` is 1).
+    public var streamableOutputs: [OutputSpec] { descriptor.outputs.filter { $0.stream != nil } }
+
+    /// Whether the request can stream: a streamable output, and the chosen model streams (with none chosen, some offer
+    /// does: streaming implies its model, §6.4).
+    public var canStream: Bool {
+        guard !streamableOutputs.isEmpty else { return false }
+        if let model, let chosen = descriptor.models.first(where: { $0.id == model }) { return chosen.streams }
+        return descriptor.models.contains(where: \.streams)
+    }
+
     /// Models the policy rules out (a commercial-use policy excludes `no` and `unknown`).
     public func isExcluded(_ offer: ModelOffer) -> Bool {
         policy.effectiveLicense == .commercialUse && offer.license.commercialUse != .yes
@@ -114,6 +166,13 @@ public final class OperationFormModel {
         for ext in descriptor.extensions ?? [] {
             guard let value = extensions[ext.name] else { continue }
             if let issue = SchemaValidator().validate(value, against: ext.schema).first { byField[ext.name] = issue.message }
+        }
+        // A voice the chosen model doesn't list is refused (§6.5 rule 2); say so before sending.
+        let choices = voiceChoices
+        for field in fields where field.widget == .voice {
+            guard let id = values[field.name]?.stringValue, !choices.voices.isEmpty, !choices.voices.contains(where: { $0.id == id }),
+                  byField[field.name] == nil else { continue }
+            byField[field.name] = "\(choices.model?.title ?? "This model") has no voice \(id)."
         }
         return byField
     }
@@ -134,9 +193,10 @@ public final class OperationFormModel {
             inputs[name] = .text(value)
         }
         let usesPolicy = policy.license != nil || policy.remote != nil
+        let streams = stream && canStream ? streamableOutputs.map { StreamRequest(output: $0.name) } : nil
         return JobRequest(operation: descriptor.operation, inputs: inputs.isEmpty ? nil : inputs,
                           params: values.isEmpty ? nil : values, model: model, policy: usesPolicy ? policy : nil,
-                          extensions: extensions.isEmpty ? nil : extensions, clientRef: clientRef)
+                          extensions: extensions.isEmpty ? nil : extensions, stream: streams, clientRef: clientRef)
     }
 
     // MARK: - Path plumbing

@@ -5,7 +5,8 @@ import MESFormsUI
 import MockEngineCore
 import SwiftUI
 
-// mes-forms-gallery: every mock descriptor's form (R0c exit: "a MESFormsUI preview renders every mock descriptor").
+// mes-forms-gallery: every mock descriptor's form, Image and Audio (R0c exit: "a MESFormsUI preview renders every
+// mock descriptor"), with the mock's voice lists behind the `voice` widget.
 //
 //   mes-forms-gallery                     a window: operations on the left, the form, and the request it makes
 //   mes-forms-gallery --snapshot <dir>    each form as PNG, light and dark, with advanced fields and extensions open
@@ -17,15 +18,25 @@ let arguments = CommandLine.arguments
 let descriptors: [Descriptor] = {
     let box = DescriptorBox()
     let done = DispatchSemaphore(value: 0)
-    Task.detached { box.value = await MockImageEngine().descriptors(); done.signal() }
+    Task.detached { box.value = await MockMediaEngine().descriptors(); done.signal() }
     done.wait()
     return box.value
 }()
 
-/// A form with everything showing: advanced open, extensions on, a prompt typed.
+/// The mock's voice lists, as an engine connection would serve them.
+let mockVoices = VoiceSource(voices: { operation, model in await MockMediaEngine().voices(operation: operation, model: model) })
+
+/// A media slot: the audio well for audio inputs, the placeholder for the rest.
+@MainActor @ViewBuilder func slot(_ spec: InputSpec) -> some View {
+    if spec.kind == .audio { AudioInputWell(spec: spec, file: .constant(nil)) } else { MediaSlotPlaceholder(spec: spec) }
+}
+
+/// A form with everything showing: advanced open, extensions on, a prompt typed, a voice chosen.
 @MainActor func showcase(_ d: Descriptor) -> OperationFormModel {
     let form = OperationFormModel(descriptor: d)
+    form.voiceSource = mockVoices
     form.showsAdvanced = true
+    if form.fields.contains(where: { $0.widget == .voice }) { form.setValue("mock-tenor", at: ["voice"]) }
     for spec in form.textInputs where spec.required { form.text[spec.name] = "a lighthouse at dusk" }
     for ext in d.extensions ?? [] { form.setEnabled(ext, true) }
     for field in form.fields {                                   // show a oneOf's first variant, fields and all
@@ -41,7 +52,7 @@ let descriptors: [Descriptor] = {
     _ = NSApplication.shared
     for d in descriptors {
         for (appearance, suffix) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
-            let root = OperationFormContent(form: showcase(d))
+            let root = OperationFormContent(form: showcase(d), mediaSlot: slot)
                 .padding(Tokens.Space.l)
                 .frame(width: Tokens.Layout.inspectorWidth + 2 * Tokens.Space.l)
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -88,7 +99,7 @@ struct GalleryView: View {
         } detail: {
             if let form = forms.first(where: { $0.descriptor.operation == selection }) {
                 HStack(spacing: 0) {
-                    OperationForm(form: form).frame(width: Tokens.Layout.inspectorWidth + 2 * Tokens.Space.l)
+                    OperationForm(form: form, mediaSlot: slot).frame(width: Tokens.Layout.inspectorWidth + 2 * Tokens.Space.l)
                     Divider()
                     RequestPreview(form: form)
                 }
@@ -156,7 +167,11 @@ do {
     appItem.submenu?.addItem(NSMenuItem(title: "Quit MESFormsUI Gallery", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     menu.addItem(appItem)
     app.mainMenu = menu
-    let forms = descriptors.map(OperationFormModel.init(descriptor:))
+    let forms = descriptors.map { d in
+        let form = OperationFormModel(descriptor: d)
+        form.voiceSource = mockVoices
+        return form
+    }
     let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 820),
                           styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
                           backing: .buffered, defer: false)

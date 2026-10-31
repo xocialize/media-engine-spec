@@ -115,6 +115,18 @@ curl -s http://127.0.0.1:17600/mes/v0/operations/audio.speak/models/mock-presets
 curl -s http://127.0.0.1:17600/mes/v0/jobs -H 'Content-Type: application/json' -d '{"operation": "audio.speak", "inputs": {"text": "Hello [laugh] there [pause 1s] friend"}, "params": {"voice": "mock-tenor", "emotion": {"label": "happy"}}}'
 ```
 
+From a client, MESClientKit lists voices (revalidated by ETag), keeps files as assets (`AssetLibrary` sends one again
+when an engine has lost it) and reads a streamed output as chunks while the job runs, over SSE, the WebSocket or in
+process. `mes` does the same; `--stream` writes the chunks to a WAV file as they arrive:
+
+```bash
+swift run mes voices audio.speak mock-presets
+```
+
+```bash
+swift run mes run audio.speak -i text="Hello there." -i voice_ref=asset:clip.wav --stream
+```
+
 ```bash
 swift run mes-forms-gallery
 ```

@@ -121,9 +121,10 @@ enum Arguments {
     }
 
     /// Builds the request's inputs from `name=value` pairs, by each input's kind in the descriptor: text as is, data
-    /// as JSON, media as file paths (inline when small, else uploaded). Repeating a name gives several values.
+    /// as JSON, media as file paths (inline when small, else uploaded) or `asset:<id|file>`. Repeating a name gives
+    /// several values.
     static func inputs(_ pairs: [String], descriptor: Descriptor, engine: HTTPEngineConnection,
-                       inlineLimit: Int) async throws -> [String: RequestInput] {
+                       inlineLimit: Int, assets: AssetLibrary) async throws -> [String: RequestInput] {
         var grouped: [String: [String]] = [:]
         var order: [String] = []
         for pair in pairs {
@@ -150,6 +151,10 @@ enum Arguments {
             default:
                 var media: [InputValue] = []
                 for path in values {
+                    if path.hasPrefix("asset:") {
+                        media.append(try await asset(String(path.dropFirst(6)), library: assets))
+                        continue
+                    }
                     let file = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
                     guard FileManager.default.fileExists(atPath: file.path) else { throw ValidationError("No file at \(path).") }
                     media.append(try await engine.input(contentsOf: file, inlineLimit: inlineLimit))
@@ -158,6 +163,15 @@ enum Arguments {
             }
         }
         return inputs
+    }
+
+    /// `asset:<file>` keeps the file as an asset (or reuses this run's); `asset:<id>` names one already there.
+    static func asset(_ value: String, library: AssetLibrary) async throws -> InputValue {
+        let file = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: file.path) else { return .asset(value) }
+        let asset = try await library.asset(for: file)
+        note("· \(file.lastPathComponent) is asset \(asset.assetID), kept until \(MESJSON.timestamp(asset.expiresAt))")
+        return .asset(asset.assetID)
     }
 }
 
@@ -182,6 +196,10 @@ enum Format {
         if let e = job.error { lines.append("  error \(e.code): \(e.message)") }
         if let expires = job.retention.outputsExpireAt { lines.append("  outputs kept until \(MESJSON.timestamp(expires))") }
         return lines.joined(separator: "\n")
+    }
+
+    static func asset(_ a: Asset) -> String {
+        "\(a.assetID)  \(a.mediaType) · \(a.bytes) bytes · kept until \(MESJSON.timestamp(a.expiresAt))"
     }
 
     static func json<T: Encodable>(_ value: T) -> String {

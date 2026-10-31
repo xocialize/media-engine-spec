@@ -89,6 +89,9 @@ public struct OperationFormContent<MediaSlot: View>: View {
         }
         .controlSize(.small)
         .font(Tokens.Font.body)
+        .environment(\.voiceChoices, form.voiceChoices)
+        // The `voice` widget's list follows the chosen model (Base §6.5).
+        .task(id: form.effectiveModel?.id) { await form.loadVoices() }
     }
 
     var header: some View {
@@ -97,7 +100,7 @@ public struct OperationFormContent<MediaSlot: View>: View {
                 Text(form.descriptor.title).font(Tokens.Font.panelTitle)
                 Spacer()
                 Button("Reset") { form.reset() }
-                    .disabled(form.values.isEmpty && form.model == nil && form.extensions.isEmpty)
+                    .disabled(form.values.isEmpty && form.model == nil && form.extensions.isEmpty && !form.stream)
             }
             Text(form.descriptor.operation).font(Tokens.Font.mono).foregroundStyle(Tokens.Color.secondaryLabel)
             if let summary = form.descriptor.summary {
@@ -142,7 +145,8 @@ public struct MediaSlotPlaceholder: View {
 
     public var body: some View {
         HStack(spacing: Tokens.Space.s) {
-            Image(systemName: spec.kind == .mask ? "circle.lefthalf.filled" : spec.kind == .data ? "curlybraces" : "photo")
+            Image(systemName: spec.kind == .mask ? "circle.lefthalf.filled" : spec.kind == .data ? "curlybraces"
+                : spec.kind == .audio ? "waveform" : "photo")
                 .foregroundStyle(Tokens.Color.secondaryLabel)
             VStack(alignment: .leading, spacing: 2) {
                 Text(FormSchema.label(spec.name))
@@ -178,6 +182,13 @@ struct ModelSection: View {
             Toggle("Commercial-use models only", isOn: Binding(get: { form.policy.license == .commercialUse },
                                                                set: { form.policy.license = $0 ? .commercialUse : nil }))
                 .toggleStyle(.checkbox).padding(.top, Tokens.Space.xs)
+            if !form.streamableOutputs.isEmpty, form.descriptor.models.contains(where: \.streams) {
+                Toggle("Stream as it's made", isOn: $form.stream)
+                    .toggleStyle(.checkbox)
+                    .disabled(!form.canStream)
+                    .help(form.canStream ? "Chunks arrive while the job runs; with no model chosen, the engine picks one that streams."
+                        : "\(form.effectiveModel?.title ?? "This model") doesn't stream.")
+            }
             if form.descriptor.remote?.possible == true {
                 Toggle("Allow remote providers (may bill)", isOn: Binding(get: { form.policy.remote == .allow },
                                                                           set: { form.policy.remote = $0 ? .allow : nil }))

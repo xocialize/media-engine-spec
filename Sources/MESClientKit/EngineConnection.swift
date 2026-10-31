@@ -29,6 +29,35 @@ public protocol EngineConnection: Sendable {
     /// The job's events after `seq` (§11), finishing after `job.ended`. HTTP connections use SSE and resume with
     /// `Last-Event-ID` when the connection drops.
     func events(job: String, after seq: Int) -> AsyncThrowingStream<Event, any Error>
+
+    // Added with Base 0.1's v0.7.0 features. Each has a default that answers as an engine without the feature does
+    // (404 `not_found`), so connections written before them still compile.
+
+    /// `POST {path}/assets?ttl_s=` (§8.1, `assets` feature): one file's bytes kept for `ttlSeconds` (at least 60; the
+    /// engine grants at most `limits.max_asset_ttl_s`), verified with `Content-Digest`.
+    func createAsset(contentsOf file: URL, mediaType: String, ttlSeconds: Int) async throws -> Asset
+    /// `GET {path}/assets`: the caller's own assets.
+    func assets() async throws -> [Asset]
+    /// `GET {path}/assets/{id}`.
+    func asset(_ id: String) async throws -> Asset
+    /// `DELETE {path}/assets/{id}`; 404 `not_found` for one the caller doesn't have.
+    func deleteAsset(_ id: String) async throws
+    /// `GET {path}/operations/{operation}/models/{model}/voices` (§6.5), for an offer whose `supports.voices` is above
+    /// 0. HTTP connections revalidate with the ETag.
+    func voices(operation: String, model: String) async throws -> VoiceList
+    /// A voice's `sample` (§6.5), fetched with this connection's authorization.
+    func sample(of voice: Voice) async throws -> Data
+}
+
+extension EngineConnection {
+    public func createAsset(contentsOf file: URL, mediaType: String, ttlSeconds: Int) async throws -> Asset {
+        throw MESClientError.missing("assets")
+    }
+    public func assets() async throws -> [Asset] { throw MESClientError.missing("assets") }
+    public func asset(_ id: String) async throws -> Asset { throw MESClientError.missing("assets") }
+    public func deleteAsset(_ id: String) async throws { throw MESClientError.missing("assets") }
+    public func voices(operation: String, model: String) async throws -> VoiceList { throw MESClientError.missing("voice lists") }
+    public func sample(of voice: Voice) async throws -> Data { throw MESClientError.missing("voice samples") }
 }
 
 /// What can go wrong talking to an engine.
@@ -43,6 +72,11 @@ public enum MESClientError: Error, Sendable, Equatable, CustomStringConvertible 
     case checksumMismatch(expected: String, actual: String)
     /// The engine answered something this client can't read.
     case unexpected(String)
+
+    /// What a connection without a feature answers: the engine's 404 `not_found`.
+    static func missing(_ feature: String) -> MESClientError {
+        .engine(MESError(.notFound, "This connection doesn't support \(feature)."), status: 404, retryAfter: nil)
+    }
 
     /// The §12 code, when there is one. Clients treat unknown codes by their HTTP class (§12).
     public var code: String? { if case .engine(let e, _, _) = self { e.code } else { nil } }
@@ -87,6 +121,12 @@ extension EngineConnection {
         return .upload(try await upload(contentsOf: file, mediaType: type).uploadID)
     }
 
+    /// Creates an asset from a file (§8.1), inferring its media type from the extension when not given.
+    public func createAsset(contentsOf file: URL, mediaType: String? = nil, ttl: Duration) async throws -> Asset {
+        try await createAsset(contentsOf: file, mediaType: mediaType ?? MediaType.infer(file),
+                              ttlSeconds: max(60, Int(ttl.components.seconds)))
+    }
+
     /// Downloads every output of a held job into `directory`, named `<job>-<index>.<ext>`.
     public func downloadAll(_ job: Job, to directory: URL) async throws -> [URL] {
         guard let outputs = job.result?.outputs else { return [] }
@@ -102,9 +142,15 @@ extension EngineConnection {
 
 /// Media types for files.
 public enum MediaType {
+    /// The media type for a file's extension, spelled as the profiles list them (Audio §1.1: `audio/wav`, not the
+    /// system's `audio/vnd.wave`; `audio/mp4`, not `audio/x-m4a`).
     public static func infer(_ file: URL) -> String {
-        UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        return profileSpellings[type] ?? type
     }
+
+    static let profileSpellings = ["audio/vnd.wave": "audio/wav", "audio/x-wav": "audio/wav", "audio/wave": "audio/wav",
+                                   "audio/x-m4a": "audio/mp4"]
 
     public static func fileExtension(_ mediaType: String) -> String {
         UTType(mimeType: mediaType)?.preferredFilenameExtension ?? "bin"

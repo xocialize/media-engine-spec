@@ -19,6 +19,8 @@ public indirect enum FieldWidget: Equatable, Sendable {
     case aspect
     /// `#rrggbb`.
     case color
+    /// A preset voice's id (Base §6.1, §6.5): a picker filled from the chosen model's voice list.
+    case voice
     case text
     case textarea
     case integer(ClosedRange<Int>?)
@@ -115,6 +117,7 @@ public enum FormSchema {
         case "size" where type == "object": return .size(minimum: sizeMinimum(schema))
         case "aspect" where type == "string": return .aspect
         case "color" where type == "string": return .color
+        case "voice" where type == "string": return .voice
         case "textarea" where type == "string": return .textarea
         case "text" where type == "string": return .text
         case "slider" where (type == "number" || type == "integer") && bounded != nil:
@@ -134,6 +137,7 @@ public enum FormSchema {
             return .integer(bounded.map { Int(max($0.lowerBound, Double(Int.min / 2)))...Int(min($0.upperBound, Double(Int.max / 2))) })
         case "number": return bounded.map { .slider($0, integer: false) } ?? .number(nil)
         case "string":
+            if name == "voice" { return .voice }
             if let max = schema["maxLength"]?.intValue, max > 200 { return .textarea }
             return .text
         case "object":

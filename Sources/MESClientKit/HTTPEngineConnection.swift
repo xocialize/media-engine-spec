@@ -18,6 +18,7 @@ public final class HTTPEngineConnection: EngineConnection, @unchecked Sendable {
     let session: URLSession
     let trust: EngineTrust
     private let etagCache = Locked<(etag: String, list: OperationsList)?>(nil)
+    private let voiceCache = Locked<[String: VoiceList]>([:])
 
     /// - Parameters:
     ///   - pinnedFingerprint: the engine certificate's SHA-256 (DER) from pairing. Required for `https` unless
@@ -110,6 +111,68 @@ public final class HTTPEngineConnection: EngineConnection, @unchecked Sendable {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: temp, to: destination)
         return destination
+    }
+
+    // MARK: - Assets (§8.1) and voices (§6.5)
+
+    public func createAsset(contentsOf file: URL, mediaType: String, ttlSeconds: Int) async throws -> Asset {
+        let digest = try Self.sha256(of: file)
+        let headers = ["Content-Type": mediaType, "Content-Digest": "sha-256=:\(digest.base64EncodedString()):"]
+        return try decode(Asset.self, try await send("POST", "assets?ttl_s=\(ttlSeconds)", headers: headers, file: file, accept: [201]))
+    }
+
+    public func assets() async throws -> [Asset] { try decode(AssetList.self, try await send("GET", "assets")).assets }
+
+    public func asset(_ id: String) async throws -> Asset { try decode(Asset.self, try await send("GET", "assets/\(Self.segment(id))")) }
+
+    public func deleteAsset(_ id: String) async throws { _ = try await send("DELETE", "assets/\(Self.segment(id))", accept: [200, 204]) }
+
+    public func voices(operation: String, model: String) async throws -> VoiceList {
+        let key = "\(operation)\u{0}\(model)"
+        var headers: [String: String] = [:]
+        let cached = voiceCache.value[key]
+        if let cached { headers["If-None-Match"] = cached.etag }
+        let path = "operations/\(Self.segment(operation))/models/\(Self.segment(model))/voices"
+        let (data, response) = try await send("GET", path, headers: headers, accept: [200, 304])
+        if response.statusCode == 304, let cached { return cached }
+        var list = try decode(VoiceList.self, (data, response))
+        if let etag = response.value(forHTTPHeaderField: "ETag") { list.etag = etag }
+        voiceCache.withValue { $0[key] = list }
+        return list
+    }
+
+    public func sample(of voice: Voice) async throws -> Data {
+        guard let href = voice.sample else { throw MESClientError.engine(MESError(.notFound, "\(voice.id) has no sample."), status: 404, retryAfter: nil) }
+        guard let url = resolve(href) else { throw MESClientError.unexpected("The sample \(href) isn't on this engine.") }
+        var request = URLRequest(url: url)
+        request.setValue(MESClientKit.baseVersion, forHTTPHeaderField: "MES-Version")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await session.data(for: request)
+        let http = try Self.http(response)
+        guard http.statusCode == 200 else { throw Self.error(data, http) }
+        return data
+    }
+
+    /// An `href` on the engine (§6.5, §10.1): an absolute path on its host, a path under its base URL, or a URL with
+    /// the engine's own origin. Anything elsewhere is refused, so the token never leaves the engine.
+    func resolve(_ href: String) -> URL? {
+        if href.hasPrefix("/") {
+            var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+            let parts = href.split(separator: "?", maxSplits: 1).map(String.init)
+            components?.percentEncodedPath = parts[0]
+            components?.percentEncodedQuery = parts.count > 1 ? parts[1] : nil
+            return components?.url
+        }
+        guard let absolute = URL(string: href), absolute.scheme != nil else { return url(href) }
+        let origin = { (u: URL) in [u.scheme?.lowercased(), u.host?.lowercased(), u.port.map(String.init)] }
+        return origin(absolute) == origin(baseURL) ? absolute : nil
+    }
+
+    /// One path segment, percent-encoded.
+    static func segment(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     // MARK: - Events (SSE)

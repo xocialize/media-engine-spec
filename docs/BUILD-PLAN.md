@@ -506,11 +506,46 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     `mes-mock-engine` is named "MES Mock Engine" (was "MES Mock Image Engine"); `MockImageEngine` alone is unchanged.
     `mes` still passes 11 of 11 and `tools/smoke-cli.sh` end to end.
 
+- **Unreleased** (2026-10-30; after v0.7.0, for Gaea G2 and Gaea Lab, AB-A-0232): **the client side of Audio 0.1**, so a
+  client built on MESKit drives what v0.7.0 added to engines. No spec or schema change.
+  - **MESClientKit:** `EngineConnection` gains `createAsset(contentsOf:mediaType:ttlSeconds:)`, `assets()`,
+    `asset(_:)`, `deleteAsset(_:)`, `voices(operation:model:)` and `sample(of:)`, each with a default that answers as an
+    engine without the feature (404 `not_found`), so older conformers still compile. `HTTPEngineConnection` sends
+    assets with `Content-Digest`, revalidates voice lists by ETag per offer, and fetches a voice's `sample` only from
+    the engine's own origin. `AssetLibrary` (an actor) keeps files as assets by content, reuses one while it lives, and
+    on 422 `input_invalid` naming an input with its assets creates them again and submits once more (§8.1).
+    Streaming: `OutputChunk` (`samples`, and the plan's `format`), `ChunkReader` (each output's chunks in order and
+    once, the format from `job.plan`, a gap an error, a job that ends unfinished `StreamIncomplete`),
+    `outputChunks(job:output:after:)` as an `AsyncThrowingStream` over SSE (resuming from a snapshot's
+    `plan.streams`), `EventChannel.outputChunks(job:output:)` over the WebSocket, `runStreaming`/`followStreaming`
+    (a chunk callback, then the held job; a cancelled one returns its outcome), and `WAVStreamWriter`, which writes
+    chunks to WAV as they arrive in §10.1's format, so the file equals the engine's output. `MediaType.infer` spells
+    `.wav` as `audio/wav` and `.m4a` as `audio/mp4`, as the Audio profile lists them.
+  - **MESInProcess:** assets and voice lists from the registry; chunks arrive through `events`/`outputChunks` with no
+    sockets.
+  - **MESFormsUI** (now on MESClientKit): the `voice` widget (`FieldWidget.voice`, from the hint or a string parameter
+    named `voice`) picks from the effective model's list through `OperationFormModel.voiceSource`
+    (`VoiceSource(engine:)`), reloaded when the model changes, with each voice's languages, tags, notes, licence and
+    sample; a voice the model doesn't list is an issue. `stream` and `canStream` put `stream` in the request ("Stream
+    as it's made" in the model section). `AudioInputWell` (choose or drop a file, play it), `AudioPlayerView` (play,
+    scrub, the file's format), `AudioPlayback`, and `PCMStreamPlayer`, which plays chunks as they arrive on
+    AVAudioEngine. `mes-forms-gallery` shows Audio's five forms with the mock's voices.
+  - **`mes`:** `mes voices <op> <model>`; `mes assets` (`list`, `add <file> --ttl`, `rm <id>…`); media inputs as
+    `asset:<id>` or `asset:<file>` (kept for `--asset-ttl`, sent again if the engine lost it); `mes run --stream`
+    (`--stream-encoding`) writes each streamed output to `<job>-<output>.stream.wav` as chunks arrive, removed if the
+    job fails; `mes describe` names models that stream or have voices, and the streamable outputs.
+  - **Tests:** assets, `AssetLibrary` re-creation, voices and ETag, streaming over SSE (and resuming), `runStreaming`
+    in both encodings with the written file equal to the output, purged replays without samples, cancellation, the
+    WebSocket with overlapping subscriptions, `ChunkReader`, the same in process, and the forms' voices, streaming,
+    PCM conversion and views rendered offscreen. 117 tests pass (102 before). `tools/smoke-cli.sh` adds the audio
+    leg: a designed voice kept as an asset, `audio.speak --stream` whose streamed file equals the downloaded output
+    byte for byte, the asset by id, `mes assets rm`, and a preset voice. `mes` still passes 11 of 11.
+  - **Source changes for consumers:** `FieldWidget` gains `.voice`, so exhaustive `switch`es over it need a case.
+    MESFormsUI depends on MESClientKit. `EngineConnection`'s new requirements have defaults.
+
 ## Next: Audio after 0.1
 
-- **MESClientKit** gains assets (create, list, delete, re-create on 422), voice lists by ETag, and chunks as an
-  `AsyncSequence` per output; MESInProcess carries chunks with no sockets; MESFormsUI gains the audio input widget
-  (pick, record, play), the `voice` picker and a player.
+- **MESFormsUI:** record an audio input in place (the well picks, drops and plays files today).
 - **Base §10.2** takes A-8 and A-9 for every profile (Audio already applies them, Audio §1.12); A-6
   (`commercial_use: conditional`) is still open.
 - **The MLXEngine adapter** needs the engine-side work of the evaluation's §6: voice lists, declared cues, languages

@@ -68,6 +68,7 @@ struct FieldEditor: View {
         case .size(let minimum): SizeEditor(field: field, minimum: minimum, value: $value)
         case .aspect: AspectEditor(field: field, value: $value)
         case .color: ColorEditor(field: field, value: $value)
+        case .voice: VoiceEditor(field: field, value: $value)
         case .text:
             LabeledContent(field.label) {
                 TextField(field.label, text: stringBinding, prompt: field.defaultValue?.stringValue.map { Text($0) })

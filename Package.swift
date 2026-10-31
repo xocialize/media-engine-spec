@@ -15,7 +15,8 @@ import PackageDescription
 //                  Foundation, CryptoKit and Network only.
 //   MESInProcess   an engine in the client's process behind the same `EngineConnection` (Desktop's ForgeCore).
 //   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
-//                  extensions (DesignScaffold tokens). `mes-forms-gallery` previews every mock descriptor.
+//                  extensions (DesignScaffold tokens); the voice picker, an audio input well, a player for audio
+//                  outputs and one for streamed PCM. `mes-forms-gallery` previews every mock descriptor.
 //   MESEngineUI    an engine app's own console (Engines-PRD ENG-9): the queue, the enabled set of models with a card
 //                  per model, a System monitor and the menu-bar item. Every Pixel Agency engine shares it. The
 //                  `SystemSensors` trait (default on) adds temperatures, fans and power, read through private
@@ -98,7 +99,7 @@ let package = Package(
         .target(name: "MESInProcess", dependencies: ["MESClientKit", "MESEngineCore"]),
         .target(
             name: "MESFormsUI",
-            dependencies: ["MESCore", .product(name: "DesignScaffold", package: "DesignScaffold"),
+            dependencies: ["MESCore", "MESClientKit", .product(name: "DesignScaffold", package: "DesignScaffold"),
                            .product(name: "DesignScaffoldControls", package: "DesignScaffold")]
         ),
         .target(

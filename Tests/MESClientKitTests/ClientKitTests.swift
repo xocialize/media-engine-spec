@@ -19,7 +19,7 @@ func freshConfig(_ tweak: (inout EngineConfiguration) -> Void = { _ in }) -> Eng
     return c
 }
 
-func withEngine(_ config: EngineConfiguration, engine: MockImageEngine = MockImageEngine(),
+func withEngine(_ config: EngineConfiguration, engine: any MediaEngine = MockImageEngine(),
                 _ body: (Int) async throws -> Void) async throws {
     let server = MESEngineServer(engine: engine, configuration: config)
     let (ports, continuation) = AsyncStream<Int>.makeStream()
