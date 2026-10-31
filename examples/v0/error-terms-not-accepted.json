@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "policy_unmet",
+    "reason": "terms_not_accepted",
+    "param": "policy",
+    "request_id": "req_4c1d",
+    "message": "LTX 2.5 compact24 is under LicenseRef-LTX-2-Community, whose terms bind each user: show them its notice and terms (https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE), and once they accept, list LicenseRef-LTX-2-Community in policy.accepted."
+  }
+}

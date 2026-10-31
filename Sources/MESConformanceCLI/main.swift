@@ -16,7 +16,7 @@ struct ConformanceCLI: AsyncParsableCommand {
 struct EngineCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "engine",
-        abstract: "Run the BASE, IMAGE and AUDIO tests against an engine, and write a JSON and Markdown report.",
+        abstract: "Run the BASE, IMAGE, AUDIO and VIDEO tests against an engine, and write a JSON and Markdown report.",
         discussion: """
             Open-mode engines need only their URL. For a paired engine, either pair as part of the run (--pair, which \
             also tests pairing; the engine's operator approves), reuse a `mes pair` (--paired-state), or pass --token \
@@ -31,7 +31,7 @@ struct EngineCommand: AsyncParsableCommand {
     @Option(help: "Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.") var maxTTLWait = 30
     @Option(help: "This machine's address as a LAN engine sees it, for the grants test.") var grantHost: String?
     @Option(help: "Seconds to wait for each job before failing its test; a slow model may need more.") var jobTimeout = 180
-    @Option(help: "Only these tests, comma-separated (e.g. BASE-020,IMAGE-001,AUDIO-005).") var only: String?
+    @Option(help: "Only these tests, comma-separated (e.g. BASE-020,IMAGE-001,AUDIO-005,VIDEO-003).") var only: String?
     @Option(name: .shortAndLong, help: "Directory for report.json and report.md.") var out = "mes-conformance-report"
 
     func run() async throws {

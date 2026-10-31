@@ -146,7 +146,7 @@ public struct MediaSlotPlaceholder: View {
     public var body: some View {
         HStack(spacing: Tokens.Space.s) {
             Image(systemName: spec.kind == .mask ? "circle.lefthalf.filled" : spec.kind == .data ? "curlybraces"
-                : spec.kind == .audio ? "waveform" : "photo")
+                : spec.kind == .audio ? "waveform" : spec.kind == .video ? "film" : "photo")
                 .foregroundStyle(Tokens.Color.secondaryLabel)
             VStack(alignment: .leading, spacing: 2) {
                 Text(FormSchema.label(spec.name))
@@ -178,6 +178,9 @@ struct ModelSection: View {
             ForEach(form.descriptor.models, id: \.id) { offer in
                 ModelRow(title: offer.title, detail: ModelRow.detail(offer), offer: offer, selected: form.model == offer.id,
                          excluded: form.isExcluded(offer)) { form.model = offer.id }
+            }
+            ForEach(form.descriptor.models.filter { form.model == $0.id && $0.license.needsUserAcceptance }, id: \.id) { offer in
+                LicenseAcceptanceView(license: offer.license, title: offer.title, acceptances: form.acceptances)
             }
             Toggle("Commercial-use models only", isOn: Binding(get: { form.policy.license == .commercialUse },
                                                                set: { form.policy.license = $0 ? .commercialUse : nil }))

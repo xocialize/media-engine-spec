@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import MESCore
+import MockEngineCore
 import UniformTypeIdentifiers
 
 /// The JSON Schemas of `schemas/v0`, bundled (a test keeps the copy identical to the repo's).
@@ -190,5 +191,30 @@ public struct DecodedImage: Sendable {
     public func pixel(_ x: Int, _ y: Int) -> [UInt8] {
         let i = (y * width + x) * 4
         return Array(rgba[i..<(i + 4)])
+    }
+}
+
+extension Fixtures {
+    /// The suite's video input (Video §6): 128×96, 17 frames (8 · 2 + 1) at 24 fps, with a 48 kHz stereo AAC track, as
+    /// MP4. A bar crosses a coloured field, so frames differ. `marked` puts the AI-content disclosure in its comment item
+    /// (Video §1.9), for checking that transformations keep it.
+    public static func mp4(codec: Clips.Codec = .h264, marked: Bool = false, frames: Int = 17) async throws -> Data {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mes-conformance-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await Clips.write(clip(frames: frames, marked: marked), to: url, codec: codec)
+        return try Data(contentsOf: url)
+    }
+
+    /// The fixture as frames, for comparing an output's kept frames with it.
+    public static func clip(frames: Int = 17, marked: Bool = false) -> Clip {
+        let (w, h, fps) = (128, 96, 24.0)
+        let pictures = (0..<frames).map { Clips.synthetic(width: w, height: h, color: (30, 110, 190), t: Double($0) / Double(max(1, frames - 1))) }
+        let n = Int((Double(frames) / fps * 48_000).rounded())
+        let audio = (0..<n).flatMap { i -> [Float] in
+            let s = Float(0.2 * sin(2 * Double.pi * 330 * Double(i) / 48_000))
+            return [s, s * 0.8]
+        }
+        return Clip(width: w, height: h, fps: fps, frames: pictures, audio: audio,
+                    comment: marked ? VideoProfile.disclosure(model: "the conformance fixture") : nil)
     }
 }

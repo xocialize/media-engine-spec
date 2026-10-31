@@ -190,7 +190,13 @@ enum Format {
         }
         for w in job.warnings { lines.append("  warning \(w.code): \(w.message)") }
         for o in job.result?.outputs ?? [] {
-            lines.append("  output \(o.index) \(o.name): \(o.mediaType)\(o.width.map { " \($0)×\(o.height ?? 0)" } ?? "")")
+            var facts = o.width.map { " \($0)×\(o.height ?? 0)" } ?? ""
+            if o.kind == .video {
+                if let fps = o.fps { facts += " · \(fps.rounded() == fps ? String(Int(fps)) : String(fps)) fps" }
+                if let frames = o.frames { facts += " · \(frames) frames" }
+                facts += o.sampleRate.map { " · sound \($0) Hz × \(o.channels ?? 1)" } ?? " · silent"
+            }
+            lines.append("  output \(o.index) \(o.name): \(o.mediaType)\(facts)")
             if let v = o.value { lines.append("    \(json(v))") }
         }
         if let e = job.error { lines.append("  error \(e.code): \(e.message)") }

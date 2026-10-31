@@ -40,6 +40,7 @@ extension MediaEngine {
     public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
         if descriptor.profile == ImageProfile.id { try ImageProfileRules.validate(request, descriptor: descriptor) }
         if descriptor.profile == AudioProfile.id { try AudioProfileRules.validate(request, descriptor: descriptor) }
+        if descriptor.profile == VideoProfile.id { try VideoProfileRules.validate(request, descriptor: descriptor) }
     }
     public func voices(operation: String, model: String) async -> [Voice] { [] }
     public func assetRemoved(_ id: String) async {}
@@ -106,12 +107,14 @@ public struct RunReporter: Sendable {
     let warningSink: @Sendable (Warning) async -> Void
     let previewSink: @Sendable (Data, String) async -> Void
     let chunkSink: @Sendable (String, Data, Bool) async -> Void
+    let framePreviewSink: (@Sendable (Data, String, PreviewMark) async -> Void)?
 
     public init(progress: @escaping @Sendable (JobProgress) async -> Void,
                 warning: @escaping @Sendable (Warning) async -> Void,
                 preview: @escaping @Sendable (Data, String) async -> Void,
-                chunk: @escaping @Sendable (String, Data, Bool) async -> Void = { _, _, _ in }) {
-        progressSink = progress; warningSink = warning; previewSink = preview; chunkSink = chunk
+                chunk: @escaping @Sendable (String, Data, Bool) async -> Void = { _, _, _ in },
+                framePreview: (@Sendable (Data, String, PreviewMark) async -> Void)? = nil) {
+        progressSink = progress; warningSink = warning; previewSink = preview; chunkSink = chunk; framePreviewSink = framePreview
     }
 
     /// Progress. `phase` names the part of the run (`plan`, `generate`, `denoise`, `decode`), and `step`/`steps` count
@@ -134,10 +137,27 @@ public struct RunReporter: Sendable {
         await warningSink(Warning(code: code, message: message, param: param))
     }
 
-    /// A small preview (≤ 256 KiB is inlined in the event).
+    /// A small preview (≤ 256 KiB of base64 is inlined in the event; a larger one is dropped).
     public func preview(_ data: Data, mediaType: String) async { await previewSink(data, mediaType) }
 
+    /// A still of a video output while it's made (Base §11, Video §1.14): which output, the moment it shows and that
+    /// frame's index.
+    public func preview(_ data: Data, mediaType: String, output: String?, atSeconds: Double?, frame: Int? = nil) async {
+        let mark = PreviewMark(output: output, atSeconds: atSeconds, frame: frame)
+        if let framePreviewSink { await framePreviewSink(data, mediaType, mark) } else { await previewSink(data, mediaType) }
+    }
+
     public static let none = RunReporter(progress: { _ in }, warning: { _ in }, preview: { _, _ in })
+}
+
+/// Where a preview sits (Base §11): the output it previews, and for a still of a video the moment and frame it shows.
+public struct PreviewMark: Sendable, Equatable {
+    public var output: String?
+    public var atSeconds: Double?
+    public var frame: Int?
+    public init(output: String? = nil, atSeconds: Double? = nil, frame: Int? = nil) {
+        self.output = output; self.atSeconds = atSeconds; self.frame = frame
+    }
 }
 
 /// One produced output: a file the engine wrote, or a JSON value (`data` kind).
@@ -151,7 +171,9 @@ public struct ProducedOutput: Sendable {
     public var height: Int?
     public var durationSeconds: Double?
     public var fps: Double?
-    /// Audio facts (Base §10.1).
+    /// A video's frame count (Base §10.1).
+    public var frames: Int?
+    /// Audio facts (Base §10.1); on a video, its audio track's, absent when it has none.
     public var sampleRate: Int?
     public var channels: Int?
     public var bitDepth: Int?
@@ -161,6 +183,14 @@ public struct ProducedOutput: Sendable {
                              channels: Int, bitDepth: Int?) -> ProducedOutput {
         ProducedOutput(name: name, kind: .audio, mediaType: mediaType, file: url, value: nil, durationSeconds: durationSeconds,
                        sampleRate: sampleRate, channels: channels, bitDepth: bitDepth)
+    }
+
+    /// A video file, with its facts (Base §10.1): `sampleRate` and `channels` when it carries an audio track, nil when it
+    /// doesn't.
+    public static func video(_ url: URL, name: String = "video", mediaType: String = "video/mp4", width: Int, height: Int,
+                             fps: Double, frames: Int, sampleRate: Int? = nil, channels: Int? = nil) -> ProducedOutput {
+        ProducedOutput(name: name, kind: .video, mediaType: mediaType, file: url, value: nil, width: width, height: height,
+                       durationSeconds: Double(frames) / fps, fps: fps, frames: frames, sampleRate: sampleRate, channels: channels)
     }
 
     /// A placeholder for an output the engine streamed: the kit writes its file from the chunks (Base §10.1).

@@ -18,6 +18,8 @@ struct MES: AsyncParsableCommand {
               mes run image.fill --input image=photo.png --input mask=mask.png --input prompt="clear sky"
               mes voices audio.speak mock-presets
               mes run audio.speak -i text="Hello." -i voice_ref=asset:clip.wav --stream
+              mes run video.generate -i prompt="a kite over hills" -p size=256x256 -p duration_s=2 --accept LicenseRef-LTX-2-Community
+              mes run video.upscale -i video=clip.mp4 -p content=live_action -p scale=2
             """,
         version: MESClientKit.baseVersion,
         subcommands: [Discover.self, Pair.self, Unpair.self, Engines.self, Info.self, Ops.self, Describe.self, Voices.self,
@@ -182,6 +184,7 @@ struct Describe: AsyncParsableCommand {
             var facts = [m.title, Format.license(m.license), m.qualityTiers.map(\.rawValue).joined(separator: "/")]
             if m.streams { facts.append("streams") }
             if m.voiceCount > 0 { facts.append("\(m.voiceCount) voices (mes voices \(d.operation) \(m.id))") }
+            if m.license.needsUserAcceptance { facts.append("users accept its terms (--accept \(m.license.spdx))") }
             print("  \(m.id)\(m.isDefault == true ? " (default)" : "")  \(facts.joined(separator: " · "))")
         }
         let streamable = d.outputs.filter { $0.stream != nil }
@@ -213,6 +216,8 @@ struct Run: AsyncParsableCommand {
     @Option(help: "A model id from the descriptor (default: the engine chooses).") var model: String?
     @Flag(help: "Only models whose licence allows commercial use.") var commercialOnly = false
     @Flag(help: "Allow remote providers, which may bill.") var allowRemote = false
+    @Option(help: "A licence whose terms you accept, by spdx id, for models whose users must accept them (Base §10.2). Repeatable.")
+    var accept: [String] = []
     @Option(name: .shortAndLong, help: "Directory for the outputs.") var out = "."
     @Flag(help: "Keep the outputs on the engine (confirm later with mes confirm).") var noConfirm = false
     @Flag(help: "Stream every output that can, writing the chunks as they arrive.") var stream = false
@@ -235,7 +240,8 @@ struct Run: AsyncParsableCommand {
             let (name, value) = try Arguments.split(pair)
             params[name] = Arguments.param(name, value)
         }
-        let policy = Policy(license: commercialOnly ? .commercialUse : nil, remote: allowRemote ? .allow : nil)
+        let policy = Policy(license: commercialOnly ? .commercialUse : nil, remote: allowRemote ? .allow : nil,
+                            accepted: accept.isEmpty ? nil : accept)
         let encoding = try streamEncoding.map { e in
             guard let encoding = StreamEncoding(rawValue: e) else { throw ValidationError("Unknown stream encoding \(e).") }
             return encoding
@@ -243,7 +249,7 @@ struct Run: AsyncParsableCommand {
         let streams = descriptor.outputs.filter { $0.stream != nil }.map { StreamRequest(output: $0.name, encoding: encoding) }
         if stream, streams.isEmpty { throw ValidationError("\(operation) has no output that streams.") }
         let request = JobRequest(operation: operation, inputs: inputs, params: params.isEmpty ? nil : params, model: model,
-                                 policy: commercialOnly || allowRemote ? policy : nil, stream: stream ? streams : nil)
+                                 policy: commercialOnly || allowRemote || !accept.isEmpty ? policy : nil, stream: stream ? streams : nil)
         let reporter = ProgressReporter()
         let directory = URL(fileURLWithPath: (out as NSString).expandingTildeInPath, isDirectory: true)
         let job: Job

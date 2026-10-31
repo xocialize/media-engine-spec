@@ -50,13 +50,11 @@ voice chat. Utility tools (separation, cleanup and loudness, codecs) come later 
     request. A client never writes `[Laughter]` for one model and `(laughs)` for another.
 11. **Reused voices are assets.** A client that uses the same reference clip in more than one job SHOULD send it as an
     asset (Base §8.1), so the engine may keep what it derives from the clip (an encoded speaker) for the asset's life.
-12. **Licence notices go with the sound.** A result whose provenance names a model, helper or voice whose `license`
-    has a `notice` MUST be presented with that notice, whatever `commercial_use` says; when `commercial_use` isn't
-    `true` and there is no notice, with its `spdx` and `terms_url`. An engine SHOULD write the `spdx` id and `notice`
-    into the output's own metadata where the format has a place (WAV `LIST/INFO` `ICOP` and `ICMT`; FLAC and Ogg
-    `LICENSE` and `COPYRIGHT` comments; MP3 ID3 `TCOP` and `COMM`) whenever the job's licences carry a notice or aren't
-    all `commercial_use: true`. The output's `sha256` covers the file as written. (Evaluation A-8 and A-9, adopted for
-    Audio; Base §10.2 is proposed to take them for every profile.)
+12. **Licence notices go with the sound.** Base §10.2 rules 1 and 2 apply (they were this profile's A-8 and A-9, and
+    Base took them for every profile in [RFC 0005](../../rfcs/0005-video-in-base.md)): a result whose provenance
+    names a licence with a `notice` is presented with it, and an engine SHOULD write the `spdx` id and `notice` into
+    the file (WAV `LIST/INFO` `ICOP` and `ICMT`; FLAC and Ogg `LICENSE` and `COPYRIGHT` comments; MP3 ID3 `TCOP` and
+    `COMM`) whenever the job's licences carry a notice or aren't all `commercial_use: true`.
 
 ## 2. Vocabulary
 

@@ -51,6 +51,7 @@ public enum ProfileRules {
         switch descriptor.profile {
         case AudioProfile.id: AudioProfileRules.requirements(request, descriptor: descriptor)
         case ImageProfile.id: ImageProfileRules.requirements(request, descriptor: descriptor)
+        case VideoProfile.id: VideoProfileRules.requirements(request, descriptor: descriptor)
         default: []
         }
     }
@@ -65,6 +66,7 @@ public enum ProfileRules {
         }
         switch descriptor.profile {
         case AudioProfile.id: out += AudioProfileRules.warnings(request, descriptor: descriptor, model: model)
+        case VideoProfile.id: out += VideoProfileRules.warnings(request, descriptor: descriptor, model: model)
         case ImageProfile.id:
             if let np = request.params?[ImageProfile.Param.negativePrompt]?.stringValue, !np.isEmpty,
                model.supports(ImageProfile.SupportsKey.negativePrompt)?.boolValue == false {
@@ -388,5 +390,187 @@ public enum AudioProfileRules {
                         : "[\(name)] isn't a registered cue; it was removed.", param: I.text)
         }
         return (AudioProfile.text(kept), warnings)
+    }
+}
+
+/// The Video profile's rules (spec/profiles/video.md): request structure (400s), gates and limits per offer (§4), and
+/// the warnings the kit produces for Warn keys.
+public enum VideoProfileRules {
+    typealias P = VideoProfile.Param
+    typealias I = VideoProfile.Input
+    typealias K = VideoProfile.SupportsKey
+    typealias L = VideoProfile.LimitField
+
+    /// Structural rules beyond the params schema: 400 `invalid_request`.
+    public static func validate(_ request: JobRequest, descriptor: Descriptor) throws {
+        let params = request.params ?? [:], inputs = request.inputs ?? [:]
+        let spec = VideoProfile.operations.operations[descriptor.operation]
+        for name in spec?.requiredParams ?? [] where params[name] == nil {
+            throw MESError(.invalidRequest, "\(descriptor.operation) needs '\(name)'.", param: name)
+        }
+        for group in spec?.exclusiveParams ?? [] {
+            let given = group.filter { params[$0] != nil }
+            if given.count > 1 {
+                throw MESError(.invalidRequest, "\(given.joined(separator: " and ")) are mutually exclusive.", param: given.last)
+            }
+        }
+        if params[P.resolution] != nil, params[P.aspect] == nil {
+            throw MESError(.invalidRequest, "resolution goes with aspect (the short side at that aspect).", param: P.resolution)
+        }
+        switch descriptor.operation {
+        case "video.generate":
+            // §3.1: one time per keyframe, each strictly inside the clip.
+            let images = inputs[I.keyframes]?.values.count ?? 0
+            let times = params[P.keyframeTimes]?.arrayValue?.compactMap(\.numberValue) ?? []
+            if images != times.count {
+                throw MESError(.invalidRequest, "keyframes and keyframe_times go together, one time per image: \(images) image\(images == 1 ? "" : "s"), "
+                               + "\(times.count) time\(times.count == 1 ? "" : "s").", param: images > times.count ? P.keyframeTimes : I.keyframes)
+            }
+            if let duration = params[P.duration]?.numberValue, let outside = times.first(where: { $0 <= 0 || $0 >= duration }) {
+                throw MESError(.invalidRequest, "A keyframe at \(outside) s isn't inside the \(duration) s clip; first_frame and last_frame "
+                               + "are the ends.", param: P.keyframeTimes)
+            }
+            try validateSlots(request, descriptor: descriptor)
+        case "video.extend":
+            let after = params[P.after]?.numberValue, before = params[P.before]?.numberValue
+            if after != nil || before != nil, (after ?? 0) + (before ?? 0) <= 0 {
+                throw MESError(.invalidRequest, "An extend adds after_s or before_s seconds; both are 0.", param: P.after)
+            }
+        case "video.retake":
+            if let start = params[P.start]?.numberValue, let end = params[P.end]?.numberValue, end <= start {
+                throw MESError(.invalidRequest, "A retake's end_s comes after its start_s.", param: P.end)
+            }
+        default: break
+        }
+    }
+
+    /// §1.12: an `ic` adapter's slots fill by kind, from the operation's adapter input for that kind.
+    static func validateSlots(_ request: JobRequest, descriptor: Descriptor) throws {
+        let offers = descriptor.models.flatMap { $0.adapters ?? [] }
+        var needed: [Kind: Int] = [:]
+        for a in request.adapters ?? [] {
+            for slot in offers.first(where: { $0.id == a.id })?.slots ?? [] where slot.required != false { needed[slot.kind, default: 0] += 1 }
+        }
+        guard !needed.isEmpty else { return }
+        let inputs = VideoProfile.operations.operations[descriptor.operation]?.adapterInputs ?? [:]
+        for (kind, count) in needed.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            guard let input = inputs[kind.rawValue] else {
+                throw MESError(.unsupportedParameter, "\(descriptor.operation) has no input for in-context adapters' \(kind.rawValue) slots.",
+                               param: "adapters")
+            }
+            let given = request.inputs?[input]?.values.count ?? 0
+            if given < count {
+                throw MESError(.invalidRequest, "The adapters asked for need \(count) \(kind.rawValue) value\(count == 1 ? "" : "s") in '\(input)', "
+                               + "one per slot in order; the request has \(given).", param: input)
+            }
+        }
+    }
+
+    /// The number of `image` slots the request's adapters fill from `references` (so references beyond them are the
+    /// subject references `supports.references` gates).
+    static func imageSlots(_ request: JobRequest, descriptor: Descriptor) -> Int {
+        let offers = descriptor.models.flatMap { $0.adapters ?? [] }
+        return (request.adapters ?? []).reduce(0) { sum, a in
+            sum + (offers.first { $0.id == a.id }?.slots ?? []).filter { $0.kind == .image }.count
+        }
+    }
+
+    /// The size a request asks for: `size`, or `aspect` at `resolution` (nil when it asks for neither, or for an aspect
+    /// without a resolution, which the model's default decides).
+    public static func requestedSize(_ params: [String: JSONValue]) -> (width: Int, height: Int)? {
+        if let size = params[P.size]?.objectValue, let w = size["width"]?.intValue, let h = size["height"]?.intValue { return (w, h) }
+        if let aspect = params[P.aspect]?.stringValue, let r = params[P.resolution]?.intValue { return VideoProfile.size(aspect: aspect, resolution: r) }
+        return nil
+    }
+
+    static func listedNumber(_ key: String, _ value: Double, absent: [Double]?, param: String, what: String) -> OfferRequirement {
+        OfferRequirement(param: param, what: what) { offer in
+            guard let list = offer.supports(key)?.arrayValue?.compactMap(\.numberValue) ?? absent else { return true }
+            return list.contains { abs($0 - value) < 0.001 }
+        }
+    }
+
+    public static func requirements(_ request: JobRequest, descriptor: Descriptor) -> [OfferRequirement] {
+        let params = request.params ?? [:], inputs = request.inputs ?? [:]
+        var out: [OfferRequirement] = []
+        func size(_ s: (width: Int, height: Int)) {
+            out.append(.limit("max_width", Double(s.width), param: P.size, what: "a width of \(s.width)"))
+            out.append(.limit("max_height", Double(s.height), param: P.size, what: "a height of \(s.height)"))
+            out.append(.limit(L.minWidth, Double(s.width), atMost: false, param: P.size, what: "a width of \(s.width)"))
+            out.append(.limit(L.minHeight, Double(s.height), atMost: false, param: P.size, what: "a height of \(s.height)"))
+            let mp = Double(s.width * s.height) / 1_000_000
+            out.append(.limit("max_megapixels", mp, param: P.size, what: "\(s.width)×\(s.height)"))
+        }
+        switch descriptor.operation {
+        case "video.generate":
+            for (input, key, what) in [(I.firstFrame, K.firstFrame, "a first frame"), (I.lastFrame, K.lastFrame, "a last frame"),
+                                       (I.keyframes, K.keyframes, "keyframes"), (I.soundtrack, K.soundtrack, "a soundtrack")]
+                where inputs[input] != nil {
+                out.append(.flag(key, param: input, what: what))
+            }
+            if let n = inputs[I.keyframes]?.values.count {
+                out.append(.limit(L.maxKeyframes, Double(n), param: I.keyframes, what: "\(n) keyframes"))
+            }
+            if let n = inputs[I.references]?.values.count, n > imageSlots(request, descriptor: descriptor) {
+                out.append(.flag(K.references, param: I.references, what: "subject references"))
+            }
+            if params[P.audio]?.boolValue == true, inputs[I.soundtrack] == nil {
+                out.append(.flag(K.audio, param: P.audio, what: "sound (audio: true)"))
+            }
+            if let fps = params[P.fps]?.numberValue {
+                out.append(listedNumber(K.frameRates, fps, absent: nil, param: P.fps, what: "\(fps) fps"))
+                out.append(.limit(L.maxFPS, fps, param: P.fps, what: "\(fps) fps"))
+            }
+            if let d = params[P.duration]?.numberValue {
+                out.append(.limit("max_duration_s", d, param: P.duration, what: "a \(d) s clip"))
+                out.append(.limit(L.minDuration, d, atMost: false, param: P.duration, what: "a \(d) s clip"))
+                if let fps = params[P.fps]?.numberValue {
+                    let frames = (d * fps).rounded()
+                    out.append(.limit(L.maxFrames, frames, param: P.duration, what: "\(Int(frames)) frames"))
+                }
+            }
+            if let s = requestedSize(params) { size(s) }
+        case "video.extend":
+            let after = params[P.after]?.numberValue ?? 0, before = params[P.before]?.numberValue ?? 0
+            if before > 0 { out.append(.flag(K.extendBefore, param: P.before, what: "extending before the source")) }
+            if after + before > 0 {
+                out.append(.limit(L.maxExtendSeconds, after + before, param: before > 0 && after == 0 ? P.before : P.after,
+                                  what: "adding \(after + before) s"))
+            }
+        case "video.retake":
+            if let mode = params[P.retake]?.stringValue {
+                out.append(.listed(K.retake, mode, absent: ["picture"], param: P.retake, what: "retaking \(mode)"))
+            }
+            if let s = params[P.start]?.numberValue, let e = params[P.end]?.numberValue, e > s {
+                out.append(.limit(L.maxRetakeSeconds, e - s, param: P.end, what: "a \(e - s) s span"))
+            }
+        case "video.upscale":
+            if let scale = params[P.scale]?.numberValue {
+                out.append(listedNumber(K.scales, scale, absent: [2, 4], param: P.scale, what: "×\(Int(scale))"))
+            }
+            if let content = params[P.content]?.stringValue {
+                out.append(.listed(K.content, content, absent: VideoProfile.contents, param: P.content, what: "\(content.replacingOccurrences(of: "_", with: " ")) content"))
+            }
+        case "video.interpolate":
+            if let factor = params[P.factor]?.numberValue {
+                out.append(.limit(L.maxFactor, factor, param: P.factor, what: "a factor of \(Int(factor))"))
+            }
+            if let fps = params[P.fps]?.numberValue {
+                out.append(.limit(L.maxFPS, fps, param: P.fps, what: "\(fps) fps"))
+            }
+        default: break
+        }
+        return out
+    }
+
+    /// Warnings for the Warn keys the chosen offer lacks (§4.1).
+    public static func warnings(_ request: JobRequest, descriptor: Descriptor, model: ModelOffer) -> [Warning] {
+        var out: [Warning] = []
+        if let np = request.params?[P.negativePrompt]?.stringValue, !np.isEmpty,
+           model.supports(K.negativePrompt)?.boolValue == false {
+            out.append(Warning(code: VideoProfile.WarningCode.negativePromptIgnored,
+                               message: "\(model.title) can't use a negative prompt.", param: P.negativePrompt))
+        }
+        return out
     }
 }

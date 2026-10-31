@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Video 0.1 — POST {path}/jobs for a video operation",
+  "description": "A Base JobRequest whose operation is a Video 0.1 operation: the operation's inputs by name, its required inputs and parameters, and only vocabulary parameters (spec/profiles/video.md §2, §3). An engine's own descriptor narrows these further.",
+  "allOf": [
+    {
+      "$ref": "../../base/job-request.schema.json"
+    },
+    {
+      "properties": {
+        "operation": {
+          "enum": [
+            "video.generate",
+            "video.extend",
+            "video.retake",
+            "video.upscale",
+            "video.interpolate"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "video.generate"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "propertyNames": {
+              "enum": [
+                "prompt",
+                "first_frame",
+                "last_frame",
+                "keyframes",
+                "soundtrack",
+                "references",
+                "control"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "negative_prompt": {
+                "$ref": "vocabulary.schema.json#/$defs/negative_prompt"
+              },
+              "duration_s": {
+                "$ref": "vocabulary.schema.json#/$defs/duration_s"
+              },
+              "fps": {
+                "$ref": "vocabulary.schema.json#/$defs/fps"
+              },
+              "size": {
+                "$ref": "vocabulary.schema.json#/$defs/size"
+              },
+              "aspect": {
+                "$ref": "vocabulary.schema.json#/$defs/aspect"
+              },
+              "resolution": {
+                "$ref": "vocabulary.schema.json#/$defs/resolution"
+              },
+              "keyframe_times": {
+                "$ref": "vocabulary.schema.json#/$defs/keyframe_times"
+              },
+              "audio": {
+                "$ref": "vocabulary.schema.json#/$defs/audio"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "output": {
+                "$ref": "vocabulary.schema.json#/$defs/output"
+              },
+              "prompt_enhance": {
+                "$ref": "vocabulary.schema.json#/$defs/prompt_enhance"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "video.extend"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "video",
+              "prompt"
+            ],
+            "propertyNames": {
+              "enum": [
+                "video",
+                "prompt"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "after_s": {
+                "$ref": "vocabulary.schema.json#/$defs/after_s"
+              },
+              "before_s": {
+                "$ref": "vocabulary.schema.json#/$defs/before_s"
+              },
+              "negative_prompt": {
+                "$ref": "vocabulary.schema.json#/$defs/negative_prompt"
+              },
+              "audio": {
+                "$ref": "vocabulary.schema.json#/$defs/audio"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "output": {
+                "$ref": "vocabulary.schema.json#/$defs/output"
+              },
+              "prompt_enhance": {
+                "$ref": "vocabulary.schema.json#/$defs/prompt_enhance"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "video.retake"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs",
+          "params"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "video",
+              "prompt"
+            ],
+            "propertyNames": {
+              "enum": [
+                "video",
+                "prompt"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start_s": {
+                "$ref": "vocabulary.schema.json#/$defs/start_s"
+              },
+              "end_s": {
+                "$ref": "vocabulary.schema.json#/$defs/end_s"
+              },
+              "retake": {
+                "$ref": "vocabulary.schema.json#/$defs/retake"
+              },
+              "negative_prompt": {
+                "$ref": "vocabulary.schema.json#/$defs/negative_prompt"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "output": {
+                "$ref": "vocabulary.schema.json#/$defs/output"
+              },
+              "prompt_enhance": {
+                "$ref": "vocabulary.schema.json#/$defs/prompt_enhance"
+              }
+            },
+            "required": [
+              "start_s",
+              "end_s"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "video.upscale"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs",
+          "params"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "video"
+            ],
+            "propertyNames": {
+              "enum": [
+                "video"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scale": {
+                "$ref": "vocabulary.schema.json#/$defs/scale"
+              },
+              "content": {
+                "$ref": "vocabulary.schema.json#/$defs/content"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "output": {
+                "$ref": "vocabulary.schema.json#/$defs/output"
+              }
+            },
+            "required": [
+              "content"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "video.interpolate"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "video"
+            ],
+            "propertyNames": {
+              "enum": [
+                "video"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "factor": {
+                "$ref": "vocabulary.schema.json#/$defs/factor"
+              },
+              "fps": {
+                "$ref": "vocabulary.schema.json#/$defs/target_fps"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "output": {
+                "$ref": "vocabulary.schema.json#/$defs/output"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

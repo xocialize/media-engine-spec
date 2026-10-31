@@ -4,7 +4,7 @@ import MockEngineCore
 
 setvbuf(stdout, nil, _IOLBF, 0)   // line-buffered, so the listening line shows up when piped
 
-// mes-mock-engine — the MES mock engine: the Image profile's 15 operations and the Audio profile's 5.
+// mes-mock-engine — the MES mock engine: the Image profile's 15 operations, the Audio profile's 5 and the Video profile's 5.
 //
 //   mes-mock-engine [--port 17600] [--spool <dir>] [--state <dir>] [--delay-ms 0] [--steps 4] [--ttl 3600]
 //                   [--paired [--host 0.0.0.0] [--approve prompt|auto]] [--no-advertise]

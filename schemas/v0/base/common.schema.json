@@ -25,7 +25,8 @@
         "commercial_use": { "enum": [true, false, "unknown"] },
         "terms_url": { "type": "string" },
         "notice": { "type": "string" },
-        "accepted_required": { "type": "boolean" }
+        "accepted_required": { "type": "boolean" },
+        "user_accept_required": { "type": "boolean" }
       }
     },
     "RemoteProvider": {

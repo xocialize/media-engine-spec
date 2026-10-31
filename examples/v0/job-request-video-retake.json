@@ -1,0 +1,21 @@
+{
+  "operation": "video.retake",
+  "inputs": {
+    "video": {
+      "upload": "upl_9q1x"
+    },
+    "prompt": "The kite turns blue and dives."
+  },
+  "params": {
+    "start_s": 2.0,
+    "end_s": 3.5,
+    "retake": "picture",
+    "quality": "draft"
+  },
+  "model": "ltx-2.5-compact24",
+  "policy": {
+    "accepted": [
+      "LicenseRef-LTX-2-Community"
+    ]
+  }
+}

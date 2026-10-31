@@ -218,7 +218,9 @@ struct MCPToolbox: Sendable {
         properties["wait_s"] = ["type": "integer", "minimum": 0, "maximum": .int(Self.maxWait), "default": .int(Self.defaultWait),
                                 "description": "Seconds to wait for the result, with progress; then continue with mes_get_job."]
         properties["policy"] = ["type": "object", "additionalProperties": false,
-                                "properties": ["license": ["enum": ["any", "commercial-use"]], "remote": ["enum": ["forbid", "allow"]]]]
+                                "properties": ["license": ["enum": ["any", "commercial-use"]], "remote": ["enum": ["forbid", "allow"]],
+                                               "accepted": ["type": "array", "maxItems": 32, "items": ["type": "string"],
+                                                            "description": "The spdx ids of licences whose terms your user accepted (Base §10.3)."]]]
         let adapterIDs = Self.adapterIDs(d)
         if !adapterIDs.isEmpty {
             properties["adapters"] = [
@@ -400,10 +402,12 @@ struct MCPToolbox: Sendable {
                 + (model.license.notice.map { " · \($0)" } ?? ""))
         }
         for a in job.result?.provenance.adapters ?? [] {
-            lines.append("Adapter: \(a.id) at \(Self.number(a.strength)) · \(a.license.spdx) · commercial use \(Self.commercial(a.license.commercialUse))")
+            lines.append("Adapter: \(a.id) at \(Self.number(a.strength)) · \(a.license.spdx) · commercial use \(Self.commercial(a.license.commercialUse))"
+                + (a.license.notice.map { " · \($0)" } ?? ""))
         }
         for h in job.result?.provenance.helpers ?? [] {
-            lines.append("Helper (\(h.role)): \(h.id) · \(h.license.spdx) · commercial use \(Self.commercial(h.license.commercialUse))")
+            lines.append("Helper (\(h.role)): \(h.id) · \(h.license.spdx) · commercial use \(Self.commercial(h.license.commercialUse))"
+                + (h.license.notice.map { " · \($0)" } ?? ""))
         }
         if let v = job.result?.provenance.voice {
             lines.append("Voice: \(v.id)\(v.title.map { " (\($0))" } ?? "")"
@@ -497,6 +501,7 @@ struct MCPToolbox: Sendable {
             + (m.isDefault == true ? " · default" : "") + " · tiers \(m.qualityTiers.map(\.rawValue).joined(separator: "/"))"
         guard notes else { return line }
         if let notice = oneLine(m.license.notice) { line += " · Licence: \(notice)" }
+        if m.license.needsUserAcceptance { line += " · " + acceptanceLine(m.license) }
         if let text = oneLine(m.notes) { line += " · Notes: \(text)" }
         if let supports = supportsLine(m) { line += " · supports: \(supports)" }
         if m.voiceCount > 0 { line += " · \(m.voiceCount) voice\(m.voiceCount == 1 ? "" : "s") (mes_list_voices)" }
@@ -535,8 +540,14 @@ struct MCPToolbox: Sendable {
             + " · \(a.license.spdx) · commercial use \(commercial(a.license.commercialUse))"
             + " · strength \(number(a.strength.min))–\(number(a.strength.max)), default \(number(a.strength.defaultValue))"
         if let notice = oneLine(a.license.notice) { line += " · Licence: \(notice)" }
+        if a.license.needsUserAcceptance { line += " · " + acceptanceLine(a.license) }
         if let text = oneLine(a.notes) { line += " · Notes: \(text)" }
         return line
+    }
+
+    /// Base §10.2 rule 4, on a model or adapter line: the user accepts the terms, and the call says so.
+    static func acceptanceLine(_ license: License) -> String {
+        "users must accept these terms\(license.termsURL.map { " (\($0))" } ?? ""): pass policy.accepted [\"\(license.spdx)\"]"
     }
 
     /// Every adapter id the descriptor's offers list, once each, in offer order.

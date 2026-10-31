@@ -4,8 +4,8 @@
 |---|---|
 | **Version** | 0.1 (draft) |
 | **Status** | Draft for review. While the major version is 0, a minor version may make breaking changes. |
-| **Date** | 2026-10-30 |
-| **Profiles** | [Image 0.1](profiles/image.md), [Audio 0.1](profiles/audio.md). Video is planned. |
+| **Date** | 2026-10-31 |
+| **Profiles** | [Image 0.1](profiles/image.md), [Audio 0.1](profiles/audio.md), [Video 0.1](profiles/video.md) |
 | **Schemas** | [`schemas/v0/base/`](../schemas/v0/base/) |
 
 ## Abstract
@@ -348,7 +348,7 @@ Rules:
 | `inputs` | Named inputs.<br/>• **Text:** a string.<br/>• **Media:** one InputValue or an array of them: `{"inline"}`, `{"upload"}`, `{"grant"}` or `{"asset"}` (§8, §8.1, §9).<br/>• **Data:** `{"data": <JSON>}`, e.g. segmentation points. |
 | `params` | Parameters valid against the descriptor's `params` schema. |
 | `model` | OPTIONAL. A model id from the descriptor. |
-| `policy` | `license`: `any` (default) or `commercial-use`. `remote`: `forbid` (default) or `allow` (§10.3). |
+| `policy` | `license`: `any` (default) or `commercial-use`. `remote`: `forbid` (default) or `allow`. `accepted`: the `spdx` ids of licences the client's user has accepted (§10.2 rule 4). See §10.3. |
 | `extensions` | OPTIONAL. Values for declared extensions. |
 | `adapters` | OPTIONAL. Adapters to apply, in order: `[{id, strength?}]` (§6.3). |
 | `stream` | OPTIONAL. Outputs to stream as chunks while the job runs: `[{output, encoding?}]` (§11). `encoding` defaults to the first the output spec lists. |
@@ -473,7 +473,7 @@ In `holding`, `result` holds:
 
 | Field | Meaning |
 |---|---|
-| `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps`, `sample_rate`, `channels`, `bit_depth` as relevant. A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
+| `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps`, `frames`, `sample_rate`, `channels`, `bit_depth` as relevant. `frames` is a `video` output's frame count. On a `video` output, `sample_rate`, `channels` and `bit_depth` describe its audio track, and are present exactly when it has one. A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
 | `effective` | The normalized parameters actually used, e.g. the chosen `quality`, a snapped `size`, the `seed`. Model-specific detail MAY appear under `effective.model_params`. |
 | `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `adapters? [{id, title?, revision?, license, strength}]`, `helpers? [{id, title?, revision?, license, role}]`, `voice? {id, title?, license?}` (§6.5), `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}` |
 
@@ -501,8 +501,37 @@ The `license` object on a model offer and on provenance:
 | `spdx` | An SPDX identifier, or a `LicenseRef-…` for custom terms (e.g. `Apache-2.0`, `LicenseRef-Qwen-Research`) |
 | `commercial_use` | `true`, `false` or `unknown`: whether the weights' terms permit commercial use of outputs |
 | `terms_url` | Where the full terms are |
-| `notice` | OPTIONAL. Short text the client should show, e.g. an attribution requirement |
+| `notice` | OPTIONAL. Short text the client MUST show (rule 1), e.g. an attribution requirement |
 | `accepted_required` | OPTIONAL. `true` when the engine requires its operator to accept the terms before first use |
+| `user_accept_required` | OPTIONAL. `true` when the terms bind each person who uses the model through a client, so a client's user must accept them (rule 4) |
+
+Rules ([RFC 0005](../rfcs/0005-video-in-base.md); rules 1 and 2 were Audio's A-8 and A-9):
+1. **Notices are shown.** A client MUST show a `notice`: with the offer, wherever it presents a result whose
+   provenance names that model, adapter, helper or voice, and in the MCP text summary, whatever `commercial_use` says.
+   A licence has a `notice` only when its terms require something shown; advisory text belongs in the offer's `notes`.
+   When `commercial_use` isn't `true` and there is no notice, the client shows the `spdx` and `terms_url` instead.
+2. **Licences go into the file.** An engine SHOULD write the `spdx` id and `notice` into an output's own metadata,
+   where its format has a place, whenever the job's licences carry a notice or aren't all `commercial_use: true`, and
+   MAY for every output. The output's `sha256` covers the file as written.
+
+   | Format | Where |
+   |---|---|
+   | WAV | `LIST/INFO` `ICOP` and `ICMT` |
+   | FLAC, Ogg | `LICENSE` and `COPYRIGHT` comments |
+   | MP3 | ID3 `TCOP` and `COMM` |
+   | MP4, QuickTime | the copyright item (`cprt`; `com.apple.quicktime.copyright`) and the comment item (`©cmt`; `com.apple.quicktime.comment`) |
+   | PNG | `iTXt` `Copyright` and `Comment` |
+   | JPEG | EXIF `Copyright` and `UserComment` |
+3. **AI-content markings travel.** An engine SHOULD mark what a generative operation makes as AI-generated in the file
+   (the comment item, and the IPTC digital source type `trainedAlgorithmicMedia` where it writes XMP). It MUST NOT
+   remove an AI-content marking, a watermark or a provenance manifest (such as C2PA) that an input carries, and when it
+   transforms that input it carries them into the output where the format allows. A profile MAY make the marking a
+   MUST (Video §1.9).
+4. **Users' acceptance.** For a licence with `user_accept_required`, a client MUST show its user the `notice` and
+   `terms_url`, and have the user accept the terms, before that user's first job that may run on it; it then sends the
+   licence's `spdx` in `policy.accepted` (§10.3). Acceptance is the person's: a client keeps it per user, and an agent
+   carries the acceptance of the person who configured it. `accepted_required` is the operator's acceptance, and the
+   two are independent.
 
 ### 10.3 Policy
 
@@ -514,6 +543,11 @@ The `license` object on a model offer and on provenance:
     refused with 422 `policy_unmet`.
 - **Voices.** `license: commercial-use` also requires a voice's own `license`, when it has one, to permit commercial
   use; if it doesn't, 422 `policy_unmet`.
+- **`accepted`.** The engine MUST NOT run a model, adapter, helper or voice whose licence has `user_accept_required`
+  for a request whose `policy.accepted` doesn't list that licence's `spdx`. It is a policy rule like `commercial-use`:
+  with no model named the engine chooses among the offers the policy allows; a named model, a requested adapter or
+  voice it doesn't allow, or a request no offer it may choose serves, is 422 `policy_unmet` with `param: "policy"` and
+  `reason: "terms_not_accepted"`, naming the licence. A helper is left out with `helper_skipped_by_policy`.
 - **`remote: forbid`** (the default). The engine MUST NOT send the request or its inputs to a remote provider.
 - **`remote: allow`.** The engine MAY use a remote provider. The plan and the provenance MUST then name it, and
   `billed` says whether the provider charges.
@@ -532,7 +566,7 @@ Event schema: [`event.schema.json`](../schemas/v0/base/event.schema.json). Every
 | `job.state` | `{state, outcome?}` |
 | `job.plan` | `{model, effective, remote_provider?}`, once decided |
 | `job.progress` | `{stage, step?, steps?, fraction?, message?}`. Engines SHOULD send at most 10 per second. |
-| `job.preview` | `{media_type, href}`, or inline `data` (≤ 256 KiB base64) |
+| `job.preview` | `{media_type, href}`, or inline `data` (≤ 256 KiB base64); optionally `output` (the output it previews), and for a still of a video `at_s` and `frame`, the moment shown. Previews are advisory: a client MUST NOT rely on them arriving, or on their bytes being in the result |
 | `job.warning` | A Warning |
 | `job.output_chunk` | `{output, index, offset_s, final, data?}`: a piece of a streamed output (below) |
 | `job.output_ready` | `{outputs}`; the job is now `holding` |
@@ -604,7 +638,8 @@ Every error body is `{"error": {code, message, reason?, param?, job?, request_id
 | 502 | `input_fetch_failed`, `remote_provider_failed` |
 | 503 | `no_capacity` (with `Retry-After`) |
 
-A failed job carries the same object in `error`. Clients MUST treat unknown codes by their HTTP class.
+A failed job carries the same object in `error`. Clients MUST treat unknown codes by their HTTP class. `reason` refines a
+code; Base registers `terms_not_accepted` for `policy_unmet` (§10.3).
 
 ## 13. Retention guarantees
 
@@ -645,16 +680,17 @@ Dispatchers use it to choose between engines.
   schema is the descriptor's `params`, plus:
   - the inputs, each a string: a data URL, `upload:<id>`, or `asset:<id>` (an asset the client created over HTTP; the
     binding creates none);
-  - `model`, `quality`, `wait_s` (default 50) and `policy`;
+  - `model`, `quality`, `wait_s` (default 50) and `policy` (with `accepted`, §10.3);
   - `adapters` (§6.3), when an offer lists any.
 - **Model lines.** The tool's description lists each model offer on one line: its id, title, licence and
   commercial-use flag. An offer's `license.notice` and `notes` (§6 rule 5), when present, follow on that model's line,
-  so an agent sees the terms and the usage guidance before it names the model. The offer's adapters follow on lines of
+  so an agent sees the terms and the usage guidance before it names the model. A licence with `user_accept_required` says
+  so on that line ("users must accept these terms: pass policy.accepted"). The offer's adapters follow on lines of
   their own, each with its id, title, kind, licence and commercial-use flag. An offer's `supports` and `limits` follow
   in short form (`supports: stream, languages=en/zh, max_text_chars=2000`), and a model with voices says how many
   (`10 voices (mes_list_voices)`).
 - **Results** contain:
-  - a text summary: model, licence, adapters, helpers, warnings;
+  - a text summary: model, licence (with its `notice`, §10.2 rule 1), adapters, helpers, warnings;
   - an image preview, for image outputs of at most 1 MB; an `audio` block, for audio outputs of at most 1 MB;
   - a `resource_link` to each output's `href`;
   - `structuredContent`: the Job snapshot.
@@ -711,6 +747,7 @@ Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is 
 | Event types | §11 |
 | Error codes | §12 |
 | Base warning codes | `seed_ignored`, `param_adjusted`, `remote_provider_used`, `model_substituted_by_policy`, `helper_skipped_by_policy` |
+| Error reasons | `terms_not_accepted` (with `policy_unmet`, §10.3) |
 | Adapter kinds | `plain`, `ic` (§6.3) |
 | Base `supports` keys | `stream`, `seed`, `voices` (§6.4) |
 | Stream encodings | `pcm_s16le`, `pcm_f32le` (§11) |

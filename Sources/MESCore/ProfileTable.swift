@@ -1,6 +1,6 @@
 import Foundation
 
-/// One operation's normative requirements, from a profile's operations.json (Image, Audio).
+/// One operation's normative requirements, from a profile's operations.json (Image, Audio, Video).
 public struct ProfileOperationSpec: Codable, Sendable, Equatable {
     public struct IO: Codable, Sendable, Equatable {
         public var kind: Kind
@@ -26,11 +26,16 @@ public struct ProfileOperationSpec: Codable, Sendable, Equatable {
     public var exactDuration: Bool?
     /// Results report the seed each used.
     public var seeded: Bool?
+    /// Video: groups of parameters a request may carry at most one of (`size` and `aspect`); more is 400.
+    public var exclusiveParams: [[String]]?
+    /// Video: the input an `ic` adapter's slots of each kind fill from (Video §1.12), by slot kind.
+    public var adapterInputs: [String: String]?
     enum CodingKeys: String, CodingKey {
         case inputs, outputs, vocabulary, seeded
         case vocabularyDefs = "vocabulary_defs", keepsInputSize = "keeps_input_size"
         case preservesUnmasked = "preserves_unmasked", exactScale = "exact_scale", requiresOneOf = "requires_one_of"
         case adapterInput = "adapter_input", requiredParams = "required_params", exactDuration = "exact_duration"
+        case exclusiveParams = "exclusive_params", adapterInputs = "adapter_inputs"
     }
 }
 

@@ -1,0 +1,115 @@
+{
+  "id": "job_01JB11",
+  "operation": "video.generate",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "ltx-2.5-compact24",
+      "title": "LTX 2.5 compact24",
+      "license": {
+        "spdx": "LicenseRef-LTX-2-Community",
+        "commercial_use": true,
+        "terms_url": "https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE",
+        "accepted_required": true,
+        "user_accept_required": true,
+        "notice": "LTX-2 Community License: the use restrictions of its Attachment A apply to you; entities with USD 10M or more in annual revenue need a commercial licence from Lightricks; say that content made with it is machine-generated."
+      }
+    },
+    "effective": {
+      "aspect": "16:9",
+      "resolution": 288,
+      "fps": 24,
+      "seed": 77,
+      "quality": "draft"
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "phase": "mux",
+    "step": 1,
+    "steps": 1
+  },
+  "warnings": [
+    {
+      "code": "soundtrack_fitted",
+      "message": "The soundtrack (5.2 s) was cut to the clip's 5.04 s (121 frames).",
+      "param": "soundtrack"
+    }
+  ],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "video",
+        "kind": "video",
+        "media_type": "video/mp4",
+        "bytes": 1843207,
+        "sha256": "67905ad3cc2dd52b1f5f6a6d2814de0396618b29b4238b9af5207aeb69936e6d",
+        "href": "/mes/v0/jobs/job_01JB11/outputs/0",
+        "width": 512,
+        "height": 288,
+        "fps": 24,
+        "frames": 121,
+        "duration_s": 5.041666666666667,
+        "sample_rate": 48000,
+        "channels": 2
+      }
+    ],
+    "effective": {
+      "aspect": "16:9",
+      "resolution": 288,
+      "size": {
+        "width": 512,
+        "height": 288
+      },
+      "fps": 24,
+      "frames": 121,
+      "duration_s": 5.041666666666667,
+      "audio": true,
+      "seed": 77,
+      "quality": "draft",
+      "model_params": {
+        "tier": "compact24",
+        "stages": 1,
+        "steps": 8
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "0.10.0"
+      },
+      "operation": "video.generate",
+      "profile_version": "0.1",
+      "model": {
+        "id": "ltx-2.5-compact24",
+        "title": "LTX 2.5 compact24",
+        "revision": "v0.20.0",
+        "license": {
+          "spdx": "LicenseRef-LTX-2-Community",
+          "commercial_use": true,
+          "terms_url": "https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE",
+          "accepted_required": true,
+          "user_accept_required": true,
+          "notice": "LTX-2 Community License: the use restrictions of its Attachment A apply to you; entities with USD 10M or more in annual revenue need a commercial licence from Lightricks; say that content made with it is machine-generated."
+        }
+      },
+      "seed": 77,
+      "timings": {
+        "received_at": "2026-10-31T20:00:00Z",
+        "queue_ms": 12,
+        "prepare_ms": 21400,
+        "run_ms": 66100
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-31T21:01:30Z",
+    "record_expires_at": "2026-11-01T20:01:30Z"
+  },
+  "created_at": "2026-10-31T20:00:00Z",
+  "updated_at": "2026-10-31T20:01:30Z"
+}

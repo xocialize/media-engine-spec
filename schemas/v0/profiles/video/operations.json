@@ -1,0 +1,184 @@
+{
+  "profile": "video",
+  "version": "0.1",
+  "operations": {
+    "video.generate": {
+      "inputs": {
+        "prompt": {
+          "kind": "text",
+          "required": true
+        },
+        "first_frame": {
+          "kind": "image",
+          "required": false
+        },
+        "last_frame": {
+          "kind": "image",
+          "required": false
+        },
+        "keyframes": {
+          "kind": "image",
+          "required": false
+        },
+        "soundtrack": {
+          "kind": "audio",
+          "required": false
+        },
+        "references": {
+          "kind": "image",
+          "required": false
+        },
+        "control": {
+          "kind": "video",
+          "required": false
+        }
+      },
+      "outputs": {
+        "video": {
+          "kind": "video"
+        }
+      },
+      "vocabulary": [
+        "negative_prompt",
+        "duration_s",
+        "fps",
+        "size",
+        "aspect",
+        "resolution",
+        "keyframe_times",
+        "audio",
+        "seed",
+        "quality",
+        "output",
+        "prompt_enhance"
+      ],
+      "exclusive_params": [
+        [
+          "size",
+          "aspect"
+        ]
+      ],
+      "adapter_inputs": {
+        "video": "control",
+        "image": "references",
+        "audio": "soundtrack"
+      },
+      "seeded": true
+    },
+    "video.extend": {
+      "inputs": {
+        "video": {
+          "kind": "video",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": true
+        }
+      },
+      "outputs": {
+        "video": {
+          "kind": "video"
+        }
+      },
+      "vocabulary": [
+        "after_s",
+        "before_s",
+        "negative_prompt",
+        "audio",
+        "seed",
+        "quality",
+        "output",
+        "prompt_enhance"
+      ],
+      "seeded": true
+    },
+    "video.retake": {
+      "inputs": {
+        "video": {
+          "kind": "video",
+          "required": true
+        },
+        "prompt": {
+          "kind": "text",
+          "required": true
+        }
+      },
+      "outputs": {
+        "video": {
+          "kind": "video"
+        }
+      },
+      "vocabulary": [
+        "start_s",
+        "end_s",
+        "retake",
+        "negative_prompt",
+        "seed",
+        "quality",
+        "output",
+        "prompt_enhance"
+      ],
+      "required_params": [
+        "start_s",
+        "end_s"
+      ],
+      "seeded": true
+    },
+    "video.upscale": {
+      "inputs": {
+        "video": {
+          "kind": "video",
+          "required": true
+        }
+      },
+      "outputs": {
+        "video": {
+          "kind": "video"
+        }
+      },
+      "vocabulary": [
+        "scale",
+        "content",
+        "seed",
+        "quality",
+        "output"
+      ],
+      "required_params": [
+        "content"
+      ],
+      "exact_scale": true,
+      "seeded": true
+    },
+    "video.interpolate": {
+      "inputs": {
+        "video": {
+          "kind": "video",
+          "required": true
+        }
+      },
+      "outputs": {
+        "video": {
+          "kind": "video"
+        }
+      },
+      "vocabulary": [
+        "factor",
+        "fps",
+        "seed",
+        "quality",
+        "output"
+      ],
+      "vocabulary_defs": {
+        "fps": "target_fps"
+      },
+      "exclusive_params": [
+        [
+          "factor",
+          "fps"
+        ]
+      ],
+      "seeded": true
+    }
+  }
+}

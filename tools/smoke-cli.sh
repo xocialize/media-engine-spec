@@ -1,7 +1,8 @@
 #!/bin/zsh
 # R0c exit check: `mes` against the mock engine end to end — discovery, pairing, generate → matte → fill (each
 # output feeding the next), download and confirm; then Audio 0.1 — a designed voice kept as an asset, speech streamed
-# with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted; then
+# with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted; then Video
+# 0.1 — a clip generated under a licence its users accept, refused without that acceptance, then interpolated; then
 # unpair. Everything runs in a temporary directory.
 #
 #   tools/smoke-cli.sh            # builds, then runs
@@ -93,7 +94,21 @@ step "mes run audio.speak with a preset voice"
 mes run audio.speak -i text="A preset voice." -p voice=mock-tenor -o "$work/preset" --json > "$work/preset.json"
 grep -q '"voice":{"id":"mock-tenor"' "$work/preset.json" && print "spoke with mock-tenor"
 
+step "mes describe video.generate · mes run video.generate --accept · refused without it"
+mes describe video.generate | grep "users accept its terms"
+mes run video.generate -i prompt="a kite over green hills" -p size=128x96 -p duration_s=0.375 -p quality=draft \
+  --model mock-ltx-compact --accept LicenseRef-Mock-Video-Community -o "$work/clip" | tee "$work/clip.txt"
+clip=$(grep '^saved ' "$work/clip.txt" | head -1 | cut -c7-)
+if mes run video.generate -i prompt="a kite" -p duration_s=0.375 -p quality=draft --model mock-ltx-compact -o "$work/no" > "$work/no.txt" 2>&1; then
+  print "unexpected: ran without accepting the terms"; exit 1
+fi
+grep -q "policy.accepted" "$work/no.txt" && print "refused without the user's acceptance, naming what to accept"
+
+step "mes run video.interpolate on the generated clip"
+mes run video.interpolate -i video="$clip" -p factor=2 -o "$work/tween" | tee "$work/tween.txt"
+grep -q '(succeeded)' "$work/tween.txt"
+
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → video generate (accepted) → interpolate → unpair"

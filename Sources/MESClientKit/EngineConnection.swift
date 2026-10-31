@@ -143,14 +143,14 @@ extension EngineConnection {
 /// Media types for files.
 public enum MediaType {
     /// The media type for a file's extension, spelled as the profiles list them (Audio §1.1: `audio/wav`, not the
-    /// system's `audio/vnd.wave`; `audio/mp4`, not `audio/x-m4a`).
+    /// system's `audio/vnd.wave`; `audio/mp4`, not `audio/x-m4a`; Video §1.1: `video/mp4` for `.m4v` too).
     public static func infer(_ file: URL) -> String {
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         return profileSpellings[type] ?? type
     }
 
     static let profileSpellings = ["audio/vnd.wave": "audio/wav", "audio/x-wav": "audio/wav", "audio/wave": "audio/wav",
-                                   "audio/x-m4a": "audio/mp4"]
+                                   "audio/x-m4a": "audio/mp4", "video/x-m4v": "video/mp4"]
 
     public static func fileExtension(_ mediaType: String) -> String {
         UTType(mimeType: mediaType)?.preferredFilenameExtension ?? "bin"

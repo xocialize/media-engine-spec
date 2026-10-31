@@ -30,6 +30,8 @@ public final class Probe: @unchecked Sendable {
     public let schemas = Schemas()
     public let options: Options
     let infoBody: Data
+    /// The video fixture (`Fixtures.mp4()`), made at connect when an operation takes video.
+    public internal(set) var clip: Data?
 
     public struct Options: Sendable {
         /// Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.
@@ -63,8 +65,10 @@ public final class Probe: @unchecked Sendable {
         guard ops.status == 200 else {
             throw Failure("GET operations answered \(ops.status)\(ops.status == 401 ? ": a paired engine needs --token and --pin, --paired-state, or --pair" : "").")
         }
-        return Probe(wire: wire, info: info, infoBody: reply.body, operations: try ops.decode(OperationsList.self).operations,
-                     options: options)
+        let probe = Probe(wire: wire, info: info, infoBody: reply.body, operations: try ops.decode(OperationsList.self).operations,
+                          options: options)
+        if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .video } }) { probe.clip = try await Fixtures.mp4() }
+        return probe
     }
 
     public func has(_ feature: Feature) -> Bool { info.features.contains(feature) }
@@ -73,22 +77,41 @@ public final class Probe: @unchecked Sendable {
 
     // MARK: - Requests
 
-    /// A minimal valid request for `d`: text for every text input (an Audio operation's required ones only), the
-    /// fixture image, mask or audio clip for required media inputs, no params. Nil when it needs something the suite
-    /// can't make (a required data input, video).
+    /// A minimal valid request for `d`: text for every text input (an Audio or Video operation's required ones only),
+    /// the fixture image, mask, audio or video clip for required media inputs, the parameters its profile requires, and
+    /// the acceptance of every licence its users must accept (Base §10.2 rule 4). Nil when it needs something the suite
+    /// can't make (a required data input).
     public func minimalRequest(_ d: Descriptor, image: Data = Fixtures.png(), mask: Data = Fixtures.mask()) -> JobRequest? {
         var inputs: [String: RequestInput] = [:]
         for spec in d.inputs {
             switch spec.kind {
-            case .text where spec.required || d.profile != AudioProfile.id: inputs[spec.name] = .text("a lighthouse on a cliff at dusk")
+            case .text where spec.required || ![AudioProfile.id, VideoProfile.id].contains(d.profile):
+                inputs[spec.name] = .text("a lighthouse on a cliff at dusk")
             case .text: continue
             case .audio where spec.required: inputs[spec.name] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav()))
             case .image where spec.required: inputs[spec.name] = .one(.inline(mediaType: "image/png", data: image))
             case .mask where spec.required: inputs[spec.name] = .one(.inline(mediaType: "image/png", data: mask))
+            case .video where spec.required:
+                guard let clip else { return nil }
+                inputs[spec.name] = .one(.inline(mediaType: "video/mp4", data: clip))
             default: if spec.required { return nil }
             }
         }
-        return JobRequest(operation: d.operation, inputs: inputs)
+        var params: [String: JSONValue]?
+        if d.operation == "video.upscale" { params = [VideoProfile.Param.content: "live_action"] }
+        if d.operation == "video.retake" { params = [VideoProfile.Param.start: 0.25, VideoProfile.Param.end: 0.5] }
+        return JobRequest(operation: d.operation, inputs: inputs, params: params, policy: Self.acceptance(d))
+    }
+
+    /// A policy that accepts every licence of `d`'s offers and adapters whose users must accept it (Base §10.2 rule 4): the
+    /// suite is a client whose user accepted them. Nil when none needs it.
+    public static func acceptance(_ d: Descriptor, _ base: Policy? = nil) -> Policy? {
+        let licences = d.models.flatMap { [$0.license] + ($0.adapters ?? []).map(\.license) }
+        let ids = Array(Set(licences.filter(\.needsUserAcceptance).map(\.spdx))).sorted()
+        guard !ids.isEmpty else { return base }
+        var policy = base ?? Policy()
+        policy.accepted = Array(Set((policy.accepted ?? []) + ids)).sorted()
+        return policy
     }
 
     /// The operation Base tests use: one the suite can drive whose first output is media, preferring text-only inputs.
@@ -183,6 +206,8 @@ public struct ConformanceReport: Codable, Sendable {
     public var conformsToImage: Bool? { conforms("IMAGE") }
     /// Audio 0.1 conformance for the operations offered.
     public var conformsToAudio: Bool? { conforms("AUDIO") }
+    /// Video 0.1 conformance for the operations offered.
+    public var conformsToVideo: Bool? { conforms("VIDEO") }
 
     func conforms(_ prefix: String) -> Bool? {
         let tests = results.filter { $0.id.hasPrefix(prefix) }
@@ -195,6 +220,7 @@ public struct ConformanceReport: Codable, Sendable {
         "Base 0.1: \(conformsToBase ? "conforms" : "does not conform")"
             + (conformsToImage.map { ", Image 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
             + (conformsToAudio.map { ", Audio 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
+            + (conformsToVideo.map { ", Video 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
     }
 }
 
@@ -247,6 +273,7 @@ extension ConformanceReport {
         ]
         if let image = conformsToImage { lines.append("| **Image 0.1** | \(image ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         if let audio = conformsToAudio { lines.append("| **Audio 0.1** | \(audio ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
+        if let video = conformsToVideo { lines.append("| **Video 0.1** | \(video ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         lines += ["", "| Test | Checks | Spec | Result |", "|---|---|---|---|"]
         for r in results {
             let mark = switch r.status { case .pass: "✅ pass"; case .fail: "❌ **fail**"; case .skip: "➖ skip" }

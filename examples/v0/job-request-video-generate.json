@@ -1,0 +1,24 @@
+{
+  "operation": "video.generate",
+  "inputs": {
+    "prompt": "A paper kite climbs over a green hill at golden hour; grass ripples; wind and distant birds.",
+    "first_frame": {
+      "upload": "upl_7k2m"
+    },
+    "soundtrack": {
+      "asset": "ast_wind01"
+    }
+  },
+  "params": {
+    "aspect": "16:9",
+    "resolution": 288,
+    "fps": 24,
+    "seed": 77,
+    "quality": "draft"
+  },
+  "policy": {
+    "accepted": [
+      "LicenseRef-LTX-2-Community"
+    ]
+  }
+}

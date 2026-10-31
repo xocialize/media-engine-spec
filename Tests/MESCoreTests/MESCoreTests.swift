@@ -135,6 +135,49 @@ struct MESCoreTests {
         #expect(AudioProfile.vocabulary["$defs"]?["section"]?["enum"] == .array(AudioProfile.sections.map { .string($0) }))
     }
 
+    @Test("The bundled Video table and vocabulary are identical to schemas/v0/profiles/video")
+    func videoTable() throws {
+        let canonical = try MESJSON.decoder.decode(ProfileTable.self, from: Data(contentsOf:
+            schemas.appendingPathComponent("profiles/video/operations.json")))
+        #expect(VideoProfile.operations == canonical)
+        #expect(VideoProfile.operations.operations.keys.sorted() == ["video.extend", "video.generate", "video.interpolate",
+                                                                    "video.retake", "video.upscale"])
+        #expect(VideoProfile.vocabulary == (try json(schemas.appendingPathComponent("profiles/video/vocabulary.schema.json"))))
+        #expect(VideoProfile.vocabulary["$defs"]?["retake"]?["enum"] == .array(VideoProfile.retakeModes.map { .string($0) }))
+        #expect(VideoProfile.vocabulary["$defs"]?["content"]?["enum"] == .array(VideoProfile.contents.map { .string($0) }))
+        #expect(VideoProfile.operations.operations["video.generate"]?.exclusiveParams == [["size", "aspect"]])
+        #expect(VideoProfile.operations.operations["video.generate"]?.adapterInputs == ["video": "control", "image": "references", "audio": "soundtrack"])
+        #expect(VideoProfile.operations.operations["video.upscale"]?.requiredParams == ["content"])
+        // `fps` is the target rate in interpolate.
+        #expect(VideoProfile.vocabularySchema("fps", operation: "video.interpolate")?["description"]?.stringValue?.contains("target") == true)
+    }
+
+    @Test("Video grids: 8k + 1 frames snap to the nearest, sizes to their step, aspect at a resolution")
+    func videoGrids() {
+        let ltx = VideoProfile.FrameStep(multiple: 8, offset: 1)
+        #expect(VideoProfile.frames(seconds: 0.375, fps: 24, grid: ltx) == 9)
+        #expect(VideoProfile.frames(seconds: 1, fps: 24, grid: ltx) == 25)       // 24 → 25, not LTX's raw 17
+        #expect(VideoProfile.frames(seconds: 0.01, fps: 24, grid: ltx) == 1)
+        #expect(ltx.admits(17) && !ltx.admits(16) && ltx.floor(20) == 17 && ltx.floor(0) == nil)
+        #expect(VideoProfile.FrameStep.any.nearest(23.6) == 24)
+        #expect(VideoProfile.snap(width: 250, height: 300, step: 32) == (256, 288))
+        #expect(VideoProfile.size(aspect: "16:9", resolution: 720)! == (1280, 720))
+        #expect(VideoProfile.size(aspect: "9:16", resolution: 720)! == (720, 1280))
+        #expect(VideoProfile.size(aspect: "wide", resolution: 720) == nil)
+        #expect(VideoProfile.isDisclosure(VideoProfile.disclosure(model: "LTX 2.5")))
+    }
+
+    @Test("Policy: a licence whose users must accept it is allowed only when the request lists it")
+    func userAcceptance() {
+        let ltx = License(spdx: "LicenseRef-LTX-2-Community", commercialUse: .yes, userAcceptRequired: true)
+        #expect(!Policy().allows(ltx) && Policy().allowsUse(ltx))
+        #expect(Policy(accepted: ["LicenseRef-LTX-2-Community"]).allows(ltx))
+        #expect(!Policy(license: .commercialUse, accepted: ["LicenseRef-LTX-2-Community"]).allows(License(spdx: "X", commercialUse: .no)))
+        #expect(Policy().allows(.apache2))
+        let encoded = try? MESJSON.decoder.decode(JSONValue.self, from: MESJSON.encoder.encode(ltx))
+        #expect(encoded?["user_accept_required"] == true)
+    }
+
     @Test("Cues: one syntax, [name] and [pause Ns], with \\[ for a literal bracket")
     func cues() {
         let s = AudioProfile.segments("Well [laugh] that's it. [pause 1.5s] See \\[S1] and [a long aside].")

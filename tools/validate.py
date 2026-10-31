@@ -63,6 +63,13 @@ MANIFEST = {
     "event-output-chunk.json": "base/event.schema.json",
     "job-holding-speak.json": "base/job.schema.json",
     "job-holding-compose.json": "base/job.schema.json",
+    "operations-video-generate.json": "base/operations-list.schema.json",
+    "operations-video-upscale-interpolate.json": "base/operations-list.schema.json",
+    "job-request-video-generate.json": "profiles/video/job-request.schema.json",
+    "job-request-video-retake.json": "profiles/video/job-request.schema.json",
+    "job-holding-video-generate.json": "base/job.schema.json",
+    "event-preview-frame.json": "base/event.schema.json",
+    "error-terms-not-accepted.json": "base/error.schema.json",
 }
 
 _cache = {}
@@ -201,10 +208,10 @@ def walk_refs(node, file, seen):
 
 def profile_checks():
     """Descriptors in examples must honour their profile's operations.json: required inputs, outputs, vocabulary
-    shapes; Audio offers' supports and limits must have the profile's types (supports.schema.json)."""
+    shapes; Audio and Video offers' supports and limits must have the profile's types (supports.schema.json)."""
     errs = []
     tables = {}
-    for profile in ("image", "audio"):
+    for profile in ("image", "audio", "video"):
         ops_file = SCHEMAS / "profiles" / profile / "operations.json"
         ops = load(ops_file)
         errs += validate(ops, load(SCHEMAS / "profiles" / profile / "operations.schema.json"),
@@ -216,8 +223,7 @@ def profile_checks():
                 if def_name not in vocab:
                     errs.append(f"{profile}/operations.json {op}: vocabulary '{name}' has no definition '{def_name}'")
         tables[profile] = (ops_file, ops, vocab)
-    supports_file = SCHEMAS / "profiles" / "audio" / "supports.schema.json"
-    supports = load(supports_file)
+    supports_files = {pr: SCHEMAS / "profiles" / pr / "supports.schema.json" for pr in ("audio", "video")}
     for ex in sorted(EXAMPLES.glob("operations-*.json")):
         for d in load(ex)["operations"]:
             if d["profile"] not in tables:
@@ -249,13 +255,19 @@ def profile_checks():
                 elif not pname.startswith("x-"):
                     errs.append(f"{ex.name} {d['operation']}: param '{pname}' is not in the profile vocabulary "
                                 f"(model-specific knobs go in extensions)")
-            if d["profile"] == "audio":
+            if d["profile"] in supports_files:
+                supports_file = supports_files[d["profile"]]
+                supports = load(supports_file)
                 short = d["operation"].split(".")[1]
+                if d["profile"] == "video":
+                    errs += [f"{ex.name} {d['operation']} limits: {e}" for e in
+                             validate(d.get("limits", {}), supports["$defs"][f"{short}_limits"], supports_file)]
                 for m in d["models"]:
                     errs += [f"{ex.name} {m['id']} supports: {e}" for e in
                              validate(m.get("supports", {}), supports["$defs"][f"{short}_supports"], supports_file)]
-                    lim = {k: v for k, v in m.get("limits", {}).items()
-                           if k not in ("max_width", "max_height", "max_megapixels", "max_duration_s", "max_inputs")}
+                    lim = m.get("limits", {}) if d["profile"] == "video" else {
+                        k: v for k, v in m.get("limits", {}).items()
+                        if k not in ("max_width", "max_height", "max_megapixels", "max_duration_s", "max_inputs")}
                     errs += [f"{ex.name} {m['id']} limits: {e}" for e in
                              validate(lim, supports["$defs"][f"{short}_limits"], supports_file)]
                     for k, v in m.get("limits", {}).items():

@@ -651,6 +651,170 @@ examples.update({
     },
 })
 
+# The Video profile (spec/profiles/video.md) and RFC 0005 (frames, previews, users' acceptance), v0.9.0. The offers
+# follow docs/VIDEO-EVALUATION.md §6: LTX 2.5 one offer per tier, SeedVR2, FlashVSR, RIFE.
+VIDEO_ENGINE = {"id": "eng_gaea01", "name": "Studio Gaea", "implementation": "gaea", "version": "0.10.0"}
+LTX = {"spdx": "LicenseRef-LTX-2-Community", "commercial_use": True,
+       "terms_url": "https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE", "accepted_required": True, "user_accept_required": True,
+       "notice": "LTX-2 Community License: the use restrictions of its Attachment A apply to you; entities with USD 10M or more in "
+                 "annual revenue need a commercial licence from Lightricks; say that content made with it is machine-generated."}
+SEEDVR2 = {"spdx": "Apache-2.0", "commercial_use": True, "terms_url": "https://huggingface.co/ByteDance-Seed/SeedVR2-3B"}
+FLASHVSR = {"spdx": "Apache-2.0", "commercial_use": True, "terms_url": "https://github.com/OpenImagingLab/FlashVSR"}
+RIFE = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://github.com/hzwer/Practical-RIFE"}
+VIDEO_TYPES = ["video/mp4", "video/quicktime"]
+VSEED = {"type": "integer", "minimum": 0, "maximum": 9007199254740991, "x-mes-ui": {"label": "Seed", "widget": "seed", "advanced": True}}
+VOUTPUT = {"type": "object", "additionalProperties": False, "minProperties": 1,
+           "properties": {"media_type": {"enum": ["video/mp4"]}, "codec": {"enum": ["h264", "hevc"]}},
+           "x-mes-ui": {"label": "Format", "advanced": True}}
+LTX_GRID = {"multiple": 8, "offset": 1}
+LTX_SOUND = {"audio": True, "sample_rate": 48000, "channels": 2, "negative_prompt": False, "frame_step": LTX_GRID}
+LTX_NOTES = "Describe the shot, its motion and its sound in a paragraph; there is no negative prompt."
+
+examples.update({
+    "operations-video-generate.json": {
+        "etag": "\"ops-" + H("video-ops")[:12] + "\"",
+        "operations": [{
+            "operation": "video.generate", "profile": "video", "profile_version": "0.1", "title": "Generate a clip",
+            "summary": "Text, a first or last frame, keyframes and a soundtrack to video, with sound.",
+            "inputs": [
+                {"name": "prompt", "kind": "text", "required": True},
+                {"name": "first_frame", "kind": "image", "required": False, "max": 1, "media_types": ["image/png", "image/jpeg"]},
+                {"name": "last_frame", "kind": "image", "required": False, "max": 1, "media_types": ["image/png", "image/jpeg"]},
+                {"name": "keyframes", "kind": "image", "required": False, "max": 5, "media_types": ["image/png", "image/jpeg"]},
+                {"name": "soundtrack", "kind": "audio", "required": False, "max": 1, "media_types": AUDIO_TYPES},
+                {"name": "control", "kind": "video", "required": False, "max": 1, "media_types": VIDEO_TYPES},
+            ],
+            "params": {"type": "object", "additionalProperties": False, "properties": {
+                "duration_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 20, "x-mes-ui": {"label": "Duration (s)"}},
+                "fps": {"type": "number", "minimum": 1, "maximum": 60, "x-mes-ui": {"label": "Frame rate"}},
+                "size": {"type": "object", "required": ["width", "height"], "additionalProperties": False,
+                         "properties": {"width": {"type": "integer", "minimum": 64, "maximum": 1920},
+                                        "height": {"type": "integer", "minimum": 64, "maximum": 1088}},
+                         "x-mes-ui": {"label": "Size", "widget": "size"}},
+                "aspect": {"type": "string", "pattern": "^[1-9][0-9]*:[1-9][0-9]*$", "x-mes-ui": {"label": "Aspect", "widget": "aspect"}},
+                "resolution": {"type": "integer", "minimum": 64, "maximum": 1088, "x-mes-ui": {"label": "Resolution", "advanced": True}},
+                "keyframe_times": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "number", "exclusiveMinimum": 0},
+                                   "x-mes-ui": {"label": "Keyframe times (s)", "advanced": True}},
+                "audio": {"type": "boolean", "x-mes-ui": {"label": "Sound", "widget": "toggle"}},
+                "seed": VSEED, "quality": QUALITY, "output": VOUTPUT,
+            }},
+            "outputs": [{"name": "video", "kind": "video", "media_types": ["video/mp4"], "min": 1, "max": 1}],
+            "limits": {"max_width": 1920, "max_height": 1088, "max_duration_s": 20, "max_frames": 481, "min_width": 64, "min_height": 64,
+                       "max_keyframes": 5, "max_soundtrack_s": 20},
+            "quality_tiers": ["draft", "standard", "best"],
+            "models": [
+                {"id": "ltx-2.5-compact24", "title": "LTX 2.5 compact24", "license": LTX, "memory_class": "medium", "speed_class": "slow",
+                 "quality_tiers": ["draft"], "default": True,
+                 "notes": LTX_NOTES + " One stage: no keyframes or last frame. A first frame or soundtrack limits the size to 512×288.",
+                 "supports": {**LTX_SOUND, "first_frame": True, "soundtrack": True, "size_step": 32, "deterministic": False},
+                 "limits": {"max_width": 704, "max_height": 512, "max_frames": 121, "max_duration_s": 5, "min_width": 64, "min_height": 64,
+                            "max_soundtrack_s": 5}},
+                {"id": "ltx-2.5-standard64", "title": "LTX 2.5 standard64", "license": LTX, "memory_class": "large", "speed_class": "slow",
+                 "quality_tiers": ["standard", "best"], "notes": LTX_NOTES,
+                 "adapters": [{"id": "ltx-union-control", "title": "LTX IC-LoRA union control", "kind": "ic",
+                               "slots": [{"role": "control", "kind": "video", "notes": "A pose, depth or edge clip; which one picks the signal."}],
+                               "strength": {"min": 0, "max": 2, "default": 1}, "license": LTX}],
+                 "supports": {**LTX_SOUND, "first_frame": True, "last_frame": True, "keyframes": True, "soundtrack": True,
+                              "size_step": 64, "deterministic": False},
+                 "limits": {"max_width": 1280, "max_height": 704, "max_frames": 161, "max_duration_s": 6.7, "max_keyframes": 5,
+                            "min_width": 64, "min_height": 64}},
+                {"id": "ltx-2.5-max128", "title": "LTX 2.5 max128", "license": LTX, "memory_class": "xlarge", "speed_class": "slow",
+                 "quality_tiers": ["best"], "notes": LTX_NOTES + " bf16, streamed from disk: needs storage of about 1 GB/s.",
+                 "supports": {**LTX_SOUND, "first_frame": True, "last_frame": True, "keyframes": True, "soundtrack": True,
+                              "size_step": 64, "deterministic": True},
+                 "limits": {"max_width": 1920, "max_height": 1088, "max_frames": 481, "max_duration_s": 20, "max_keyframes": 5,
+                            "min_width": 64, "min_height": 64}},
+            ],
+            "remote": {"possible": False},
+        }],
+    },
+    "operations-video-upscale-interpolate.json": {
+        "etag": "\"ops-" + H("video-ops-2")[:12] + "\"",
+        "operations": [
+            {"operation": "video.upscale", "profile": "video", "profile_version": "0.1", "title": "Upscale a video",
+             "inputs": [{"name": "video", "kind": "video", "required": True, "max": 1, "media_types": VIDEO_TYPES}],
+             "params": {"type": "object", "additionalProperties": False, "required": ["content"], "properties": {
+                 "scale": {"enum": [2, 4], "x-mes-ui": {"label": "Scale", "widget": "picker"}},
+                 "content": {"enum": ["live_action", "drawn"], "x-mes-ui": {"label": "Content", "widget": "picker"}},
+                 "seed": VSEED, "quality": QUALITY, "output": VOUTPUT}},
+             "outputs": [{"name": "video", "kind": "video", "media_types": ["video/mp4"], "min": 1, "max": 1}],
+             "limits": {"max_width": 3840, "max_height": 2160, "max_source_s": 60},
+             "quality_tiers": ["draft", "standard", "best"],
+             "models": [
+                 {"id": "seedvr2-int8", "title": "SeedVR2 3B (int8)", "license": SEEDVR2, "memory_class": "medium", "speed_class": "slow",
+                  "quality_tiers": ["draft", "standard"], "default": True, "notes": "×2 natively. Fine for drawn and live-action video.",
+                  "supports": {"scales": [2, 4], "content": ["live_action", "drawn"]}},
+                 {"id": "seedvr2-fp16", "title": "SeedVR2 3B (fp16)", "license": SEEDVR2, "memory_class": "large", "speed_class": "slow",
+                  "quality_tiers": ["best"], "supports": {"scales": [2, 4], "content": ["live_action", "drawn"]}},
+                 {"id": "flashvsr", "title": "FlashVSR", "license": FLASHVSR, "memory_class": "large", "speed_class": "standard",
+                  "quality_tiers": ["standard"],
+                  "notes": "×4 natively; live action only (it invents texture on drawings and graphics). Credits: FlashVSR, DiffSynth-Studio, Wan2.1, TAEHV.",
+                  "supports": {"scales": [2, 4], "content": ["live_action"]}, "limits": {"max_width": 1920, "max_height": 1152}},
+             ],
+             "remote": {"possible": False}},
+            {"operation": "video.interpolate", "profile": "video", "profile_version": "0.1", "title": "Interpolate frames",
+             "inputs": [{"name": "video", "kind": "video", "required": True, "max": 1, "media_types": VIDEO_TYPES}],
+             "params": {"type": "object", "additionalProperties": False, "properties": {
+                 "factor": {"type": "integer", "minimum": 2, "maximum": 8, "x-mes-ui": {"label": "Factor", "widget": "stepper"}},
+                 "fps": {"type": "number", "minimum": 1, "maximum": 240, "x-mes-ui": {"label": "Target frame rate"}},
+                 "quality": QUALITY, "output": VOUTPUT}},
+             "outputs": [{"name": "video", "kind": "video", "media_types": ["video/mp4"], "min": 1, "max": 1}],
+             "limits": {"max_factor": 8, "max_fps": 240, "max_source_s": 120},
+             "quality_tiers": ["standard"],
+             "models": [{"id": "rife-4.25", "title": "RIFE 4.25", "license": RIFE, "memory_class": "small", "speed_class": "fast",
+                         "quality_tiers": ["standard"], "default": True, "notes": "Integer factors 2–8; tiled above 1080p.",
+                         "supports": {"seed": False}}],
+             "remote": {"possible": False}},
+        ],
+    },
+    "job-request-video-generate.json": {
+        "operation": "video.generate",
+        "inputs": {"prompt": "A paper kite climbs over a green hill at golden hour; grass ripples; wind and distant birds.",
+                   "first_frame": {"upload": "upl_7k2m"}, "soundtrack": {"asset": "ast_wind01"}},
+        "params": {"aspect": "16:9", "resolution": 288, "fps": 24, "seed": 77, "quality": "draft"},
+        "policy": {"accepted": ["LicenseRef-LTX-2-Community"]},
+    },
+    "job-request-video-retake.json": {
+        "operation": "video.retake",
+        "inputs": {"video": {"upload": "upl_9q1x"}, "prompt": "The kite turns blue and dives."},
+        "params": {"start_s": 2.0, "end_s": 3.5, "retake": "picture", "quality": "draft"},
+        "model": "ltx-2.5-compact24",
+        "policy": {"accepted": ["LicenseRef-LTX-2-Community"]},
+    },
+    "job-holding-video-generate.json": {
+        "id": "job_01JB11", "operation": "video.generate", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "ltx-2.5-compact24", "title": "LTX 2.5 compact24", "license": LTX},
+                 "effective": {"aspect": "16:9", "resolution": 288, "fps": 24, "seed": 77, "quality": "draft"}},
+        "progress": {"stage": "finishing", "phase": "mux", "step": 1, "steps": 1},
+        "warnings": [
+            {"code": "soundtrack_fitted", "message": "The soundtrack (5.2 s) was cut to the clip's 5.04 s (121 frames).", "param": "soundtrack"},
+        ],
+        "result": {
+            "outputs": [{"index": 0, "name": "video", "kind": "video", "media_type": "video/mp4", "bytes": 1843207, "sha256": H("clip"),
+                         "href": "/mes/v0/jobs/job_01JB11/outputs/0", "width": 512, "height": 288, "fps": 24, "frames": 121,
+                         "duration_s": 5.041666666666667, "sample_rate": 48000, "channels": 2}],
+            "effective": {"aspect": "16:9", "resolution": 288, "size": {"width": 512, "height": 288}, "fps": 24, "frames": 121,
+                          "duration_s": 5.041666666666667, "audio": True, "seed": 77, "quality": "draft",
+                          "model_params": {"tier": "compact24", "stages": 1, "steps": 8}},
+            "provenance": {"engine": VIDEO_ENGINE, "operation": "video.generate", "profile_version": "0.1",
+                           "model": {"id": "ltx-2.5-compact24", "title": "LTX 2.5 compact24", "revision": "v0.20.0", "license": LTX},
+                           "seed": 77, "timings": {"received_at": "2026-10-31T20:00:00Z", "queue_ms": 12, "prepare_ms": 21400, "run_ms": 66100}},
+        },
+        "retention": {"outputs_expire_at": "2026-10-31T21:01:30Z", "record_expires_at": "2026-11-01T20:01:30Z"},
+        "created_at": "2026-10-31T20:00:00Z", "updated_at": "2026-10-31T20:01:30Z",
+    },
+    "event-preview-frame.json": {
+        "type": "job.preview", "job": "job_01JB11", "seq": 41, "time": "2026-10-31T20:01:02Z",
+        "data": {"media_type": "image/jpeg", "output": "video", "at_s": 2.5, "frame": 60, "data": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AL+AD//Z"},
+    },
+    "error-terms-not-accepted.json": {
+        "error": {"code": "policy_unmet", "reason": "terms_not_accepted", "param": "policy", "request_id": "req_4c1d",
+                  "message": "LTX 2.5 compact24 is under LicenseRef-LTX-2-Community, whose terms bind each user: show them its notice and "
+                             "terms (https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE), and once they accept, list "
+                             "LicenseRef-LTX-2-Community in policy.accepted."},
+    },
+})
+
 OUT.mkdir(parents=True, exist_ok=True)
 for name, value in examples.items():
     (OUT / name).write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")

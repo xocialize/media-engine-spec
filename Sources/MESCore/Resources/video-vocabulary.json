@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Video 0.1 — parameter vocabulary (spec/profiles/video.md §2)",
+  "description": "Descriptors MUST use these names and shapes for the concepts they cover; a descriptor may narrow a shape (fewer enum values, a smaller range), never widen it.",
+  "$defs": {
+    "negative_prompt": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "What to steer away from. Warn: supports.negative_prompt."
+    },
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 3600,
+      "description": "generate: the clip's length, snapped to the model's frame grid (§1.4). Absent: the model's default, or the soundtrack's length."
+    },
+    "fps": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 240,
+      "description": "generate: the frame rate. Gate: supports.frame_rates."
+    },
+    "target_fps": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 240,
+      "description": "interpolate: the target rate; the engine uses the nearest factor the offer admits (§3.5)."
+    },
+    "size": {
+      "type": "object",
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "description": "The output size in pixels, snapped to the model's grid (§1.4).",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 8192
+        }
+      }
+    },
+    "aspect": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$",
+      "description": "W:H, with resolution; alternative to size."
+    },
+    "resolution": {
+      "type": "integer",
+      "minimum": 64,
+      "maximum": 4320,
+      "description": "With aspect: the short side in pixels."
+    },
+    "keyframe_times": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "description": "generate: one time in seconds per keyframes value, in order, strictly inside the clip (§3.1)."
+    },
+    "audio": {
+      "type": "boolean",
+      "description": "Whether the output carries an audio track (§1.7). Absent: sound where the model makes it or the source has it."
+    },
+    "after_s": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 3600,
+      "description": "extend: seconds to add after the source."
+    },
+    "before_s": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 3600,
+      "description": "extend: seconds to add before the source. Gate: supports.extend_before."
+    },
+    "start_s": {
+      "type": "number",
+      "minimum": 0,
+      "description": "retake: where the span starts."
+    },
+    "end_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "retake: where the span ends."
+    },
+    "retake": {
+      "enum": [
+        "picture",
+        "sound",
+        "both"
+      ],
+      "description": "retake: what to make again in the span. Gate: supports.retake."
+    },
+    "scale": {
+      "enum": [
+        2,
+        4
+      ],
+      "description": "upscale: the enlargement factor. Absent: the offer's native scale, reported."
+    },
+    "content": {
+      "enum": [
+        "live_action",
+        "drawn"
+      ],
+      "description": "upscale: what the video is. Required: never guessed."
+    },
+    "factor": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 8,
+      "description": "interpolate: frames per source frame interval."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Repeatability (§1.13). Absent: the engine picks one and reports it."
+    },
+    "quality": {
+      "enum": [
+        "draft",
+        "standard",
+        "best"
+      ],
+      "default": "standard"
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The output encoding (§1.2).",
+      "properties": {
+        "media_type": {
+          "enum": [
+            "video/mp4",
+            "video/quicktime"
+          ]
+        },
+        "codec": {
+          "enum": [
+            "h264",
+            "hevc"
+          ]
+        }
+      }
+    },
+    "prompt_enhance": {
+      "enum": [
+        "auto",
+        "on",
+        "off"
+      ],
+      "default": "auto",
+      "description": "As Image §1.9."
+    },
+    "frame_step": {
+      "type": "object",
+      "required": [
+        "multiple",
+        "offset"
+      ],
+      "additionalProperties": false,
+      "description": "A model's frame grid: frames are k × multiple + offset (§1.4).",
+      "properties": {
+        "multiple": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

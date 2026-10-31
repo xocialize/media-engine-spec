@@ -508,25 +508,35 @@ public struct MockAudioEngine: MediaEngine {
     }
 }
 
-/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations and the Audio mock's five, one engine.
+/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's five and the Video
+/// mock's five, one engine.
 public struct MockMediaEngine: MediaEngine {
     public var image: MockImageEngine
     public var audio: MockAudioEngine
+    public var video: MockVideoEngine
 
     public init(stepDelay: Duration = .zero, steps: Int = 4, chunkDelay: Duration = .milliseconds(20)) {
         image = MockImageEngine(stepDelay: stepDelay, steps: steps)
         audio = MockAudioEngine(stepDelay: stepDelay, chunkDelay: chunkDelay)
+        video = MockVideoEngine(stepDelay: stepDelay)
     }
 
-    public func descriptors() async -> [Descriptor] { await image.descriptors() + audio.descriptors() }
+    public func descriptors() async -> [Descriptor] { await image.descriptors() + audio.descriptors() + video.descriptors() }
 
     public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
-        if descriptor.profile == AudioProfile.id { try audio.validate(request, descriptor: descriptor) }
-        else { try image.validate(request, descriptor: descriptor) }
+        switch descriptor.profile {
+        case AudioProfile.id: try audio.validate(request, descriptor: descriptor)
+        case VideoProfile.id: try video.validate(request, descriptor: descriptor)
+        default: try image.validate(request, descriptor: descriptor)
+        }
     }
 
     public func run(_ context: RunContext) async throws -> RunOutput {
-        context.descriptor.profile == AudioProfile.id ? try await audio.run(context) : try await image.run(context)
+        switch context.descriptor.profile {
+        case AudioProfile.id: try await audio.run(context)
+        case VideoProfile.id: try await video.run(context)
+        default: try await image.run(context)
+        }
     }
 
     public func voices(operation: String, model: String) async -> [Voice] { await audio.voices(operation: operation, model: model) }

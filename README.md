@@ -5,11 +5,11 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1, Image profile 0.1 and Audio profile 0.1 are **drafts** (Audio since `v0.7.0`). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1 and Video profile 0.1 are **drafts** (Audio since `v0.7.0`, Video since `v0.9.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
 > audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
-> voice pickers and audio players); the conformance suite for engines and clients; and a mock engine for both profiles. The mock and `mes` both
+> voice pickers and audio players, video wells, players and frame previews); the conformance suite for engines and clients; and a mock engine for all three profiles. The mock and `mes` both
 > conform. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 
 ## Reference implementations
@@ -35,12 +35,13 @@ client conformance role before Lite is deprecated.
 | [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• model offers and their adapters (e.g. LoRA);<br/>• jobs, uploads, grants and events;<br/>• results, provenance (models, adapters, helpers) and licence policy;<br/>• retention guarantees, errors and the MCP binding. |
 | [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
 | [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs), one label set for emotions, styles, nonverbal cues and lyrics sections, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
-| [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's `supports` keys and job requests |
+| [`spec/profiles/video.md`](spec/profiles/video.md) | **Video profile 0.1:** 5 operations (`generate` from text, a first and last frame, keyframes at times and a soundtrack; `extend`; `retake`; `upscale`; `interpolate`), seconds in requests and frames in results on each model's grid, one audio track inside a video, the `supports` keys each model offer states, AI-content disclosure, frame previews, warnings, conformance tests. Evaluation: [`docs/VIDEO-EVALUATION.md`](docs/VIDEO-EVALUATION.md) |
+| [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's and Video's `supports` keys and job requests |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
-| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image and Audio tables, cue and WAV helpers, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESEngineUI:** an engine app's own console (queue, enabled set of models, System monitor, menu-bar item), and `mes-console-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image, Audio and Video tables, cue, WAV and frame-grid helpers, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESEngineUI:** an engine app's own console (queue, enabled set of models, System monitor, menu-bar item), and `mes-console-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
-| [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE and IMAGE test, and how to run them |
+| [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE, IMAGE, AUDIO and VIDEO test, and how to run them |
 | [`rfcs/`](rfcs/) | How changes are proposed |
 
 ## Checking the documents
@@ -127,6 +128,23 @@ swift run mes voices audio.speak mock-presets
 ```bash
 swift run mes run audio.speak -i text="Hello there." -i voice_ref=asset:clip.wav --stream
 ```
+
+Video (Video 0.1, RFC 0005). The mock's offers are shaped like the fleet's: two LTX-like tiers (one stage and two
+stages, the 8k + 1 frame grid, sound at 48 kHz, a licence each user must accept), an open silent offer, SeedVR2- and
+FlashVSR-like upscalers and a RIFE-like interpolator. A request names seconds and gets frames; one that hasn't accepted
+the community licence is served by the open offer, or refused with `terms_not_accepted` when it names an LTX one:
+
+```bash
+curl -s http://127.0.0.1:17600/mes/v0/jobs -H 'Content-Type: application/json' -d '{"operation": "video.generate", "inputs": {"prompt": "a kite over green hills"}, "params": {"size": {"width": 256, "height": 256}, "duration_s": 1, "quality": "draft"}, "policy": {"accepted": ["LicenseRef-Mock-Video-Community"]}}'
+```
+
+```bash
+swift run mes run video.interpolate -i video=clip.mp4 -p factor=2
+```
+
+MESFormsUI has a `VideoInputWell` (choose or drop a clip, play it, see its frames), a `VideoPlayerView` with the clip's
+facts, a `FramePreviewStrip` for a file's thumbnails or a running job's stills (`FramePreviews`), and
+`LicenseAcceptanceView` with `LicenseAcceptances`, which a form sends as `policy.accepted`.
 
 ```bash
 swift run mes-forms-gallery

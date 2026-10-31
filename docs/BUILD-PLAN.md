@@ -543,6 +543,73 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   - **Source changes for consumers:** `FieldWidget` gains `.voice`, so exhaustive `switch`es over it need a case.
     MESFormsUI depends on MESClientKit. `EngineConnection`'s new requirements have defaults.
 
+- **`v0.9.0`** (2026-10-31; Gaea phase G3 order 1, AB-A-0235): **Video 0.1**, its evaluation, and what Base needs for
+  it ([RFC 0005](../rfcs/0005-video-in-base.md), accepted). Base, Image and Audio stay 0.1 drafts; everything new is
+  optional, except that a client must now show a licence's `notice` with results in every profile (A-8, which was
+  Audio's).
+  - **Evaluation** ([`docs/VIDEO-EVALUATION.md`](VIDEO-EVALUATION.md)): what LTX 2.5 (`MLXLTX25Package`, four tiers),
+    SeedVR2, FlashVSR and RIFE do, read from their packages, and MLXToolKit's video request types; Gaea PRD §10 and
+    Engines-PRD §6. Its Decisions bind the plugins: seconds in requests and frames in results; one AAC track inside a
+    video, `soundtrack` as the output's audio, transformations keeping the source's audio (the engine remuxes it, since
+    none of the frame-stream packages does); MP4 or QuickTime on the wire; LTX's tiers as offers; previews as frames;
+    users' acceptance for licences that bind users. §7 lists what each package does that breaks a rule, and §8 what
+    MLXEngine and the packages need.
+  - **Video 0.1** ([`spec/profiles/video.md`](../spec/profiles/video.md)): `video.generate` (text; a first and last
+    frame; keyframes at times; a soundtrack to follow; subject references and `ic` adapter slots by kind),
+    `video.extend`, `video.retake` (picture, sound or both), `video.upscale` (`content` required, exact size) and
+    `video.interpolate` ((N − 1) × factor + 1 frames). Vocabulary: `duration_s`, `fps`, `size` / `aspect` +
+    `resolution`, `keyframe_times`, `audio`, `after_s`/`before_s`, `start_s`/`end_s`, `retake`, `scale`, `content`,
+    `factor`, `seed`, `quality`, `output` (`{media_type, codec}`), `prompt_enhance`. Grids are Facts
+    (`frame_step`, `size_step`) and snaps warn. Supports keys, limit fields and twelve warning codes. Generated
+    clips MUST say they are AI-generated in the file; transformations keep an input's marking. Schemas in
+    `schemas/v0/profiles/video/`: `operations.json`, `operations.schema.json`, `vocabulary.schema.json`,
+    `supports.schema.json` and `job-request.schema.json`.
+  - **Base** (RFC 0005): outputs gain `frames`, and a video output's `sample_rate`/`channels` are its audio track's,
+    present exactly when it has one (B-1); `job.preview` gains a schema with `output`, `at_s` and `frame` (B-2);
+    §10.2 takes A-8 and A-9 for every profile, with a table of where each format keeps the licence (B-3), says
+    AI-content markings, watermarks and provenance manifests travel (B-5), and adds `user_accept_required` with
+    `policy.accepted`: such an offer runs only for a request that lists its `spdx`, else 422 `policy_unmet` with
+    `reason: "terms_not_accepted"` (B-4). Audio §1.12 points to Base.
+  - **MESKit:** `VideoProfile` (the table, vocabulary, keys, limit fields, `FrameStep`, size and aspect helpers);
+    `VideoProfileRules` (structure, gates, the request-readable limits, warnings), wired into `ProfileRules` and
+    `MediaEngine.validate`; `Output.frames`, `License.userAcceptRequired`, `Policy.accepted`, and the kit's policy
+    refusals naming the terms to accept (models, adapters, and now voices' own licences); `ProducedOutput.video(…)`;
+    `RunReporter.preview(_:mediaType:output:atSeconds:frame:)`; the MCP model lines and `policy.accepted` argument;
+    `ProfileOperationSpec.exclusiveParams` and `adapterInputs`. `mes run --accept <spdx>`; `mes describe` names
+    models whose users accept terms; video outputs print frames, rate and sound.
+  - **Mock:** `MockVideoEngine` and `Clips` (MP4 with H.264 or HEVC and AAC, written and read with AVFoundation, comment
+    and copyright items). Offers shaped like the fleet's: `mock-ltx-compact` (default, `draft`, one stage) and
+    `mock-ltx-standard` (two stages, keyframes, previews, adapters) under a licence each user accepts, `mock-video-open`
+    (Apache-2.0, silent), `mock-seedvr2`, `mock-flashvsr` (live action only) and `mock-rife`. `MockMediaEngine` serves
+    all three profiles' 25 operations.
+  - **MESFormsUI:** `VideoInputWell`, `VideoPlayerView` (AppKit's `AVPlayerView`), `VideoFacts`, `FramePreviewStrip`,
+    `FramePreviews` (a running job's stills from its events), `FrameThumbnails`, `LicenseAcceptances` and
+    `LicenseAcceptanceView`; a form sends `policy.accepted` for what its user accepted, and a named model awaiting
+    acceptance is an issue. A `numberList` widget for `keyframe_times`. The gallery shows the video forms.
+  - **Conformance:** VIDEO-001 to VIDEO-015 and BASE-019, sized for `--job-timeout` on the cheapest tier (256×256, 9
+    frames at 24 fps; a 128×96, 17-frame H.264 + AAC fixture). The report and CLI say "Video 0.1: conforms". Examples:
+    `operations-video-generate.json`, `operations-video-upscale-interpolate.json`, `job-request-video-generate.json`,
+    `job-request-video-retake.json`, `job-holding-video-generate.json`, `event-preview-frame.json`,
+    `error-terms-not-accepted.json`; eight new negative tests (54 in all).
+    134 tests pass (117 before); `mes-mock-engine` conforms with 85 passed and 6 skipped in open mode: Base, Image,
+    Audio and Video 0.1. `tools/smoke-cli.sh` adds a video leg (generate with `--accept`, refused without it,
+    interpolate the result); `mes` still passes the client suite.
+  - **Source changes for consumers:** `FieldWidget` gains `.numberList`, so exhaustive `switch`es over it need a case.
+    `ProfileOperationSpec` gains two optional fields, `Output`'s initializer a `frames` argument (defaulted), `License`'s
+    a `userAcceptRequired` argument (defaulted), `Policy`'s an `accepted` argument (defaulted). `RunReporter.init` gains
+    an optional `framePreview` sink. `MockMediaEngine` has a `video` member, and its descriptors include five video
+    operations: a test that counted 20 operations needs 25. An offer whose licence sets `user_accept_required` no
+    longer runs for clients that don't send `policy.accepted`.
+
+## Next: Video after 0.1
+
+- **The packages** (evaluation §8): typed time spans, keyframes and `content` in MLXToolKit; audio passthrough in
+  `frame-stream-native` and an audio switch in LTX; a frame hook for previews; run progress in SeedVR2 and RIFE;
+  RIFE's weights through the engine; typed LTX adapters (AB-A-0197).
+- **Later operations** (Video §7): `video.edit`, slow motion, talking heads and character animation, speech with a
+  chosen voice inside a video, streamed segments, HDR.
+- **A-6** (`commercial_use: conditional`) is still open; LTX follows MiniMax's accepted-terms precedent.
+
 ## Next: Audio after 0.1
 
 - **MESFormsUI:** record an audio input in place (the well picks, drops and plays files today).

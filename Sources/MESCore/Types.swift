@@ -65,11 +65,14 @@ public struct License: Codable, Sendable, Equatable {
     public var termsURL: String?
     public var notice: String?
     public var acceptedRequired: Bool?
+    /// The terms bind each person who uses the model through a client: a client's user accepts them, and requests list
+    /// the `spdx` in `policy.accepted` (§10.2 rule 4, §10.3).
+    public var userAcceptRequired: Bool?
 
     public init(spdx: String, commercialUse: CommercialUse, termsURL: String? = nil, notice: String? = nil,
-                acceptedRequired: Bool? = nil) {
+                acceptedRequired: Bool? = nil, userAcceptRequired: Bool? = nil) {
         self.spdx = spdx; self.commercialUse = commercialUse; self.termsURL = termsURL
-        self.notice = notice; self.acceptedRequired = acceptedRequired
+        self.notice = notice; self.acceptedRequired = acceptedRequired; self.userAcceptRequired = userAcceptRequired
     }
 
     enum CodingKeys: String, CodingKey {
@@ -77,7 +80,11 @@ public struct License: Codable, Sendable, Equatable {
         case commercialUse = "commercial_use"
         case termsURL = "terms_url"
         case acceptedRequired = "accepted_required"
+        case userAcceptRequired = "user_accept_required"
     }
+
+    /// Whether a client's user must accept these terms before a job may run on them (§10.2 rule 4).
+    public var needsUserAcceptance: Bool { userAcceptRequired == true }
 
     public static let apache2 = License(spdx: "Apache-2.0", commercialUse: .yes,
                                         termsURL: "https://www.apache.org/licenses/LICENSE-2.0")
@@ -495,9 +502,15 @@ public struct Policy: Codable, Sendable, Equatable {
     public enum RemotePolicy: String, Codable, Sendable { case forbid, allow }
     public var license: LicensePolicy?
     public var remote: RemotePolicy?
-    public init(license: LicensePolicy? = nil, remote: RemotePolicy? = nil) { self.license = license; self.remote = remote }
+    /// The `spdx` ids of licences whose terms the client's user has accepted (§10.2 rule 4, §10.3).
+    public var accepted: [String]?
+    public init(license: LicensePolicy? = nil, remote: RemotePolicy? = nil, accepted: [String]? = nil) {
+        self.license = license; self.remote = remote; self.accepted = accepted
+    }
     public var effectiveLicense: LicensePolicy { license ?? .any }
     public var effectiveRemote: RemotePolicy { remote ?? .forbid }
+    /// The error `reason` for a licence whose terms the request's user hasn't accepted (§10.3).
+    public static let termsNotAcceptedReason = "terms_not_accepted"
 
     /// Whether `offer` may run under this policy (Base §10.2, §10.3).
     public func allows(_ offer: ModelOffer) -> Bool {
@@ -509,7 +522,17 @@ public struct Policy: Codable, Sendable, Equatable {
     /// Whether weights under `license` may take part in a job under this policy: its model, adapters and helpers
     /// (Base §10.3).
     public func allows(_ license: License) -> Bool {
+        allowsUse(license) && hasAccepted(license)
+    }
+
+    /// The `license` and `remote` rules alone, without users' acceptance.
+    public func allowsUse(_ license: License) -> Bool {
         effectiveLicense != .commercialUse || license.commercialUse == .yes
+    }
+
+    /// Whether the request carries its user's acceptance of `license`, where its terms need one (§10.2 rule 4).
+    public func hasAccepted(_ license: License) -> Bool {
+        !license.needsUserAcceptance || (accepted ?? []).contains(license.spdx)
     }
 }
 
@@ -735,23 +758,28 @@ public struct Output: Codable, Sendable, Equatable {
     public var height: Int?
     public var durationSeconds: Double?
     public var fps: Double?
-    /// Audio facts (§10.1).
+    /// A video output's frame count (§10.1).
+    public var frames: Int?
+    /// Audio facts (§10.1). On a video output they describe its audio track, and are absent when it has none.
     public var sampleRate: Int?
     public var channels: Int?
     public var bitDepth: Int?
     public var value: JSONValue?
     enum CodingKeys: String, CodingKey {
-        case index, name, kind, bytes, sha256, href, width, height, fps, channels, value
+        case index, name, kind, bytes, sha256, href, width, height, fps, frames, channels, value
         case mediaType = "media_type", durationSeconds = "duration_s", sampleRate = "sample_rate", bitDepth = "bit_depth"
     }
     public init(index: Int, name: String, kind: Kind, mediaType: String, bytes: Int, sha256: String, href: String,
-                width: Int? = nil, height: Int? = nil, durationSeconds: Double? = nil, fps: Double? = nil,
+                width: Int? = nil, height: Int? = nil, durationSeconds: Double? = nil, fps: Double? = nil, frames: Int? = nil,
                 sampleRate: Int? = nil, channels: Int? = nil, bitDepth: Int? = nil, value: JSONValue? = nil) {
         self.index = index; self.name = name; self.kind = kind; self.mediaType = mediaType; self.bytes = bytes
         self.sha256 = sha256; self.href = href; self.width = width; self.height = height
-        self.durationSeconds = durationSeconds; self.fps = fps; self.sampleRate = sampleRate; self.channels = channels
-        self.bitDepth = bitDepth; self.value = value
+        self.durationSeconds = durationSeconds; self.fps = fps; self.frames = frames; self.sampleRate = sampleRate
+        self.channels = channels; self.bitDepth = bitDepth; self.value = value
     }
+
+    /// Whether a video output carries an audio track (§10.1).
+    public var hasAudioTrack: Bool { kind == .video && sampleRate != nil }
 }
 
 public struct Plan: Codable, Sendable, Equatable {

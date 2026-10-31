@@ -150,6 +150,28 @@ extension BaseTests {
                        "voices of a model the operation doesn't offer", schemas: p.schemas)
             return nil
         },
+        ConformanceTest("BASE-019", "Users' acceptance: an offer whose licence has user_accept_required is 422 policy_unmet (terms_not_accepted) without policy.accepted, and runs with it",
+                        spec: "§10.2, §10.3", applies: { p in
+                            p.operations.contains { d in p.minimalRequest(d) != nil && d.models.contains { $0.license.needsUserAcceptance } } ? nil
+                                : "no offer the suite can drive needs its users' acceptance"
+                        }) { p in
+            let d = p.operations.first { d in p.minimalRequest(d) != nil && d.models.contains { $0.license.needsUserAcceptance } }!
+            let m = d.models.first { $0.license.needsUserAcceptance }!
+            var r = d.profile == VideoProfile.id ? VideoTests.request(p, d, m) : p.minimalRequest(d)!
+            r.model = m.id
+            if let q = d.params["properties"]?["quality"], q != .null { r.params = (r.params ?? [:]).merging(["quality": .string(VideoTests.tier(m).rawValue)]) { $1 } }
+            var without = r
+            without.policy?.accepted = nil
+            let refused = try await p.wire.json("POST", "jobs", without)
+            if refused.status == 201, let job = try? refused.decode(Job.self) { _ = try? await p.wire.send("DELETE", "jobs/\(job.id)") }
+            try expect(refused, 422, code: "policy_unmet", "\(m.id) named without its users' acceptance", schemas: p.schemas)
+            try check(refused.json?["error"]?["reason"]?.stringValue == Policy.termsNotAcceptedReason,
+                      "the refusal's reason is \(refused.json?["error"]?["reason"]?.stringValue ?? "absent"), not terms_not_accepted")
+            let accepted = try await p.wire.json("POST", "jobs", r)
+            try expect(accepted, 201, "\(m.id) named with policy.accepted [\(m.license.spdx)]", schemas: p.schemas)
+            if let job = try? accepted.decode(Job.self) { _ = try? await p.wire.send("DELETE", "jobs/\(job.id)") }
+            return Note("\(d.operation) / \(m.id) under \(m.license.spdx)")
+        },
     ]
 
     // MARK: - §8.1

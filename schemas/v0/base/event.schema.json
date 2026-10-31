@@ -83,6 +83,26 @@
       }
     },
     {
+      "if": { "properties": { "type": { "const": "job.preview" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["media_type"],
+            "additionalProperties": false,
+            "properties": {
+              "media_type": { "$ref": "common.schema.json#/$defs/MediaType" },
+              "href": { "type": "string" },
+              "data": { "type": "string", "maxLength": 262144, "pattern": "^[A-Za-z0-9+/]*={0,2}$" },
+              "output": { "type": "string" },
+              "at_s": { "type": "number", "minimum": 0 },
+              "frame": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "type": { "const": "job.output_chunk" } } },
       "then": {
         "properties": {

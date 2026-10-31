@@ -104,6 +104,22 @@ CASES = [
      delp(["result", "provenance", "adapters", 0, "strength"]), "provenance adapter without its strength"),
     ("job-holding-generate-enhanced.json", "base/job.schema.json",
      delp(["result", "provenance", "helpers", 0, "role"]), "helper without a role"),
+    # Video 0.1 and RFC 0005
+    ("job-request-video-retake.json", "profiles/video/job-request.schema.json", delp(["params", "end_s"]),
+     "a retake without end_s"),
+    ("job-request-video-retake.json", "profiles/video/job-request.schema.json", setp(["params", "retake"], "everything"),
+     "a retake mode outside the vocabulary"),
+    ("job-request-video-generate.json", "profiles/video/job-request.schema.json", setp(["params", "steps"], 8),
+     "a model knob (steps) on video.generate"),
+    ("job-request-video-generate.json", "profiles/video/job-request.schema.json", setp(["inputs", "audio"], {"upload": "upl_1"}),
+     "an input video.generate doesn't define"),
+    ("job-request-video-generate.json", "profiles/video/job-request.schema.json", setp(["policy", "accepted"], [""]),
+     "an empty licence id in policy.accepted"),
+    ("job-holding-video-generate.json", "base/job.schema.json", setp(["result", "outputs", 0, "frames"], 0),
+     "a video output with zero frames"),
+    ("event-preview-frame.json", "base/event.schema.json", setp(["data", "at_s"], -1), "a preview at a negative time"),
+    ("operations-video-upscale-interpolate.json", "base/operations-list.schema.json",
+     setp(["operations", 0, "models", 0, "license", "user_accept_required"], "yes"), "user_accept_required that isn't a boolean"),
 ]
 
 

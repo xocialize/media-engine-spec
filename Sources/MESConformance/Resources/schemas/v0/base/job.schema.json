@@ -60,6 +60,7 @@
         "height": { "type": "integer", "minimum": 1 },
         "duration_s": { "type": "number", "minimum": 0 },
         "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "frames": { "type": "integer", "minimum": 1 },
         "value": {},
         "sample_rate": { "type": "integer", "minimum": 1 },
         "channels": { "type": "integer", "minimum": 1 },

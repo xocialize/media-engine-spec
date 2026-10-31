@@ -87,6 +87,7 @@ struct FieldEditor: View {
                           format: .number, prompt: field.defaultValue.map { Text(FormSchema.display($0)) })
                     .labelsHidden().textFieldStyle(.roundedBorder).frame(maxWidth: 120)
             }
+        case .numberList: NumberListEditor(field: field, value: $value)
         case .object(let fields): ObjectEditor(label: field.label, fields: fields, value: $value)
         case .choice(let variants): ChoiceEditor(field: field, variants: variants, value: $value)
         case .json: JSONEditor(label: field.label, value: $value)
@@ -259,6 +260,33 @@ struct AspectEditor: View {
                     .menuStyle(.borderlessButton).fixedSize().help("Presets")
             }
         }
+    }
+}
+
+/// Numbers typed comma-separated ("0.8, 2.4"); what doesn't parse is left out, and empty text clears the value.
+struct NumberListEditor: View {
+    let field: FormField
+    @Binding var value: JSONValue?
+    // The typed text, kept as typed: re-rendering it from the value would eat a trailing comma mid-entry.
+    @State private var text = ""
+
+    var body: some View {
+        LabeledContent(field.label) {
+            TextField(field.label, text: $text, prompt: Text("e.g. 1.5, 3"))
+                .labelsHidden().textFieldStyle(.roundedBorder).frame(maxWidth: 180)
+        }
+        .onAppear { text = Self.text(value) }
+        .onChange(of: text) { _, new in value = Self.parse(new) }
+        .onChange(of: value) { _, new in if Self.parse(text) != new { text = Self.text(new) } }
+    }
+
+    static func text(_ value: JSONValue?) -> String {
+        (value?.arrayValue ?? []).compactMap { $0.numberValue.map { FormSchema.display(.number($0)) } }.joined(separator: ", ")
+    }
+
+    static func parse(_ text: String) -> JSONValue? {
+        let numbers = text.split(whereSeparator: { $0 == "," || $0 == " " }).compactMap { Double($0) }
+        return numbers.isEmpty ? nil : .array(numbers.map { .number($0) })
     }
 }
 

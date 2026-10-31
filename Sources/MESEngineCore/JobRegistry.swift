@@ -261,6 +261,12 @@ package actor JobRegistry {
         let voice = request.params?[AudioProfile.Param.voice]?.stringValue.flatMap { id in
             voiceLists[descriptor.operation]?[model.id]?.voices.first { $0.id == id }
         }
+        // §10.3: a voice's own licence is under the policy too.
+        if let voice, let license = voice.license, !(request.policy ?? Policy()).allows(license) {
+            if (request.policy ?? Policy()).allowsUse(license) { throw Self.termsNotAccepted(license, by: "The voice \(voice.title)") }
+            throw MESError(.policyUnmet, "The voice \(voice.id) doesn't satisfy the request's policy.",
+                           reason: "\(voice.id): \(license.spdx)", param: AudioProfile.Param.voice)
+        }
 
         let now = Date()
         let id = IDs.make("job_")
@@ -486,6 +492,7 @@ package actor JobRegistry {
                 throw MESError(.modelUnavailable, "\(descriptor.operation) offers no model \(named).", param: "model")
             }
             guard satisfies(model) else {
+                if policy.allowsUse(model.license), !policy.hasAccepted(model.license) { throw Self.termsNotAccepted(model.license, by: model.title) }
                 throw MESError(.policyUnmet, "Model \(named) doesn't satisfy the request's policy.",
                                reason: "\(model.id): \(model.license.spdx)", param: "model")
             }
@@ -518,6 +525,11 @@ package actor JobRegistry {
             if forTier.isEmpty {
                 throw MESError(.unsupportedParameter, "No model offers the \(quality.rawValue) tier.", param: "quality")
             }
+            // §10.3: when only users' acceptance stands in the way, say which terms to show.
+            if let unaccepted = forTier.first(where: { policy.allowsUse($0.license) && !policy.hasAccepted($0.license)
+                                                       && ($0.remoteProvider == nil || policy.effectiveRemote == .allow) }) {
+                throw Self.termsNotAccepted(unaccepted.license, by: unaccepted.title)
+            }
             throw MESError(.policyUnmet, "No model for \(descriptor.operation) at \(quality.rawValue) satisfies the policy.",
                            reason: forTier.map { "\($0.id): \($0.license.spdx)" }.joined(separator: "; "))
         }
@@ -526,6 +538,14 @@ package actor JobRegistry {
             return (refined, quality)
         }
         return (model, quality)
+    }
+
+    /// 422 `policy_unmet` for terms the request's user hasn't accepted (§10.2 rule 4, §10.3): the licence named, so a
+    /// client knows what to show.
+    static func termsNotAccepted(_ license: License, by who: String) -> MESError {
+        MESError(.policyUnmet, "\(who) is under \(license.spdx), whose terms bind each user: show them its notice and terms"
+                 + "\(license.termsURL.map { " (\($0))" } ?? ""), and once they accept, list \(license.spdx) in policy.accepted.",
+                 reason: Policy.termsNotAcceptedReason, param: "policy")
     }
 
     /// The requested adapters on the chosen model (§6.3, §10.3): within its `max_adapters`, each strength within its
@@ -548,6 +568,7 @@ package actor JobRegistry {
                                param: "adapters")
             }
             guard policy.allows(offer.license) else {
+                if policy.allowsUse(offer.license) { throw Self.termsNotAccepted(offer.license, by: "The adapter \(offer.title)") }
                 throw MESError(.policyUnmet, "Adapter \(a.id) doesn't satisfy the request's policy.",
                                reason: "\(a.id): \(offer.license.spdx)", param: "adapters")
             }
@@ -598,7 +619,8 @@ package actor JobRegistry {
                 progress: { [weak self] p in await self?.reportProgress(id, p) },
                 warning: { [weak self] w in await self?.reportWarning(id, w) },
                 preview: { [weak self] d, mt in await self?.reportPreview(id, d, mt) },
-                chunk: { [weak self] output, data, final in await self?.reportChunk(id, output, data, final) }))
+                chunk: { [weak self] output, data, final in await self?.reportChunk(id, output, data, final) },
+                framePreview: { [weak self] d, mt, mark in await self?.reportPreview(id, d, mt, mark) }))
         context.streams = record.streams
         context.assets = record.assetInputs
         context.voice = record.voice
@@ -703,7 +725,7 @@ package actor JobRegistry {
             outputs.append(Output(index: index, name: produced.name, kind: produced.kind, mediaType: produced.mediaType,
                                   bytes: bytes, sha256: sha, href: "\(config.basePath)/jobs/\(id)/outputs/\(index)",
                                   width: produced.width, height: produced.height, durationSeconds: produced.durationSeconds,
-                                  fps: produced.fps, sampleRate: produced.sampleRate, channels: produced.channels,
+                                  fps: produced.fps, frames: produced.frames, sampleRate: produced.sampleRate, channels: produced.channels,
                                   bitDepth: produced.bitDepth, value: bytes <= 65_536 ? produced.value : nil))
         }
         guard !outputs.isEmpty else { throw MESError(.engineError, "The engine produced no outputs.") }
@@ -1087,9 +1109,14 @@ package actor JobRegistry {
         records[id]?.events = events
     }
 
-    private func reportPreview(_ id: String, _ data: Data, _ mediaType: String) {
-        guard data.count <= 262_144 else { return }
-        emit(id, .preview, ["media_type": .string(mediaType), "data": .string(data.base64EncodedString())])
+    private func reportPreview(_ id: String, _ data: Data, _ mediaType: String, _ mark: PreviewMark = PreviewMark()) {
+        let encoded = data.base64EncodedString()
+        guard encoded.utf8.count <= 262_144 else { return }
+        var event: [String: JSONValue] = ["media_type": .string(mediaType), "data": .string(encoded)]
+        if let output = mark.output { event["output"] = .string(output) }
+        if let at = mark.atSeconds { event["at_s"] = .number(at) }
+        if let frame = mark.frame { event["frame"] = .number(Double(frame)) }
+        emit(id, .preview, .object(event))
     }
 
     private func emit(_ id: String, _ type: EventType, _ data: JSONValue) {

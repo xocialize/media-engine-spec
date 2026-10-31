@@ -37,6 +37,9 @@ public final class OperationFormModel {
     public private(set) var loadingVoices = false
     /// Ask for every output that can to stream as it's made (§7.1, §11). Sent only when `canStream`.
     public var stream = false
+    /// The licences this form's user has accepted (Base §10.2 rule 4), sent in `policy.accepted` for the offers that need
+    /// them. In memory by default; pass `.shared` to keep them across launches.
+    public var acceptances = LicenseAcceptances()
 
     public init(descriptor: Descriptor) {
         self.descriptor = descriptor
@@ -148,6 +151,20 @@ public final class OperationFormModel {
         return descriptor.models.contains(where: \.streams)
     }
 
+    /// The licences of this operation's offers and adapters whose users must accept them (Base §10.2 rule 4).
+    public var licencesNeedingAcceptance: [License] {
+        var seen = Set<String>()
+        return descriptor.models.flatMap { [$0.license] + ($0.adapters ?? []).map(\.license) }
+            .filter { $0.needsUserAcceptance && seen.insert($0.spdx).inserted }
+    }
+
+    /// The chosen model's licence, when its users must accept it and this user hasn't yet. With no model chosen the engine
+    /// picks among the offers the user may use, so nothing is pending.
+    public var pendingAcceptance: License? {
+        guard model != nil, let offer = effectiveModel, offer.license.needsUserAcceptance, !acceptances.isAccepted(offer.license) else { return nil }
+        return offer.license
+    }
+
     /// Models the policy rules out (a commercial-use policy excludes `no` and `unknown`).
     public func isExcluded(_ offer: ModelOffer) -> Bool {
         policy.effectiveLicense == .commercialUse && offer.license.commercialUse != .yes
@@ -174,6 +191,10 @@ public final class OperationFormModel {
                   byField[field.name] == nil else { continue }
             byField[field.name] = "\(choices.model?.title ?? "This model") has no voice \(id)."
         }
+        // A model whose terms bind its users runs only once this user accepted them (Base §10.3).
+        if let license = pendingAcceptance {
+            byField["model"] = "Accept \(license.spdx)'s terms to use \(effectiveModel?.title ?? "this model")."
+        }
         return byField
     }
 
@@ -192,7 +213,10 @@ public final class OperationFormModel {
         for (name, value) in text where !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             inputs[name] = .text(value)
         }
-        let usesPolicy = policy.license != nil || policy.remote != nil
+        var policy = policy
+        let accepted = licencesNeedingAcceptance.filter(acceptances.isAccepted).map(\.spdx).sorted()
+        if !accepted.isEmpty { policy.accepted = Array(Set((policy.accepted ?? []) + accepted)).sorted() }
+        let usesPolicy = policy.license != nil || policy.remote != nil || !(policy.accepted ?? []).isEmpty
         let streams = stream && canStream ? streamableOutputs.map { StreamRequest(output: $0.name) } : nil
         return JobRequest(operation: descriptor.operation, inputs: inputs.isEmpty ? nil : inputs,
                           params: values.isEmpty ? nil : values, model: model, policy: usesPolicy ? policy : nil,
