@@ -1,0 +1,131 @@
+{
+  "id": "job_01JA09",
+  "operation": "audio.compose",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "ace-step-1.5",
+      "title": "ACE-Step 1.5",
+      "license": {
+        "spdx": "MIT",
+        "commercial_use": true,
+        "terms_url": "https://github.com/ace-step/ACE-Step-1.5/blob/main/LICENSE"
+      }
+    },
+    "effective": {
+      "duration_s": 150,
+      "language": "en",
+      "anchors": {
+        "bpm": 118,
+        "key": "E major"
+      },
+      "timestamps": true,
+      "seed": 2026,
+      "quality": "standard"
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "fraction": 1
+  },
+  "warnings": [
+    {
+      "code": "song_truncated",
+      "message": "The song reached 150 s during the bridge; the outro wasn't sung.",
+      "param": "duration_s"
+    }
+  ],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "song",
+        "kind": "audio",
+        "media_type": "audio/wav",
+        "bytes": 57600044,
+        "sha256": "63f75c890b05405e6e1f047072642b40949dab5912aa9c0ae6f2e654dff943dd",
+        "href": "/mes/v0/jobs/job_01JA09/outputs/0",
+        "duration_s": 150.0,
+        "sample_rate": 48000,
+        "channels": 2,
+        "bit_depth": 16
+      },
+      {
+        "index": 1,
+        "name": "timestamps",
+        "kind": "data",
+        "media_type": "application/json",
+        "bytes": 412,
+        "sha256": "44ad63f60af0f6db6fdde6d5186ef78176367df261fa06be3079b6c80c8adba4",
+        "href": "/mes/v0/jobs/job_01JA09/outputs/1",
+        "value": {
+          "lines": [
+            {
+              "text": "The trains run late on Sunday",
+              "start_s": 12.4,
+              "end_s": 16.1
+            },
+            {
+              "text": "We wait out by the line",
+              "start_s": 16.3,
+              "end_s": 20.0
+            },
+            {
+              "text": "And we'll be fine",
+              "start_s": 41.2,
+              "end_s": 44.0
+            }
+          ]
+        }
+      }
+    ],
+    "effective": {
+      "duration_s": 150,
+      "language": "en",
+      "anchors": {
+        "bpm": 118,
+        "key": "E major",
+        "time_signature": "4/4"
+      },
+      "timestamps": true,
+      "seed": 2026,
+      "quality": "standard",
+      "model_params": {
+        "checkpoint": "turbo",
+        "steps": 8,
+        "planner": "1.7b"
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "0.9.0"
+      },
+      "operation": "audio.compose",
+      "profile_version": "0.1",
+      "model": {
+        "id": "ace-step-1.5",
+        "title": "ACE-Step 1.5",
+        "license": {
+          "spdx": "MIT",
+          "commercial_use": true,
+          "terms_url": "https://github.com/ace-step/ACE-Step-1.5/blob/main/LICENSE"
+        }
+      },
+      "seed": 2026,
+      "timings": {
+        "received_at": "2026-10-30T17:10:00Z",
+        "run_ms": 61200
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-10-30T18:11:02Z",
+    "record_expires_at": "2026-10-31T17:11:02Z"
+  },
+  "created_at": "2026-10-30T17:10:00Z",
+  "updated_at": "2026-10-30T17:11:02Z"
+}

@@ -52,6 +52,17 @@ MANIFEST = {
     "job-holding-edit-adapters.json": "base/job.schema.json",
     "operations-image-decompose.json": "base/operations-list.schema.json",
     "job-holding-decompose.json": "base/job.schema.json",
+    "operations-audio-speak.json": "base/operations-list.schema.json",
+    "operations-audio-edit-generate.json": "base/operations-list.schema.json",
+    "operations-audio-compose.json": "base/operations-list.schema.json",
+    "voices-kokoro.json": "base/voices.schema.json",
+    "asset.json": "base/asset.schema.json",
+    "job-request-speak-stream.json": "profiles/audio/job-request.schema.json",
+    "job-request-edit-speech.json": "profiles/audio/job-request.schema.json",
+    "job-request-compose.json": "profiles/audio/job-request.schema.json",
+    "event-output-chunk.json": "base/event.schema.json",
+    "job-holding-speak.json": "base/job.schema.json",
+    "job-holding-compose.json": "base/job.schema.json",
 }
 
 _cache = {}
@@ -189,23 +200,32 @@ def walk_refs(node, file, seen):
 
 
 def profile_checks():
-    """Descriptors in examples must honour operations.json: required inputs, outputs, vocabulary shapes."""
+    """Descriptors in examples must honour their profile's operations.json: required inputs, outputs, vocabulary
+    shapes; Audio offers' supports and limits must have the profile's types (supports.schema.json)."""
     errs = []
-    ops_file = SCHEMAS / "profiles" / "image" / "operations.json"
-    ops = load(ops_file)
-    errs += validate(ops, load(SCHEMAS / "profiles" / "image" / "operations.schema.json"),
-                     SCHEMAS / "profiles" / "image" / "operations.schema.json", "operations.json")
-    vocab_file = SCHEMAS / "profiles" / "image" / "vocabulary.schema.json"
-    vocab = load(vocab_file)["$defs"]
-    for op, spec in ops["operations"].items():
-        for name in spec["vocabulary"]:
-            def_name = spec.get("vocabulary_defs", {}).get(name, name)
-            if def_name not in vocab:
-                errs.append(f"operations.json {op}: vocabulary '{name}' has no definition '{def_name}'")
+    tables = {}
+    for profile in ("image", "audio"):
+        ops_file = SCHEMAS / "profiles" / profile / "operations.json"
+        ops = load(ops_file)
+        errs += validate(ops, load(SCHEMAS / "profiles" / profile / "operations.schema.json"),
+                         SCHEMAS / "profiles" / profile / "operations.schema.json", f"{profile}/operations.json")
+        vocab = load(SCHEMAS / "profiles" / profile / "vocabulary.schema.json")["$defs"]
+        for op, spec in ops["operations"].items():
+            for name in spec["vocabulary"]:
+                def_name = spec.get("vocabulary_defs", {}).get(name, name)
+                if def_name not in vocab:
+                    errs.append(f"{profile}/operations.json {op}: vocabulary '{name}' has no definition '{def_name}'")
+        tables[profile] = (ops_file, ops, vocab)
+    supports_file = SCHEMAS / "profiles" / "audio" / "supports.schema.json"
+    supports = load(supports_file)
     for ex in sorted(EXAMPLES.glob("operations-*.json")):
         for d in load(ex)["operations"]:
-            spec = ops["operations"].get(d["operation"]) if d["profile"] == "image" else None
+            if d["profile"] not in tables:
+                continue
+            ops_file, ops, vocab = tables[d["profile"]]
+            spec = ops["operations"].get(d["operation"])
             if spec is None:
+                errs.append(f"{ex.name}: {d['operation']} isn't a {d['profile']} operation")
                 continue
             names = {i["name"]: i for i in d["inputs"]}
             for name, req in spec["inputs"].items():
@@ -213,10 +233,12 @@ def profile_checks():
                     errs.append(f"{ex.name} {d['operation']}: required input '{name}' missing")
                 if name in names and names[name]["kind"] != req["kind"]:
                     errs.append(f"{ex.name} {d['operation']}: input '{name}' kind {names[name]['kind']} != {req['kind']}")
-            outs = {o["name"] for o in d["outputs"]}
-            for name in spec["outputs"]:
+            outs = {o["name"]: o for o in d["outputs"]}
+            for name, out in spec["outputs"].items():
                 if name not in outs:
                     errs.append(f"{ex.name} {d['operation']}: output '{name}' missing")
+                elif "stream" in outs[name] and not out.get("streamable"):
+                    errs.append(f"{ex.name} {d['operation']}: output '{name}' declares stream; the profile doesn't let it")
             for pname, pschema in d["params"]["properties"].items():
                 if pname in spec["vocabulary"]:
                     def_name = spec.get("vocabulary_defs", {}).get(pname, pname)
@@ -227,8 +249,25 @@ def profile_checks():
                 elif not pname.startswith("x-"):
                     errs.append(f"{ex.name} {d['operation']}: param '{pname}' is not in the profile vocabulary "
                                 f"(model-specific knobs go in extensions)")
+            if d["profile"] == "audio":
+                short = d["operation"].split(".")[1]
+                for m in d["models"]:
+                    errs += [f"{ex.name} {m['id']} supports: {e}" for e in
+                             validate(m.get("supports", {}), supports["$defs"][f"{short}_supports"], supports_file)]
+                    lim = {k: v for k, v in m.get("limits", {}).items()
+                           if k not in ("max_width", "max_height", "max_megapixels", "max_duration_s", "max_inputs")}
+                    errs += [f"{ex.name} {m['id']} limits: {e}" for e in
+                             validate(lim, supports["$defs"][f"{short}_limits"], supports_file)]
+                    for k, v in m.get("limits", {}).items():
+                        bound = d.get("limits", {}).get(k)
+                        if bound is not None and (v < bound if k.startswith("min_") else v > bound):
+                            errs.append(f"{ex.name} {m['id']}: limits.{k} {v} is outside the operation's {bound}")
     for ex in sorted(EXAMPLES.glob("job-holding-*.json")):
         job = load(ex)
+        profile = job["operation"].split(".")[0]
+        if profile not in tables:
+            continue
+        ops_file, ops, _ = tables[profile]
         spec = ops["operations"].get(job["operation"])
         for out in job.get("result", {}).get("outputs", []):
             vs = spec and spec["outputs"].get(out["name"], {}).get("value_schema")

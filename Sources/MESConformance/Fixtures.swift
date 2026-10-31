@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -100,6 +101,54 @@ public enum Fixtures {
         CGImageDestinationAddImage(dest, image, properties as CFDictionary)
         CGImageDestinationFinalize(dest)
         return out as Data
+    }
+}
+
+extension Fixtures {
+    /// Speech-like audio: tone bursts with gaps, as a WAV. `bits` 16, 24 or 32 (32 is IEEE float).
+    public static func wav(seconds: Double = 2, rate: Int = 24000, channels: Int = 1, bits: Int = 16) -> Data {
+        let mono = speechLike(seconds: seconds, rate: rate)
+        var pcm = Data()
+        for s in mono {
+            for _ in 0..<channels {
+                switch bits {
+                case 24:
+                    let v = Int32(s * 8_388_607)
+                    pcm.append(contentsOf: [UInt8(v & 0xff), UInt8((v >> 8) & 0xff), UInt8((v >> 16) & 0xff)])
+                case 32: withUnsafeBytes(of: s.bitPattern.littleEndian) { pcm.append(contentsOf: $0) }
+                default: withUnsafeBytes(of: Int16(s * 32767).littleEndian) { pcm.append(contentsOf: $0) }
+                }
+            }
+        }
+        return WAVFile(sampleRate: rate, channels: channels, bitsPerSample: bits, format: bits == 32 ? .float : .int, pcm: pcm).data
+    }
+
+    /// The same audio as FLAC, written by AVFoundation (Audio §1.1: engines MUST accept FLAC).
+    public static func flac(seconds: Double = 2, rate: Int = 24000) throws -> Data {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mes-conformance-\(UUID().uuidString).flac")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let settings: [String: Any] = [AVFormatIDKey: kAudioFormatFLAC, AVSampleRateKey: Double(rate), AVNumberOfChannelsKey: 1,
+                                       AVLinearPCMBitDepthKey: 16]
+        let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 1)!
+        let mono = speechLike(seconds: seconds, rate: rate)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(mono.count))!
+        buffer.frameLength = AVAudioFrameCount(mono.count)
+        for (i, s) in mono.enumerated() { buffer.floatChannelData![0][i] = s }
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            try file.write(from: buffer)
+        }
+        return try Data(contentsOf: url)
+    }
+
+    static func speechLike(seconds: Double, rate: Int) -> [Float] {
+        let n = Int(seconds * Double(rate))
+        return (0..<n).map { i in
+            let t = Double(i) / Double(rate)
+            let word = Int(t / 0.3), inWord = t.truncatingRemainder(dividingBy: 0.3) < 0.22
+            let hz = 180 + Double(word % 3) * 20
+            return inWord ? Float(0.3 * sin(2 * .pi * hz * t)) : 0
+        }
     }
 }
 

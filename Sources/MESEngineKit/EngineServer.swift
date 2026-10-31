@@ -357,6 +357,7 @@ enum Routes {
             }
             api.delete("pairings/self") { _, context in
                 await pairings.unpair(context.clientID)
+                await registry.removeAssets(owner: context.clientID)     // §13 rule 6
                 return Response(status: .noContent)
             }
         }
@@ -383,37 +384,43 @@ enum Routes {
             return try Responses.json(descriptor)
         }
 
+        api.get("operations/:operation/models/:model/voices") { request, context in
+            let list = try await registry.voices(operation: try context.parameters.require("operation"),
+                                                 model: try context.parameters.require("model"))
+            var headers = HTTPFields()
+            headers[.eTag] = list.etag
+            if let inm = request.headers[.ifNoneMatch], inm == list.etag {
+                return Response(status: .notModified, headers: headers, body: ResponseBody(byteBuffer: ByteBuffer()))
+            }
+            return try Responses.json(list, headers: headers)
+        }
+
+        if config.assets {
+            api.post("assets") { request, context in
+                guard let ttl = request.uri.queryParameters.get("ttl_s", as: Int.self), ttl >= 60 else {
+                    throw MESError(.invalidRequest, "ttl_s is required: at least 60 seconds.", param: "ttl_s")
+                }
+                let id = IDs.make("ast_")
+                let file = spool.assetFile(id)
+                let (mediaType, total, sha) = try await Self.receive(request, to: file, config: config)
+                let asset = try await registry.createAsset(owner: context.clientID, mediaType: mediaType, file: file, bytes: total,
+                                                           sha256: sha, ttlSeconds: ttl)
+                return try Responses.json(asset, status: .created)
+            }
+            api.get("assets") { _, context in try Responses.json(AssetList(assets: await registry.listAssets(owner: context.clientID))) }
+            api.get("assets/:id") { _, context in
+                try Responses.json(try await registry.asset(try context.parameters.require("id"), owner: context.clientID))
+            }
+            api.delete("assets/:id") { _, context in
+                try await registry.deleteAsset(try context.parameters.require("id"), owner: context.clientID)
+                return Response(status: .noContent)
+            }
+        }
+
         api.post("uploads") { request, context in
-            let mediaType = request.headers[.contentType]?.split(separator: ";").first.map {
-                String($0).trimmingCharacters(in: .whitespaces).lowercased()
-            } ?? "application/octet-stream"
             let id = IDs.make("upl_")
             let file = spool.uploadFile(id)
-            FileManager.default.createFile(atPath: file.path, contents: nil)
-            let handle = try FileHandle(forWritingTo: file)
-            var hasher = SHA256()
-            var total = 0
-            do {
-                for try await buffer in request.body {
-                    total += buffer.readableBytes
-                    if total > config.maxUploadBytes {
-                        throw MESError(.tooLarge, "Uploads are limited to \(config.maxUploadBytes) bytes.")
-                    }
-                    let bytes = Data(buffer.readableBytesView)
-                    hasher.update(data: bytes)
-                    try handle.write(contentsOf: bytes)
-                }
-                try handle.close()
-            } catch {
-                try? handle.close()
-                try? FileManager.default.removeItem(at: file)
-                throw error
-            }
-            let sha = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-            if let digest = request.headers[.contentDigest], let expected = Self.sha256Digest(digest), expected != sha {
-                try? FileManager.default.removeItem(at: file)
-                throw MESError(.invalidRequest, "Content-Digest doesn't match the uploaded bytes.")
-            }
+            let (mediaType, total, sha) = try await Self.receive(request, to: file, config: config)
             let upload = await registry.createUpload(owner: context.clientID, mediaType: mediaType, file: file,
                                                      bytes: total, sha256: sha)
             return try Responses.json(upload, status: .created)
@@ -491,6 +498,40 @@ enum Routes {
     }
 
     /// `Prefer: wait=30` → 30.
+    /// A raw body into `file` (uploads §8, assets §8.1): its media type, size and SHA-256, checked against
+    /// `max_upload_bytes` and a `Content-Digest`.
+    static func receive(_ request: Request, to file: URL, config: EngineConfiguration) async throws -> (String, Int, String) {
+        let mediaType = request.headers[.contentType]?.split(separator: ";").first.map {
+            String($0).trimmingCharacters(in: .whitespaces).lowercased()
+        } ?? "application/octet-stream"
+        FileManager.default.createFile(atPath: file.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: file)
+        var hasher = SHA256()
+        var total = 0
+        do {
+            for try await buffer in request.body {
+                total += buffer.readableBytes
+                if total > config.maxUploadBytes {
+                    throw MESError(.tooLarge, "Uploads and assets are limited to \(config.maxUploadBytes) bytes.")
+                }
+                let bytes = Data(buffer.readableBytesView)
+                hasher.update(data: bytes)
+                try handle.write(contentsOf: bytes)
+            }
+            try handle.close()
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: file)
+            throw error
+        }
+        let sha = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        if let digest = request.headers[.contentDigest], let expected = Self.sha256Digest(digest), expected != sha {
+            try? FileManager.default.removeItem(at: file)
+            throw MESError(.invalidRequest, "Content-Digest doesn't match the bytes sent.")
+        }
+        return (mediaType, total, sha)
+    }
+
     static func preferWait(_ header: String?) -> Int? {
         guard let header else { return nil }
         for part in header.split(separator: ",") {

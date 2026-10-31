@@ -82,6 +82,19 @@ These names MUST be used in descriptors whenever the operation exposes the conce
 (guidance, steps, scheduler) are never vocabulary. Engines expose them, if at all, as extensions (Base §6.2).
 Adapters, such as LoRA, are chosen with the request's `adapters` (Base §6.3).
 
+### 2.1 What an offer supports
+
+Model offers state what they support with `supports` and their own `limits` (Base §6.4). Image defines:
+
+| Key | Operations | Type | Absent | Class |
+|---|---|---|---|---|
+| `negative_prompt` | prompted operations | boolean | `true` | Warn: `negative_prompt_ignored`. A descriptor whose every offer can't use one still omits it (§2) |
+| `composite` | `decompose` | boolean | `true` (the descriptor's outputs decide, as before) | Gate: an `outputs` that contains `composite` (§3.2) |
+
+Limit fields, on a descriptor or an offer: Base's `max_width`, `max_height`, `max_megapixels` and `max_count`, and
+`max_layer_count` (`decompose`: the most layers the model returns). A `layer_count` above a named model's
+`max_layer_count` is 422 `out_of_limits`; with no model named, the engine chooses an offer that allows it.
+
 ## 3. Operations
 
 The required inputs, outputs and parameters of each operation are listed in
@@ -142,7 +155,7 @@ The required inputs, outputs and parameters of each operation are listed in
   exactly that many, or refuse the request. Without it, the engine chooses, from the prompt or a model default. Either
   way it reports the count in `effective.layer_count`.
   - The descriptor's `layer_count` schema states the most layers its offers allow (Base §6 rule 4). A request above
-    that, or above what a named model allows, is 422 `out_of_limits`.
+    that, or above what a named model allows (its `limits.max_layer_count`, §2.1), is 422 `out_of_limits`.
   - An engine whose model returns another number of layers fails the job with `engine_error`. It MUST NOT pad or drop
     layers to meet the count.
 - **The prompt** is the layer plan, front-most first: what each layer holds ("Layer 1: the headline 'SALE'. Layer 2:

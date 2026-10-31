@@ -16,7 +16,7 @@ struct ConformanceCLI: AsyncParsableCommand {
 struct EngineCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "engine",
-        abstract: "Run the BASE and IMAGE tests against an engine, and write a JSON and Markdown report.",
+        abstract: "Run the BASE, IMAGE and AUDIO tests against an engine, and write a JSON and Markdown report.",
         discussion: """
             Open-mode engines need only their URL. For a paired engine, either pair as part of the run (--pair, which \
             also tests pairing; the engine's operator approves), reuse a `mes pair` (--paired-state), or pass --token \
@@ -31,7 +31,7 @@ struct EngineCommand: AsyncParsableCommand {
     @Option(help: "Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.") var maxTTLWait = 30
     @Option(help: "This machine's address as a LAN engine sees it, for the grants test.") var grantHost: String?
     @Option(help: "Seconds to wait for each job before failing its test; a slow model may need more.") var jobTimeout = 180
-    @Option(help: "Only these tests, comma-separated (e.g. BASE-020,IMAGE-001).") var only: String?
+    @Option(help: "Only these tests, comma-separated (e.g. BASE-020,IMAGE-001,AUDIO-005).") var only: String?
     @Option(name: .shortAndLong, help: "Directory for report.json and report.md.") var out = "mes-conformance-report"
 
     func run() async throws {
@@ -74,8 +74,7 @@ struct EngineCommand: AsyncParsableCommand {
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(report).write(to: directory.appendingPathComponent("report.json"))
         try report.markdown.write(to: directory.appendingPathComponent("report.md"), atomically: true, encoding: .utf8)
-        print("\n\(report.passed) passed · \(report.failed) failed · \(report.skipped) skipped — Base 0.1: \(report.conformsToBase ? "conforms" : "does not conform")"
-            + (report.conformsToImage.map { ", Image 0.1: \($0 ? "conforms" : "does not conform")" } ?? ""))
+        print("\n\(report.passed) passed · \(report.failed) failed · \(report.skipped) skipped — \(report.summary)")
         print("Report: \(directory.path)/report.md")
         if report.failed > 0 { throw ExitCode.failure }
     }

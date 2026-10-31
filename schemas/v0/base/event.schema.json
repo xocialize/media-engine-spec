@@ -6,8 +6,18 @@
   "additionalProperties": false,
   "properties": {
     "type": {
-      "enum": ["job.state", "job.plan", "job.progress", "job.preview", "job.warning", "job.output_ready", "job.ended",
-               "engine.health", "engine.operations_changed"]
+      "enum": [
+        "job.state",
+        "job.plan",
+        "job.progress",
+        "job.preview",
+        "job.warning",
+        "job.output_ready",
+        "job.output_chunk",
+        "job.ended",
+        "engine.health",
+        "engine.operations_changed"
+      ]
     },
     "job": { "$ref": "common.schema.json#/$defs/Id" },
     "client_ref": { "type": "string", "maxLength": 128 },
@@ -18,8 +28,18 @@
   "allOf": [
     {
       "if": { "properties": { "type": { "const": "job.state" } } },
-      "then": { "properties": { "data": { "type": "object", "required": ["state"], "properties": {
-        "state": { "$ref": "common.schema.json#/$defs/State" }, "outcome": { "$ref": "common.schema.json#/$defs/Outcome" } } } } }
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["state"],
+            "properties": {
+              "state": { "$ref": "common.schema.json#/$defs/State" },
+              "outcome": { "$ref": "common.schema.json#/$defs/Outcome" }
+            }
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "type": { "const": "job.progress" } } },
@@ -31,13 +51,55 @@
     },
     {
       "if": { "properties": { "type": { "const": "job.output_ready" } } },
-      "then": { "properties": { "data": { "type": "object", "required": ["outputs"], "properties": {
-        "outputs": { "type": "array", "minItems": 1, "items": { "$ref": "job.schema.json#/$defs/Output" } } } } } }
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["outputs"],
+            "properties": {
+              "outputs": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "job.schema.json#/$defs/Output" }
+              }
+            }
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "type": { "const": "job.ended" } } },
-      "then": { "properties": { "data": { "type": "object", "required": ["outcome"], "properties": {
-        "outcome": { "$ref": "common.schema.json#/$defs/Outcome" }, "error": { "$ref": "common.schema.json#/$defs/ErrorObject" } } } } }
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["outcome"],
+            "properties": {
+              "outcome": { "$ref": "common.schema.json#/$defs/Outcome" },
+              "error": { "$ref": "common.schema.json#/$defs/ErrorObject" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "job.output_chunk" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["output", "index", "offset_s", "final"],
+            "additionalProperties": false,
+            "properties": {
+              "output": { "type": "string" },
+              "index": { "type": "integer", "minimum": 0 },
+              "offset_s": { "type": "number", "minimum": 0 },
+              "final": { "type": "boolean" },
+              "data": { "type": "string", "maxLength": 262144, "pattern": "^[A-Za-z0-9+/]*={0,2}$" }
+            }
+          }
+        }
+      }
     }
   ]
 }

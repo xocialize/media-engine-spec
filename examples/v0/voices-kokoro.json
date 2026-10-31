@@ -1,0 +1,41 @@
+{
+  "etag": "\"voices-3692515af1f1\"",
+  "voices": [
+    {
+      "id": "af_heart",
+      "title": "Heart",
+      "languages": [
+        "en-US"
+      ],
+      "tags": [
+        "female",
+        "american",
+        "warm"
+      ],
+      "sample": "/mes/v0/operations/audio.speak/models/kokoro-82m/voices/af_heart/sample"
+    },
+    {
+      "id": "af_bella",
+      "title": "Bella",
+      "languages": [
+        "en-US"
+      ],
+      "tags": [
+        "female",
+        "american"
+      ]
+    },
+    {
+      "id": "bm_george",
+      "title": "George",
+      "languages": [
+        "en-GB"
+      ],
+      "tags": [
+        "male",
+        "british",
+        "narration"
+      ]
+    }
+  ]
+}

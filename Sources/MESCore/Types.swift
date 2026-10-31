@@ -10,7 +10,19 @@ public enum QualityTier: String, Codable, Sendable, CaseIterable { case draft, s
 public enum JobState: String, Codable, Sendable, CaseIterable { case received, fetching, waiting, running, holding, purged }
 public enum Outcome: String, Codable, Sendable, CaseIterable { case succeeded, failed, cancelled, expired }
 public enum Stage: String, Codable, Sendable, CaseIterable { case fetching, waiting, preparing, running, finishing }
-public enum Feature: String, Codable, Sendable, CaseIterable { case uploads, grants, sse, websocket, mcp, previews, pairing }
+public enum Feature: String, Codable, Sendable, CaseIterable {
+    case uploads, grants, sse, websocket, mcp, previews, pairing
+    /// Client-owned files reused across jobs (§8.1).
+    case assets
+    /// Outputs streamed as ordered chunks while the job runs (§11, `job.output_chunk`).
+    case streaming
+}
+/// A stream encoding (§6, §18): raw interleaved little-endian PCM, without a header.
+public enum StreamEncoding: String, Codable, Sendable, CaseIterable {
+    case pcmS16LE = "pcm_s16le", pcmF32LE = "pcm_f32le"
+    /// Bytes per sample.
+    public var sampleBytes: Int { self == .pcmS16LE ? 2 : 4 }
+}
 public enum AuthMode: String, Codable, Sendable { case paired, open }
 public enum AdapterKind: String, Codable, Sendable, CaseIterable { case plain, ic }
 
@@ -122,12 +134,19 @@ public struct HelperRef: Codable, Sendable, Equatable {
 
 public struct JobProgress: Codable, Sendable, Equatable {
     public var stage: Stage
+    /// The part of the run in progress (`plan`, `generate`, `denoise`, `decode`); `step` and `steps` count within it.
+    public var phase: String?
     public var step: Int?
     public var steps: Int?
     public var fraction: Double?
+    /// Seconds of media produced so far, for a job whose length isn't known in advance (autoregressive speech).
+    public var mediaSeconds: Double?
     public var message: String?
-    public init(stage: Stage, step: Int? = nil, steps: Int? = nil, fraction: Double? = nil, message: String? = nil) {
-        self.stage = stage; self.step = step; self.steps = steps; self.fraction = fraction; self.message = message
+    enum CodingKeys: String, CodingKey { case stage, phase, step, steps, fraction, message; case mediaSeconds = "media_s" }
+    public init(stage: Stage, phase: String? = nil, step: Int? = nil, steps: Int? = nil, fraction: Double? = nil,
+                mediaSeconds: Double? = nil, message: String? = nil) {
+        self.stage = stage; self.phase = phase; self.step = step; self.steps = steps; self.fraction = fraction
+        self.mediaSeconds = mediaSeconds; self.message = message
     }
 }
 
@@ -154,14 +173,22 @@ public struct EngineInfo: Codable, Sendable, Equatable {
         public var maxUploadBytes: Int
         public var maxInlineBytes: Int
         public var maxQueuedJobsPerClient: Int?
+        /// With `assets`: the longest an asset may be kept (§8.1), at most 604 800.
+        public var maxAssetTTLSeconds: Int?
+        /// With `assets`: the total size of one client's assets.
+        public var maxAssetBytesPerClient: Int?
         enum CodingKeys: String, CodingKey {
             case maxUploadBytes = "max_upload_bytes"
             case maxInlineBytes = "max_inline_bytes"
             case maxQueuedJobsPerClient = "max_queued_jobs_per_client"
+            case maxAssetTTLSeconds = "max_asset_ttl_s"
+            case maxAssetBytesPerClient = "max_asset_bytes_per_client"
         }
-        public init(maxUploadBytes: Int, maxInlineBytes: Int, maxQueuedJobsPerClient: Int? = nil) {
+        public init(maxUploadBytes: Int, maxInlineBytes: Int, maxQueuedJobsPerClient: Int? = nil, maxAssetTTLSeconds: Int? = nil,
+                    maxAssetBytesPerClient: Int? = nil) {
             self.maxUploadBytes = maxUploadBytes; self.maxInlineBytes = maxInlineBytes
             self.maxQueuedJobsPerClient = maxQueuedJobsPerClient
+            self.maxAssetTTLSeconds = maxAssetTTLSeconds; self.maxAssetBytesPerClient = maxAssetBytesPerClient
         }
     }
     public struct Retention: Codable, Sendable, Equatable {
@@ -220,14 +247,20 @@ public struct InputSpec: Codable, Sendable, Equatable {
 }
 
 public struct OutputSpec: Codable, Sendable, Equatable {
+    /// The encodings an output can stream in (§6): only an `audio` output whose `max` is 1.
+    public struct Stream: Codable, Sendable, Equatable {
+        public var encodings: [StreamEncoding]
+        public init(encodings: [StreamEncoding]) { self.encodings = encodings }
+    }
     public var name: String
     public var kind: Kind
     public var mediaTypes: [String]?
     public var min: Int?
     public var max: Int?
-    enum CodingKeys: String, CodingKey { case name, kind, min, max; case mediaTypes = "media_types" }
-    public init(name: String, kind: Kind, mediaTypes: [String]? = nil, min: Int? = nil, max: Int? = nil) {
-        self.name = name; self.kind = kind; self.mediaTypes = mediaTypes; self.min = min; self.max = max
+    public var stream: Stream?
+    enum CodingKeys: String, CodingKey { case name, kind, min, max, stream; case mediaTypes = "media_types" }
+    public init(name: String, kind: Kind, mediaTypes: [String]? = nil, min: Int? = nil, max: Int? = nil, stream: Stream? = nil) {
+        self.name = name; self.kind = kind; self.mediaTypes = mediaTypes; self.min = min; self.max = max; self.stream = stream
     }
 }
 
@@ -251,8 +284,13 @@ public struct ModelOffer: Codable, Sendable, Equatable {
     public var adapters: [AdapterOffer]?
     /// How many adapters one request may combine on this model; `adapterLimit` applies the default, 1.
     public var maxAdapters: Int?
+    /// What this model supports beyond what every offer of the operation accepts (§6.4): Base keys (`stream`, `seed`,
+    /// `voices`) and the profile's. A key's definition says what its absence means; read them through `supports(_:)`.
+    public var supports: [String: JSONValue]?
+    /// This model's own limits, each within the operation's (§6.4).
+    public var limits: Descriptor.Limits?
     enum CodingKeys: String, CodingKey {
-        case id, title, license, notes, adapters
+        case id, title, license, notes, adapters, supports, limits
         case memoryClass = "memory_class"
         case speedClass = "speed_class"
         case qualityTiers = "quality_tiers"
@@ -263,12 +301,21 @@ public struct ModelOffer: Codable, Sendable, Equatable {
     }
     public init(id: String, title: String, license: License, memoryClass: MemoryClass? = nil, speedClass: SpeedClass? = nil,
                 qualityTiers: [QualityTier], isDefault: Bool? = nil, namedOnly: Bool? = nil, remoteProvider: RemoteProvider? = nil,
-                notes: String? = nil, adapters: [AdapterOffer]? = nil, maxAdapters: Int? = nil) {
+                notes: String? = nil, adapters: [AdapterOffer]? = nil, maxAdapters: Int? = nil,
+                supports: [String: JSONValue]? = nil, limits: Descriptor.Limits? = nil) {
         self.id = id; self.title = title; self.license = license; self.memoryClass = memoryClass
         self.speedClass = speedClass; self.qualityTiers = qualityTiers; self.isDefault = isDefault
         self.namedOnly = namedOnly; self.remoteProvider = remoteProvider; self.notes = notes
-        self.adapters = adapters; self.maxAdapters = maxAdapters
+        self.adapters = adapters; self.maxAdapters = maxAdapters; self.supports = supports; self.limits = limits
     }
+    /// A `supports` key's value, if the offer declares it (§6.4).
+    public func supports(_ key: String) -> JSONValue? { supports?[key] }
+    /// `supports.stream` (absent: `false`).
+    public var streams: Bool { supports?["stream"]?.boolValue ?? false }
+    /// `supports.seed` (absent: `true`).
+    public var usesSeed: Bool { supports?["seed"]?.boolValue ?? true }
+    /// `supports.voices` (absent: 0).
+    public var voiceCount: Int { supports?["voices"]?.intValue ?? 0 }
     public var ref: ModelRef { ModelRef(id: id, title: title, license: license) }
     /// The adapter offer with this id, if this model lists it.
     public func adapter(_ id: String) -> AdapterOffer? { adapters?.first { $0.id == id } }
@@ -324,6 +371,8 @@ public struct ExtensionSpec: Codable, Sendable, Equatable {
 }
 
 public struct Descriptor: Codable, Sendable, Equatable {
+    /// An operation's limits, or an offer's narrower ones (§6.4): Base's fields, and the limit fields the profile defines
+    /// (`max_…`, `min_…`), kept in `profile`.
     public struct Limits: Codable, Sendable, Equatable {
         public var maxWidth: Int?
         public var maxHeight: Int?
@@ -331,14 +380,62 @@ public struct Descriptor: Codable, Sendable, Equatable {
         public var maxDurationSeconds: Double?
         public var maxInputs: Int?
         public var maxCount: Int?
-        enum CodingKeys: String, CodingKey {
+        /// Limit fields a profile defines, by name (e.g. Audio's `max_text_chars`, Image's `max_layer_count`).
+        public var profile: [String: Double]
+        enum CodingKeys: String, CodingKey, CaseIterable {
             case maxWidth = "max_width", maxHeight = "max_height", maxMegapixels = "max_megapixels"
             case maxDurationSeconds = "max_duration_s", maxInputs = "max_inputs", maxCount = "max_count"
         }
+        struct AnyKey: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { nil }
+        }
         public init(maxWidth: Int? = nil, maxHeight: Int? = nil, maxMegapixels: Double? = nil,
-                    maxDurationSeconds: Double? = nil, maxInputs: Int? = nil, maxCount: Int? = nil) {
+                    maxDurationSeconds: Double? = nil, maxInputs: Int? = nil, maxCount: Int? = nil,
+                    profile: [String: Double] = [:]) {
             self.maxWidth = maxWidth; self.maxHeight = maxHeight; self.maxMegapixels = maxMegapixels
             self.maxDurationSeconds = maxDurationSeconds; self.maxInputs = maxInputs; self.maxCount = maxCount
+            self.profile = profile
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            maxWidth = try c.decodeIfPresent(Int.self, forKey: .maxWidth)
+            maxHeight = try c.decodeIfPresent(Int.self, forKey: .maxHeight)
+            maxMegapixels = try c.decodeIfPresent(Double.self, forKey: .maxMegapixels)
+            maxDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .maxDurationSeconds)
+            maxInputs = try c.decodeIfPresent(Int.self, forKey: .maxInputs)
+            maxCount = try c.decodeIfPresent(Int.self, forKey: .maxCount)
+            let all = try decoder.container(keyedBy: AnyKey.self)
+            let known = Set(CodingKeys.allCases.map(\.rawValue))
+            profile = [:]
+            for key in all.allKeys where !known.contains(key.stringValue) {
+                profile[key.stringValue] = try all.decode(Double.self, forKey: key)
+            }
+        }
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeIfPresent(maxWidth, forKey: .maxWidth)
+            try c.encodeIfPresent(maxHeight, forKey: .maxHeight)
+            try c.encodeIfPresent(maxMegapixels, forKey: .maxMegapixels)
+            try c.encodeIfPresent(maxDurationSeconds, forKey: .maxDurationSeconds)
+            try c.encodeIfPresent(maxInputs, forKey: .maxInputs)
+            try c.encodeIfPresent(maxCount, forKey: .maxCount)
+            var all = encoder.container(keyedBy: AnyKey.self)
+            for (k, v) in profile.sorted(by: { $0.key < $1.key }) { try all.encode(v, forKey: AnyKey(stringValue: k)) }
+        }
+        /// Any limit by its wire name, Base's or the profile's.
+        public func value(_ name: String) -> Double? {
+            switch name {
+            case "max_width": maxWidth.map(Double.init)
+            case "max_height": maxHeight.map(Double.init)
+            case "max_megapixels": maxMegapixels
+            case "max_duration_s": maxDurationSeconds
+            case "max_inputs": maxInputs.map(Double.init)
+            case "max_count": maxCount.map(Double.init)
+            default: profile[name]
+            }
         }
     }
     public struct Remote: Codable, Sendable, Equatable {
@@ -441,15 +538,17 @@ public enum InputValue: Sendable, Equatable, Codable {
     case upload(String)
     case grant(Grant)
     case data(JSONValue)
+    /// An asset the client created (§8.1), usable by any number of its jobs.
+    case asset(String)
 
-    enum Keys: String, CodingKey { case inline, upload, grant, data }
+    enum Keys: String, CodingKey { case inline, upload, grant, data, asset }
     struct Inline: Codable { var media_type: String; var data: String }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         guard c.allKeys.count == 1, let key = c.allKeys.first else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
-                                                    debugDescription: "an input value has exactly one of inline, upload, grant, data"))
+                                                    debugDescription: "an input value has exactly one of inline, upload, grant, data, asset"))
         }
         switch key {
         case .inline:
@@ -461,6 +560,7 @@ public enum InputValue: Sendable, Equatable, Codable {
         case .upload: self = .upload(try c.decode(String.self, forKey: .upload))
         case .grant: self = .grant(try c.decode(Grant.self, forKey: .grant))
         case .data: self = .data(try c.decode(JSONValue.self, forKey: .data))
+        case .asset: self = .asset(try c.decode(String.self, forKey: .asset))
         }
     }
 
@@ -471,6 +571,7 @@ public enum InputValue: Sendable, Equatable, Codable {
         case .upload(let id): try c.encode(id, forKey: .upload)
         case .grant(let g): try c.encode(g, forKey: .grant)
         case .data(let v): try c.encode(v, forKey: .data)
+        case .asset(let id): try c.encode(id, forKey: .asset)
         }
     }
 }
@@ -515,14 +616,94 @@ public struct JobRequest: Codable, Sendable, Equatable {
     public var extensions: [String: JSONValue]?
     /// Adapters to apply, in order (§6.3). Send them only to offers that list them.
     public var adapters: [AdapterRequest]?
+    /// Outputs to stream as chunks while the job runs (§7.1). Send it only to offers with `supports.stream`.
+    public var stream: [StreamRequest]?
     public var clientRef: String?
-    enum CodingKeys: String, CodingKey { case operation, inputs, params, model, policy, extensions, adapters; case clientRef = "client_ref" }
+    enum CodingKeys: String, CodingKey { case operation, inputs, params, model, policy, extensions, adapters, stream; case clientRef = "client_ref" }
     public init(operation: String, inputs: [String: RequestInput]? = nil, params: [String: JSONValue]? = nil,
                 model: String? = nil, policy: Policy? = nil, extensions: [String: JSONValue]? = nil,
-                adapters: [AdapterRequest]? = nil, clientRef: String? = nil) {
+                adapters: [AdapterRequest]? = nil, stream: [StreamRequest]? = nil, clientRef: String? = nil) {
         self.operation = operation; self.inputs = inputs; self.params = params; self.model = model
-        self.policy = policy; self.extensions = extensions; self.adapters = adapters; self.clientRef = clientRef
+        self.policy = policy; self.extensions = extensions; self.adapters = adapters; self.stream = stream; self.clientRef = clientRef
     }
+}
+
+/// One output a request asks to stream (§7.1). Without `encoding`, the first the output spec lists.
+public struct StreamRequest: Codable, Sendable, Equatable {
+    public var output: String
+    public var encoding: StreamEncoding?
+    public init(output: String, encoding: StreamEncoding? = nil) { self.output = output; self.encoding = encoding }
+}
+
+/// A stream as the plan states it (§7.2): its format, once the model is chosen.
+public struct StreamPlan: Codable, Sendable, Equatable {
+    public var output: String
+    public var encoding: StreamEncoding
+    public var sampleRate: Int
+    public var channels: Int
+    enum CodingKeys: String, CodingKey { case output, encoding, channels; case sampleRate = "sample_rate" }
+    public init(output: String, encoding: StreamEncoding, sampleRate: Int, channels: Int) {
+        self.output = output; self.encoding = encoding; self.sampleRate = sampleRate; self.channels = channels
+    }
+    /// Bytes per frame (one sample per channel).
+    public var frameBytes: Int { encoding.sampleBytes * channels }
+}
+
+/// A file a client keeps on the engine for reuse by its jobs (§8.1).
+public struct Asset: Codable, Sendable, Equatable {
+    public var assetID: String
+    public var mediaType: String
+    public var bytes: Int
+    public var sha256: String
+    public var createdAt: Date
+    public var expiresAt: Date
+    enum CodingKeys: String, CodingKey {
+        case bytes, sha256
+        case assetID = "asset_id", mediaType = "media_type", createdAt = "created_at", expiresAt = "expires_at"
+    }
+    public init(assetID: String, mediaType: String, bytes: Int, sha256: String, createdAt: Date, expiresAt: Date) {
+        self.assetID = assetID; self.mediaType = mediaType; self.bytes = bytes; self.sha256 = sha256
+        self.createdAt = createdAt; self.expiresAt = expiresAt
+    }
+}
+
+public struct AssetList: Codable, Sendable, Equatable {
+    public var assets: [Asset]
+    public init(assets: [Asset]) { self.assets = assets }
+}
+
+/// A preset voice a model offers by name (§6.5).
+public struct Voice: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String
+    public var languages: [String]?
+    public var tags: [String]?
+    public var notes: String?
+    /// An `href` on the engine to a short sample of the voice.
+    public var sample: String?
+    /// The voice's own terms, on top of its model's (§10.2).
+    public var license: License?
+    public init(id: String, title: String, languages: [String]? = nil, tags: [String]? = nil, notes: String? = nil,
+                sample: String? = nil, license: License? = nil) {
+        self.id = id; self.title = title; self.languages = languages; self.tags = tags; self.notes = notes
+        self.sample = sample; self.license = license
+    }
+    public var ref: VoiceRef { VoiceRef(id: id, title: title, license: license) }
+}
+
+/// `GET {path}/operations/{operation}/models/{model}/voices` (§6.5).
+public struct VoiceList: Codable, Sendable, Equatable {
+    public var voices: [Voice]
+    public var etag: String
+    public init(voices: [Voice], etag: String) { self.voices = voices; self.etag = etag }
+}
+
+/// The preset voice a job used (§10.1).
+public struct VoiceRef: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String?
+    public var license: License?
+    public init(id: String, title: String? = nil, license: License? = nil) { self.id = id; self.title = title; self.license = license }
 }
 
 public struct Upload: Codable, Sendable, Equatable {
@@ -554,16 +735,22 @@ public struct Output: Codable, Sendable, Equatable {
     public var height: Int?
     public var durationSeconds: Double?
     public var fps: Double?
+    /// Audio facts (§10.1).
+    public var sampleRate: Int?
+    public var channels: Int?
+    public var bitDepth: Int?
     public var value: JSONValue?
     enum CodingKeys: String, CodingKey {
-        case index, name, kind, bytes, sha256, href, width, height, fps, value
-        case mediaType = "media_type", durationSeconds = "duration_s"
+        case index, name, kind, bytes, sha256, href, width, height, fps, channels, value
+        case mediaType = "media_type", durationSeconds = "duration_s", sampleRate = "sample_rate", bitDepth = "bit_depth"
     }
     public init(index: Int, name: String, kind: Kind, mediaType: String, bytes: Int, sha256: String, href: String,
-                width: Int? = nil, height: Int? = nil, durationSeconds: Double? = nil, fps: Double? = nil, value: JSONValue? = nil) {
+                width: Int? = nil, height: Int? = nil, durationSeconds: Double? = nil, fps: Double? = nil,
+                sampleRate: Int? = nil, channels: Int? = nil, bitDepth: Int? = nil, value: JSONValue? = nil) {
         self.index = index; self.name = name; self.kind = kind; self.mediaType = mediaType; self.bytes = bytes
         self.sha256 = sha256; self.href = href; self.width = width; self.height = height
-        self.durationSeconds = durationSeconds; self.fps = fps; self.value = value
+        self.durationSeconds = durationSeconds; self.fps = fps; self.sampleRate = sampleRate; self.channels = channels
+        self.bitDepth = bitDepth; self.value = value
     }
 }
 
@@ -571,9 +758,11 @@ public struct Plan: Codable, Sendable, Equatable {
     public var model: ModelRef
     public var effective: [String: JSONValue]
     public var remoteProvider: RemoteProvider?
-    enum CodingKeys: String, CodingKey { case model, effective; case remoteProvider = "remote_provider" }
-    public init(model: ModelRef, effective: [String: JSONValue], remoteProvider: RemoteProvider? = nil) {
-        self.model = model; self.effective = effective; self.remoteProvider = remoteProvider
+    /// The streams the request asked for, with their format (§7.2).
+    public var streams: [StreamPlan]?
+    enum CodingKeys: String, CodingKey { case model, effective, streams; case remoteProvider = "remote_provider" }
+    public init(model: ModelRef, effective: [String: JSONValue], remoteProvider: RemoteProvider? = nil, streams: [StreamPlan]? = nil) {
+        self.model = model; self.effective = effective; self.remoteProvider = remoteProvider; self.streams = streams
     }
 }
 
@@ -612,17 +801,20 @@ public struct Provenance: Codable, Sendable, Equatable {
     public var adapters: [AdapterRef]?
     /// Other models that shaped the result (§10.1), e.g. a prompt enhancer. Nil when none.
     public var helpers: [HelperRef]?
+    /// The preset voice the job used (§6.5). Nil when none.
+    public var voice: VoiceRef?
     public var remoteProvider: RemoteProvider?
     public var seed: Int?
     public var timings: Timings
     enum CodingKeys: String, CodingKey {
-        case engine, operation, model, adapters, helpers, seed, timings
+        case engine, operation, model, adapters, helpers, voice, seed, timings
         case profileVersion = "profile_version", remoteProvider = "remote_provider"
     }
     public init(engine: Engine, operation: String, profileVersion: String, model: ModelRef, adapters: [AdapterRef]? = nil,
-                helpers: [HelperRef]? = nil, remoteProvider: RemoteProvider? = nil, seed: Int? = nil, timings: Timings) {
+                helpers: [HelperRef]? = nil, voice: VoiceRef? = nil, remoteProvider: RemoteProvider? = nil, seed: Int? = nil,
+                timings: Timings) {
         self.engine = engine; self.operation = operation; self.profileVersion = profileVersion; self.model = model
-        self.adapters = adapters; self.helpers = helpers
+        self.adapters = adapters; self.helpers = helpers; self.voice = voice
         self.remoteProvider = remoteProvider; self.seed = seed; self.timings = timings
     }
 }
@@ -675,7 +867,7 @@ public struct Job: Codable, Sendable, Equatable {
 
 public enum EventType: String, Codable, Sendable, CaseIterable {
     case state = "job.state", plan = "job.plan", progress = "job.progress", preview = "job.preview"
-    case warning = "job.warning", outputReady = "job.output_ready", ended = "job.ended"
+    case warning = "job.warning", outputChunk = "job.output_chunk", outputReady = "job.output_ready", ended = "job.ended"
     case engineHealth = "engine.health", operationsChanged = "engine.operations_changed"
 }
 

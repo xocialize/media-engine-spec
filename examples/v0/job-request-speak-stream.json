@@ -1,0 +1,26 @@
+{
+  "operation": "audio.speak",
+  "inputs": {
+    "text": "The tide comes in twice a day. [pause 0.5s] Mind the rocks.",
+    "voice_ref": {
+      "asset": "ast_7m2k9q"
+    }
+  },
+  "params": {
+    "emotion": {
+      "label": "calm"
+    },
+    "language": "en",
+    "quality": "standard"
+  },
+  "stream": [
+    {
+      "output": "audio",
+      "encoding": "pcm_s16le"
+    }
+  ],
+  "policy": {
+    "license": "commercial-use"
+  },
+  "client_ref": "line-0042"
+}

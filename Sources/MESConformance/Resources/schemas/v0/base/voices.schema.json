@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — GET {path}/operations/{operation}/models/{model}/voices (§6.5)",
+  "type": "object",
+  "required": ["voices", "etag"],
+  "additionalProperties": false,
+  "properties": {
+    "voices": { "type": "array", "items": { "$ref": "#/$defs/Voice" } },
+    "etag": { "type": "string" }
+  },
+  "$defs": {
+    "Voice": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Id" },
+        "title": { "type": "string", "minLength": 1 },
+        "languages": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$" }
+        },
+        "tags": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" } },
+        "notes": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "sample": { "type": "string" },
+        "license": { "$ref": "common.schema.json#/$defs/License" }
+      }
+    }
+  }
+}

@@ -33,77 +33,33 @@ public enum ImageProfile {
         public static let promptEnhance = "prompt_enhance"
     }
 
-    /// One operation's normative requirements, from operations.json.
-    public struct OperationSpec: Codable, Sendable, Equatable {
-        public struct IO: Codable, Sendable, Equatable {
-            public var kind: Kind
-            public var required: Bool?
-            public var valueSchema: String?
-            enum CodingKeys: String, CodingKey { case kind, required; case valueSchema = "value_schema" }
-        }
-        public var inputs: [String: IO]
-        public var outputs: [String: IO]
-        public var vocabulary: [String]
-        public var vocabularyDefs: [String: String]?
-        public var keepsInputSize: Bool?
-        public var preservesUnmasked: Bool?
-        public var exactScale: Bool?
-        public var requiresOneOf: [String]?
-        /// The image input an `ic` adapter's slots fill (§1.10).
-        public var adapterInput: String?
-        enum CodingKeys: String, CodingKey {
-            case inputs, outputs, vocabulary
-            case vocabularyDefs = "vocabulary_defs", keepsInputSize = "keeps_input_size"
-            case preservesUnmasked = "preserves_unmasked", exactScale = "exact_scale", requiresOneOf = "requires_one_of"
-            case adapterInput = "adapter_input"
-        }
-    }
-
-    public struct Table: Codable, Sendable, Equatable {
-        public var profile: String
-        public var version: String
-        public var operations: [String: OperationSpec]
-    }
+    /// One operation's normative requirements, from operations.json (shared by every profile's table).
+    public typealias OperationSpec = ProfileOperationSpec
+    public typealias Table = ProfileTable
 
     /// The bundled copy of schemas/v0/profiles/image/operations.json (a test keeps the two identical).
-    public static let operations: Table = {
-        guard let url = Bundle.module.url(forResource: "image-operations", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let table = try? MESJSON.decoder.decode(Table.self, from: data) else {
-            fatalError("MESCore: bundled image-operations.json is missing or invalid")
-        }
-        return table
-    }()
+    public static let operations: Table = .bundled("image-operations")
 
     /// The bundled copy of schemas/v0/profiles/image/vocabulary.schema.json.
-    public static let vocabulary: JSONValue = {
-        guard let url = Bundle.module.url(forResource: "image-vocabulary", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let value = try? MESJSON.decoder.decode(JSONValue.self, from: data) else {
-            fatalError("MESCore: bundled image-vocabulary.json is missing or invalid")
-        }
-        return value
-    }()
+    public static let vocabulary: JSONValue = ProfileTable.bundledVocabulary("image-vocabulary")
+
+    /// `supports` keys the profile defines (§2.1, Base §6.4).
+    public enum SupportsKey {
+        /// Boolean, absent `true`, Warn: `negative_prompt_ignored`.
+        public static let negativePrompt = "negative_prompt"
+        /// `decompose`: boolean, absent `true`, Gate: an `outputs` that contains `composite`.
+        public static let composite = "composite"
+    }
+
+    /// Offer limit fields the profile defines (§2.1).
+    public enum LimitField {
+        /// `decompose`: the most layers the model returns.
+        public static let maxLayerCount = "max_layer_count"
+    }
 
     /// The vocabulary definition for a parameter name (honouring the table's `vocabulary_defs`), with every
     /// `$ref` inlined so it can sit inside a descriptor's self-contained `params` schema.
     public static func vocabularySchema(_ name: String, operation: String) -> JSONValue? {
-        let defName = operations.operations[operation]?.vocabularyDefs?[name] ?? name
-        guard let def = vocabulary["$defs"]?[defName] else { return nil }
-        return inline(def)
-    }
-
-    static func inline(_ value: JSONValue) -> JSONValue {
-        switch value {
-        case .object(let o):
-            if case .string(let ref)? = o["$ref"], ref.hasPrefix("#/$defs/"),
-               let target = vocabulary["$defs"]?[String(ref.dropFirst("#/$defs/".count))] {
-                return inline(target)
-            }
-            return .object(o.mapValues(inline))
-        case .array(let a): return .array(a.map(inline))
-        default: return value
-        }
+        operations.vocabularySchema(name, operation: operation, vocabulary: vocabulary)
     }
 }
-

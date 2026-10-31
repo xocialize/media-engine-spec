@@ -2,12 +2,14 @@ import CryptoKit
 import Foundation
 import MESCore
 
-/// The engine's private storage: `uploads/<id>` and `jobs/<id>/{inputs,outputs}`. Everything in it is temporary
-/// by contract (Base §13), so a start wipes it: an interrupted job's media never survives a crash.
+/// The engine's private storage: `uploads/<id>`, `assets/<id>` and `jobs/<id>/{inputs,outputs}`. Everything in it is
+/// temporary by contract (Base §13), so a start wipes it: an interrupted job's media never survives a crash, and assets
+/// don't survive a restart (§8.1 allows that; clients create them again).
 package struct Spool: Sendable {
     package let root: URL
     package var uploads: URL { root.appendingPathComponent("uploads", isDirectory: true) }
     package var jobs: URL { root.appendingPathComponent("jobs", isDirectory: true) }
+    package var assets: URL { root.appendingPathComponent("assets", isDirectory: true) }
 
     /// Creates the spool, deleting whatever a previous run left behind. Returns how many items were swept.
     @discardableResult
@@ -15,7 +17,7 @@ package struct Spool: Sendable {
         let fm = FileManager.default
         let spool = Spool(root: root)
         var swept = 0
-        for dir in [spool.uploads, spool.jobs] {
+        for dir in [spool.uploads, spool.assets, spool.jobs] {
             if let leftovers = try? fm.contentsOfDirectory(atPath: dir.path) { swept += leftovers.count }
             try? fm.removeItem(at: dir)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -24,6 +26,7 @@ package struct Spool: Sendable {
     }
 
     package func uploadFile(_ id: String) -> URL { uploads.appendingPathComponent(id) }
+    package func assetFile(_ id: String) -> URL { assets.appendingPathComponent(id) }
     package func jobDirectory(_ id: String) -> URL { jobs.appendingPathComponent(id, isDirectory: true) }
     package func inputsDirectory(_ id: String) -> URL { jobDirectory(id).appendingPathComponent("inputs", isDirectory: true) }
     package func outputsDirectory(_ id: String) -> URL { jobDirectory(id).appendingPathComponent("outputs", isDirectory: true) }
@@ -74,6 +77,11 @@ package enum MediaTypes {
         case "video/quicktime": "mov"
         case "audio/wav", "audio/x-wav": "wav"
         case "audio/mpeg": "mp3"
+        case "audio/flac", "audio/x-flac": "flac"
+        case "audio/mp4", "audio/aac": "m4a"
+        case "audio/ogg", "audio/opus": "ogg"
+        case "text/plain": "txt"
+        case "text/vnd.abc": "abc"
         case "application/json": "json"
         default: "bin"
         }

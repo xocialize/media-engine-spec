@@ -27,7 +27,7 @@ cat "$work/engine.log"
 
 step "mes discover"
 "$bin/mes" discover | tee "$work/discover.txt"
-grep -q "MES Mock Image Engine" "$work/discover.txt"
+grep -q "MES Mock Engine" "$work/discover.txt"
 
 step "mes pair (by discovered name)"
 "$bin/mes" pair "MES Mock" --name "smoke test" --state-dir "$work/client"

@@ -1,0 +1,354 @@
+{
+  "etag": "\"ops-dca4bc44b844\"",
+  "operations": [
+    {
+      "operation": "audio.speak",
+      "profile": "audio",
+      "profile_version": "0.1",
+      "title": "Speak",
+      "summary": "Text to speech: a preset voice, a cloned voice, or the model's own.",
+      "inputs": [
+        {
+          "name": "text",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "name": "voice_ref",
+          "kind": "audio",
+          "required": false,
+          "max": 1,
+          "media_types": [
+            "audio/wav",
+            "audio/flac",
+            "audio/mpeg",
+            "audio/mp4"
+          ]
+        },
+        {
+          "name": "voice_ref_text",
+          "kind": "text",
+          "required": false
+        }
+      ],
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "voice": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "x-mes-ui": {
+              "label": "Voice",
+              "widget": "voice"
+            }
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+            "x-mes-ui": {
+              "label": "Language"
+            }
+          },
+          "emotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "label": {
+                "enum": [
+                  "neutral",
+                  "happy",
+                  "sad",
+                  "angry",
+                  "afraid",
+                  "disgusted",
+                  "surprised",
+                  "calm",
+                  "melancholic",
+                  "excited",
+                  "humorous",
+                  "confused",
+                  "empathetic",
+                  "embarrassed",
+                  "depressed",
+                  "cold",
+                  "admiring"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "x-mes-ui": {
+              "label": "Emotion"
+            }
+          },
+          "target_duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 600,
+            "x-mes-ui": {
+              "label": "Fit to (s)",
+              "advanced": true
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "x-mes-ui": {
+              "label": "Seed",
+              "widget": "seed",
+              "advanced": true
+            }
+          },
+          "quality": {
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "default": "standard",
+            "x-mes-ui": {
+              "label": "Quality",
+              "widget": "picker"
+            }
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "audio/wav",
+                  "audio/flac"
+                ]
+              },
+              "sample_rate": {
+                "type": "integer",
+                "minimum": 8000,
+                "maximum": 192000
+              },
+              "bit_depth": {
+                "enum": [
+                  16,
+                  24
+                ]
+              },
+              "channels": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              }
+            },
+            "x-mes-ui": {
+              "label": "Format",
+              "advanced": true
+            }
+          }
+        }
+      },
+      "outputs": [
+        {
+          "name": "audio",
+          "kind": "audio",
+          "media_types": [
+            "audio/wav",
+            "audio/flac"
+          ],
+          "min": 1,
+          "max": 1,
+          "stream": {
+            "encodings": [
+              "pcm_s16le",
+              "pcm_f32le"
+            ]
+          }
+        }
+      ],
+      "limits": {
+        "max_duration_s": 300,
+        "max_text_chars": 8000,
+        "max_voice_ref_s": 60
+      },
+      "quality_tiers": [
+        "draft",
+        "standard",
+        "best"
+      ],
+      "models": [
+        {
+          "id": "kokoro-82m",
+          "title": "Kokoro 82M",
+          "license": {
+            "spdx": "Apache-2.0",
+            "commercial_use": true,
+            "terms_url": "https://huggingface.co/hexgrad/Kokoro-82M"
+          },
+          "memory_class": "small",
+          "speed_class": "fast",
+          "quality_tiers": [
+            "draft"
+          ],
+          "notes": "English only, ten preset voices; one pass of up to 512 tokens, longer text is split at sentences.",
+          "supports": {
+            "seed": false,
+            "voices": 10,
+            "default_voice": true,
+            "languages": [
+              "en-US",
+              "en-GB"
+            ],
+            "sample_rate": 24000
+          },
+          "limits": {
+            "max_text_chars": 2000
+          }
+        },
+        {
+          "id": "moss-tts-nano",
+          "title": "MOSS-TTS-Nano 100M",
+          "license": {
+            "spdx": "Apache-2.0",
+            "commercial_use": true,
+            "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+          },
+          "memory_class": "small",
+          "speed_class": "fast",
+          "quality_tiers": [
+            "draft",
+            "standard"
+          ],
+          "default": true,
+          "notes": "Clones from the clip alone; references over 60 s are trimmed.",
+          "supports": {
+            "stream": true,
+            "voice_ref": true,
+            "languages": [
+              "en",
+              "zh",
+              "ja",
+              "ko",
+              "es",
+              "fr",
+              "de"
+            ],
+            "cues": [
+              "pause"
+            ],
+            "sample_rate": 48000
+          }
+        },
+        {
+          "id": "indextts-2.5",
+          "title": "IndexTTS 2.5",
+          "license": {
+            "spdx": "LicenseRef-Bilibili-Model-Use",
+            "commercial_use": true,
+            "terms_url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/blob/main/LICENSE",
+            "accepted_required": true
+          },
+          "memory_class": "medium",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "best"
+          ],
+          "notes": "Commercial use needs a separate licence above 100M monthly users or RMB 1B revenue.",
+          "supports": {
+            "voice_ref": true,
+            "languages": [
+              "zh",
+              "en",
+              "ja",
+              "es",
+              "ar"
+            ],
+            "emotions": [
+              "neutral",
+              "happy",
+              "angry",
+              "sad",
+              "afraid",
+              "disgusted",
+              "melancholic",
+              "surprised",
+              "calm"
+            ],
+            "emotion_intensity": true,
+            "target_duration": true,
+            "sample_rate": 22050
+          }
+        },
+        {
+          "id": "qwen3-tts-1.7b-base",
+          "title": "Qwen3-TTS 1.7B (clone)",
+          "license": {
+            "spdx": "Apache-2.0",
+            "commercial_use": true,
+            "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+          },
+          "memory_class": "medium",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "best"
+          ],
+          "notes": "Give the reference's transcript: similarity is about 0.89 with it and 0.75 without.",
+          "supports": {
+            "voice_ref": true,
+            "voice_ref_text": "optional",
+            "languages": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "es",
+              "it",
+              "pt",
+              "ru"
+            ],
+            "emotions": [
+              "neutral",
+              "happy",
+              "angry",
+              "sad",
+              "afraid",
+              "disgusted",
+              "melancholic",
+              "surprised",
+              "calm"
+            ],
+            "emotion_description": true,
+            "styles": [
+              "normal",
+              "whisper",
+              "gentle",
+              "serious",
+              "warm",
+              "narration"
+            ],
+            "sample_rate": 24000
+          },
+          "limits": {
+            "max_voice_ref_s": 30
+          }
+        }
+      ],
+      "remote": {
+        "possible": false
+      }
+    }
+  ]
+}

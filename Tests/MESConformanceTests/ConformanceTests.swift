@@ -22,7 +22,7 @@ func mockConfig(_ tweak: (inout EngineConfiguration) -> Void = { _ in }) -> Engi
     return c
 }
 
-func serve(_ config: EngineConfiguration, engine: any MediaEngine = MockImageEngine(),
+func serve(_ config: EngineConfiguration, engine: any MediaEngine = MockMediaEngine(),
            _ body: (Int) async throws -> Void) async throws {
     let server = MESEngineServer(engine: engine, configuration: config)
     let (ports, continuation) = AsyncStream<Int>.makeStream()
@@ -42,16 +42,18 @@ func failures(_ report: ConformanceReport) -> String {
 
 @Suite("Conformance suite against the mock engine", .serialized)
 struct MockConformanceTests {
-    @Test("Open mode: every applicable BASE and IMAGE test passes")
+    @Test("Open mode: every applicable BASE, IMAGE and AUDIO test passes")
     func openMode() async throws {
         try await serve(mockConfig()) { port in
             let probe = try await Probe.connect(Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!))
             let report = await ConformanceRunner.run(probe)
             #expect(report.failed == 0, "\(failures(report))")
-            #expect(report.conformsToBase && report.conformsToImage == true)
+            #expect(report.conformsToBase && report.conformsToImage == true && report.conformsToAudio == true)
+            #expect(report.summary == "Base 0.1: conforms, Image 0.1: conforms, Audio 0.1: conforms")
             let skipped = Set(report.results.filter { $0.status == .skip }.map(\.id))
-            // IMAGE-010 runs on decompose, whose `output` leaves out JPEG (no alpha, Image §3.2).
-            #expect(skipped == ["BASE-005", "BASE-006", "BASE-071", "BASE-090"], "skipped: \(skipped.sorted())")
+            // IMAGE-010 runs on decompose, whose `output` leaves out JPEG (no alpha, Image §3.2). Asset expiry (BASE-034)
+            // waits 60 s; a second pairing (BASE-035) needs paired mode.
+            #expect(skipped == ["BASE-005", "BASE-006", "BASE-034", "BASE-035", "BASE-071", "BASE-090"], "skipped: \(skipped.sorted())")
             #expect(report.markdown.contains("✅ conforms"))
             // The mock's bands recompose to the input exactly; it offers composite, so IMAGE-015 skips that refusal.
             let notes = Dictionary(uniqueKeysWithValues: report.results.map { ($0.id, $0.detail ?? "") })
@@ -119,7 +121,7 @@ struct MockConformanceTests {
             let report = await ConformanceRunner.run(probe)
             #expect(report.failed == 0, "\(failures(report))")
             let ran = Set(report.results.filter { $0.status == .pass }.map(\.id))
-            #expect(ran.isSuperset(of: ["BASE-005", "BASE-006", "BASE-090", "BASE-052", "BASE-080"]))
+            #expect(ran.isSuperset(of: ["BASE-005", "BASE-006", "BASE-090", "BASE-052", "BASE-080", "BASE-035", "BASE-054"]))
         }
     }
 

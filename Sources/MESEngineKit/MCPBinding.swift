@@ -197,8 +197,9 @@ struct MCPToolbox: Sendable {
             properties[name] = Self.value(Self.stripHints(schema))
         }
         for input in d.inputs {
+            let example = input.kind == .audio ? "data:audio/wav;base64,…" : "data:image/png;base64,…"
             let one: Value = ["type": "string",
-                              "description": .string("A \(input.kind.rawValue) as a data: URL (data:image/png;base64,…) or upload:<id>.")]
+                              "description": .string("A \(input.kind.rawValue) as a data: URL (\(example)), upload:<id> or asset:<id>.")]
             switch input.kind {
             case .text:
                 properties[input.name] = ["type": "string"]
@@ -250,6 +251,12 @@ struct MCPToolbox: Sendable {
         Tool(name: "mes_confirm_job", title: "Confirm job", description: "Says you have the outputs; the engine deletes them.",
              inputSchema: ["type": "object", "required": ["job_id"], "additionalProperties": false, "properties": ["job_id": ["type": "string"]]],
              annotations: .init(title: "Confirm job", destructiveHint: true, openWorldHint: false)),
+        Tool(name: "mes_list_voices", title: "List voices",
+             description: "A model's preset voices (Base §6.5), for a model whose line says it has voices. Name the model, list its voices, then call the operation's tool with model and voice.",
+             inputSchema: ["type": "object", "required": ["operation", "model"], "additionalProperties": false,
+                           "properties": ["operation": ["type": "string", "description": "An operation id, e.g. audio.speak."],
+                                          "model": ["type": "string"]]],
+             annotations: .init(title: "List voices", readOnlyHint: true, openWorldHint: false)),
     ]
 
     // MARK: - Calls
@@ -275,6 +282,15 @@ struct MCPToolbox: Sendable {
                 return await render(try await registry.release(try Self.string(args, "job_id"), owner: client), client: client, baseURL: baseURL)
             case "mes_confirm_job":
                 return await render(try await registry.confirm(try Self.string(args, "job_id"), owner: client), client: client, baseURL: baseURL)
+            case "mes_list_voices":
+                let list = try await registry.voices(operation: try Self.string(args, "operation"), model: try Self.string(args, "model"))
+                let lines = list.voices.map { v in
+                    ([v.id, v.title] + [v.languages?.joined(separator: "/"), v.tags?.joined(separator: ", "),
+                                        v.license.map { "\($0.spdx) · commercial use \(Self.commercial($0.commercialUse))" }].compactMap { $0 })
+                        .joined(separator: " · ")
+                }
+                return CallTool.Result(content: [.text(text: lines.isEmpty ? "No voices." : lines.joined(separator: "\n"), annotations: nil, _meta: nil)],
+                                       structuredContent: Optional(Self.value(try JSONValue(encoding: list))))
             default:
                 guard let descriptor = await registry.operationsList.operations.first(where: { Self.toolName($0.operation) == params.name }) else {
                     throw MESError(.unknownOperation, "No tool \(params.name).")
@@ -329,6 +345,7 @@ struct MCPToolbox: Sendable {
 
     static func mediaInput(_ s: String, name: String) throws -> InputValue {
         if s.hasPrefix("upload:") { return .upload(String(s.dropFirst("upload:".count))) }
+        if s.hasPrefix("asset:") { return .asset(String(s.dropFirst("asset:".count))) }
         guard s.hasPrefix("data:"), let comma = s.firstIndex(of: ","), s[..<comma].hasSuffix(";base64") else {
             throw MESError(.inputInvalid, "\(name): use a data: URL (data:<type>;base64,…) or upload:<id>.", param: name)
         }
@@ -388,12 +405,18 @@ struct MCPToolbox: Sendable {
         for h in job.result?.provenance.helpers ?? [] {
             lines.append("Helper (\(h.role)): \(h.id) · \(h.license.spdx) · commercial use \(Self.commercial(h.license.commercialUse))")
         }
+        if let v = job.result?.provenance.voice {
+            lines.append("Voice: \(v.id)\(v.title.map { " (\($0))" } ?? "")"
+                + (v.license.map { " · \($0.spdx) · commercial use \(Self.commercial($0.commercialUse))" + ($0.notice.map { " · \($0)" } ?? "") } ?? ""))
+        }
         for w in job.warnings { lines.append("Warning [\(w.code)]: \(w.message)") }
         var content: [Tool.Content] = []
         if let result = job.result {
             for output in result.outputs {
                 let url = baseURL + output.href
-                let size = output.width.map { w in " \(w)×\(output.height ?? 0)" } ?? ""
+                var size = output.width.map { w in " \(w)×\(output.height ?? 0)" } ?? ""
+                if let d = output.durationSeconds { size += String(format: " %.2f s", d) }
+                if let rate = output.sampleRate { size += " · \(rate) Hz" + (output.channels.map { " × \($0)" } ?? "") }
                 lines.append("Output \(output.index) \(output.name): \(output.mediaType)\(size) · \(url)")
                 if let value = output.value, let text = try? String(decoding: MESJSON.encoder.encode(value), as: UTF8.self) {
                     lines.append("\(output.name): \(text)")
@@ -402,6 +425,12 @@ struct MCPToolbox: Sendable {
                    let (file, _) = try? await registry.output(job.id, index: output.index, owner: client),
                    let preview = Self.preview(file, mediaType: output.mediaType) {
                     content.append(.image(data: preview.data.base64EncodedString(), mimeType: preview.mediaType, annotations: nil, _meta: nil))
+                }
+                // Audio of at most 1 MB is inlined, as image previews are (Base §15); longer audio is the link.
+                if output.kind == .audio, output.bytes <= 1 << 20,
+                   let (file, _) = try? await registry.output(job.id, index: output.index, owner: client),
+                   let data = try? Data(contentsOf: file) {
+                    content.append(.audio(data: data.base64EncodedString(), mimeType: output.mediaType, annotations: nil, _meta: nil))
                 }
                 content.append(.resourceLink(uri: url, name: "\(job.id)-\(output.index)", mimeType: output.mediaType))
             }
@@ -469,11 +498,33 @@ struct MCPToolbox: Sendable {
         guard notes else { return line }
         if let notice = oneLine(m.license.notice) { line += " · Licence: \(notice)" }
         if let text = oneLine(m.notes) { line += " · Notes: \(text)" }
+        if let supports = supportsLine(m) { line += " · supports: \(supports)" }
+        if m.voiceCount > 0 { line += " · \(m.voiceCount) voice\(m.voiceCount == 1 ? "" : "s") (mes_list_voices)" }
         if let adapters = m.adapters, !adapters.isEmpty {
             line += " · up to \(m.adapterLimit) adapter\(m.adapterLimit == 1 ? "" : "s")"
             for a in adapters { line += "\n  - " + adapterLine(a) }
         }
         return line
+    }
+
+    /// An offer's `supports` in short form (Base §15): `stream, languages=en/zh, emotions=happy/sad`. `voices` has its own
+    /// mention.
+    static func supportsLine(_ m: ModelOffer) -> String? {
+        let parts = (m.supports ?? [:]).sorted { $0.key < $1.key }.compactMap { key, value -> String? in
+            guard key != "voices" else { return nil }
+            switch value {
+            case .bool(true): return key
+            case .bool(false): return "no \(key)"
+            case .array(let a): return "\(key)=" + a.compactMap { $0.stringValue ?? $0.numberValue.map(number) }.joined(separator: "/")
+            case .string(let s): return "\(key)=\(s)"
+            case .number(let n): return "\(key)=\(number(n))"
+            default: return nil
+            }
+        }
+        let limits = (m.limits.flatMap { try? JSONValue(encoding: $0) }?.objectValue ?? [:]).sorted { $0.key < $1.key }
+            .compactMap { k, v in v.numberValue.map { "\(k)=\(number($0))" } }
+        let all = parts + limits
+        return all.isEmpty ? nil : all.joined(separator: ", ")
     }
 
     /// One adapter on one line (Base §15): id, title, kind (with its slots), licence and commercial-use flag, strength

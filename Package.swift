@@ -4,7 +4,8 @@ import PackageDescription
 // MESKit — the Swift SDKs for the Media Engine Specification (docs/BUILD-PLAN.md).
 //
 //   MESCore        wire types for every schema, the JSON value type, a JSON Schema (subset) validator, the
-//                  Image profile's operations table, the pairing code. Foundation (+ CryptoKit) only.
+//                  Image and Audio profiles' operations tables, Audio's cue syntax, WAV, the pairing code.
+//                  Foundation (+ CryptoKit) only.
 //   MESEngineCore  the engine core with no networking stack: `MediaEngine` (what engine authors implement), the job
 //                  registry, spool and retention, grant fetching, configuration.
 //   MESEngineKit   the engine side of Base 0.1 on Hummingbird 2: routes, uploads, SSE, WebSocket, MCP, TLS and
@@ -21,8 +22,9 @@ import PackageDescription
 //                  interfaces; an App Store build turns it off. A Plugins page for engines whose models come as plugins,
 //                  and engine memory summed over a host and its worker processes (Gaea). `mes-console-gallery` previews
 //                  it over the mock engine.
-//   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn) and `mes-conformance`, its CLI.
-//   MockEngineCore the 15 Image-profile operations with synthetic, rule-abiding results (CoreGraphics).
+//   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn, AUDIO-nnn) and `mes-conformance`, its CLI.
+//   MockEngineCore the 15 Image-profile and 5 Audio-profile operations with synthetic, rule-abiding results
+//                  (CoreGraphics, AVFoundation).
 //   MockEngine     `mes-mock-engine`, the executable.
 //   MESCLI         `mes`, the command-line client on MESClientKit.
 let package = Package(
@@ -67,7 +69,8 @@ let package = Package(
     targets: [
         .target(
             name: "MESCore",
-            resources: [.copy("Resources/image-operations.json"), .copy("Resources/image-vocabulary.json")]
+            resources: [.copy("Resources/image-operations.json"), .copy("Resources/image-vocabulary.json"),
+                        .copy("Resources/audio-operations.json"), .copy("Resources/audio-vocabulary.json")]
         ),
         .target(name: "MESEngineCore", dependencies: ["MESCore"]),
         .target(

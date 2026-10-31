@@ -1,0 +1,21 @@
+{
+  "operation": "audio.compose",
+  "inputs": {
+    "caption": "Nineties britpop, jangly guitars, a hopeful male vocal, 118 bpm.",
+    "lyrics": "[verse]\nThe trains run late on Sunday\nWe wait out by the line\n[chorus - anthemic, full band]\nAnd we'll be fine\nWe'll be fine\n[bridge]\nHold on\n[outro]\nWe'll be fine"
+  },
+  "params": {
+    "duration_s": 150,
+    "language": "en",
+    "anchors": {
+      "bpm": 118,
+      "key": "E major"
+    },
+    "timestamps": true,
+    "seed": 2026,
+    "quality": "standard"
+  },
+  "policy": {
+    "license": "commercial-use"
+  }
+}

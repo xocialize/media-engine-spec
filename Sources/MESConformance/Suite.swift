@@ -73,13 +73,16 @@ public final class Probe: @unchecked Sendable {
 
     // MARK: - Requests
 
-    /// A minimal valid request for `d`: text for every text input, the fixture image or mask for required media
-    /// inputs, no params. Nil when it needs something the suite can't make (a required data input, video, audio).
+    /// A minimal valid request for `d`: text for every text input (an Audio operation's required ones only), the
+    /// fixture image, mask or audio clip for required media inputs, no params. Nil when it needs something the suite
+    /// can't make (a required data input, video).
     public func minimalRequest(_ d: Descriptor, image: Data = Fixtures.png(), mask: Data = Fixtures.mask()) -> JobRequest? {
         var inputs: [String: RequestInput] = [:]
         for spec in d.inputs {
             switch spec.kind {
-            case .text: inputs[spec.name] = .text("a lighthouse on a cliff at dusk")
+            case .text where spec.required || d.profile != AudioProfile.id: inputs[spec.name] = .text("a lighthouse on a cliff at dusk")
+            case .text: continue
+            case .audio where spec.required: inputs[spec.name] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav()))
             case .image where spec.required: inputs[spec.name] = .one(.inline(mediaType: "image/png", data: image))
             case .mask where spec.required: inputs[spec.name] = .one(.inline(mediaType: "image/png", data: mask))
             default: if spec.required { return nil }
@@ -177,10 +180,21 @@ public struct ConformanceReport: Codable, Sendable {
     /// Base 0.1 conformance: no failing BASE test (skips are features the engine doesn't claim).
     public var conformsToBase: Bool { !results.contains { $0.id.hasPrefix("BASE") && $0.status == .fail } }
     /// Image 0.1 conformance for the operations offered.
-    public var conformsToImage: Bool? {
-        let image = results.filter { $0.id.hasPrefix("IMAGE") }
-        guard image.contains(where: { $0.status != .skip }) else { return nil }
-        return !image.contains { $0.status == .fail }
+    public var conformsToImage: Bool? { conforms("IMAGE") }
+    /// Audio 0.1 conformance for the operations offered.
+    public var conformsToAudio: Bool? { conforms("AUDIO") }
+
+    func conforms(_ prefix: String) -> Bool? {
+        let tests = results.filter { $0.id.hasPrefix(prefix) }
+        guard tests.contains(where: { $0.status != .skip }) else { return nil }
+        return !tests.contains { $0.status == .fail }
+    }
+
+    /// One line: Base, and each profile tested.
+    public var summary: String {
+        "Base 0.1: \(conformsToBase ? "conforms" : "does not conform")"
+            + (conformsToImage.map { ", Image 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
+            + (conformsToAudio.map { ", Audio 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
     }
 }
 
@@ -232,6 +246,7 @@ extension ConformanceReport {
             "| **Base 0.1** | \(conformsToBase ? "✅ conforms" : "❌ does not conform") |",
         ]
         if let image = conformsToImage { lines.append("| **Image 0.1** | \(image ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
+        if let audio = conformsToAudio { lines.append("| **Audio 0.1** | \(audio ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         lines += ["", "| Test | Checks | Spec | Result |", "|---|---|---|---|"]
         for r in results {
             let mark = switch r.status { case .pass: "✅ pass"; case .fail: "❌ **fail**"; case .skip: "➖ skip" }

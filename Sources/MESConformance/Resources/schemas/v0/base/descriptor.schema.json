@@ -2,7 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MES Base 0.1 — capability descriptor (§6)",
   "type": "object",
-  "required": ["operation", "profile", "profile_version", "title", "inputs", "params", "outputs", "quality_tiers", "models"],
+  "required": [
+    "operation",
+    "profile",
+    "profile_version",
+    "title",
+    "inputs",
+    "params",
+    "outputs",
+    "quality_tiers",
+    "models"
+  ],
   "additionalProperties": false,
   "properties": {
     "operation": { "$ref": "common.schema.json#/$defs/OperationId" },
@@ -13,19 +23,12 @@
     "inputs": { "type": "array", "items": { "$ref": "#/$defs/InputSpec" } },
     "params": { "$ref": "#/$defs/ParamsSchema" },
     "outputs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/OutputSpec" } },
-    "limits": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "max_width": { "type": "integer", "minimum": 1 },
-        "max_height": { "type": "integer", "minimum": 1 },
-        "max_megapixels": { "type": "number", "exclusiveMinimum": 0 },
-        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
-        "max_inputs": { "type": "integer", "minimum": 1 },
-        "max_count": { "type": "integer", "minimum": 1 }
-      }
+    "limits": { "$ref": "#/$defs/Limits" },
+    "quality_tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "common.schema.json#/$defs/QualityTier" }
     },
-    "quality_tiers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/QualityTier" } },
     "models": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ModelOffer" } },
     "extensions": { "type": "array", "items": { "$ref": "#/$defs/Extension" } },
     "remote": {
@@ -67,7 +70,20 @@
         "kind": { "$ref": "common.schema.json#/$defs/Kind" },
         "media_types": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/MediaType" } },
         "min": { "type": "integer", "minimum": 0 },
-        "max": { "type": "integer", "minimum": 1 }
+        "max": { "type": "integer", "minimum": 1 },
+        "stream": {
+          "type": "object",
+          "required": ["encodings"],
+          "additionalProperties": false,
+          "description": "The output can stream as ordered chunks (§6, RFC 0002): only an audio output whose max is 1.",
+          "properties": {
+            "encodings": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "common.schema.json#/$defs/StreamEncoding" }
+            }
+          }
+        }
       }
     },
     "ParamsSchema": {
@@ -80,10 +96,7 @@
         "additionalProperties": { "const": false }
       }
     },
-    "ParamProperty": {
-      "type": "object",
-      "properties": { "x-mes-ui": { "$ref": "#/$defs/UiHints" } }
-    },
+    "ParamProperty": { "type": "object", "properties": { "x-mes-ui": { "$ref": "#/$defs/UiHints" } } },
     "UiHints": {
       "type": "object",
       "additionalProperties": false,
@@ -93,7 +106,21 @@
         "group": { "type": "string" },
         "order": { "type": "integer" },
         "advanced": { "type": "boolean" },
-        "widget": { "enum": ["text", "textarea", "slider", "stepper", "picker", "toggle", "seed", "size", "aspect", "color"] }
+        "widget": {
+          "enum": [
+            "text",
+            "textarea",
+            "slider",
+            "stepper",
+            "picker",
+            "toggle",
+            "seed",
+            "size",
+            "aspect",
+            "color",
+            "voice"
+          ]
+        }
       }
     },
     "ModelOffer": {
@@ -106,13 +133,47 @@
         "license": { "$ref": "common.schema.json#/$defs/License" },
         "memory_class": { "enum": ["small", "medium", "large", "xlarge"] },
         "speed_class": { "enum": ["fast", "standard", "slow"] },
-        "quality_tiers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/QualityTier" } },
+        "quality_tiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/QualityTier" }
+        },
         "default": { "type": "boolean" },
-        "named_only": { "type": "boolean", "description": "Never chosen by default: the model runs only when a request names it." },
+        "named_only": {
+          "type": "boolean",
+          "description": "Never chosen by default: the model runs only when a request names it."
+        },
         "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" },
-        "notes": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Short usage guidance for this model: prompting rules, limits." },
-        "adapters": { "type": "array", "items": { "$ref": "#/$defs/AdapterOffer" }, "description": "The adapters this model accepts (§6.3)." },
-        "max_adapters": { "type": "integer", "minimum": 1, "description": "How many adapters one request may combine on this model. Default 1." }
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Short usage guidance for this model: prompting rules, limits."
+        },
+        "adapters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AdapterOffer" },
+          "description": "The adapters this model accepts (§6.3)."
+        },
+        "max_adapters": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many adapters one request may combine on this model. Default 1."
+        },
+        "supports": {
+          "type": "object",
+          "description": "What this model supports beyond what every offer of the operation accepts (§6.4). Base keys are typed here; profiles type their own.",
+          "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+          "properties": {
+            "stream": { "type": "boolean" },
+            "seed": { "type": "boolean" },
+            "voices": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits",
+          "description": "This model's own limits, each within the operation's (§6.4)."
+        }
       }
     },
     "AdapterOffer": {
@@ -160,6 +221,20 @@
         "title": { "type": "string" },
         "schema": { "type": "object" }
       }
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "max_width": { "type": "integer", "minimum": 1 },
+        "max_height": { "type": "integer", "minimum": 1 },
+        "max_megapixels": { "type": "number", "exclusiveMinimum": 0 },
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_inputs": { "type": "integer", "minimum": 1 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "The operation's limits: the most any offer allows (§6.4). Base fields, and the limit fields the profile defines.",
+      "propertyNames": { "pattern": "^(m(ax|in)_[a-z0-9_]+)$" },
+      "additionalProperties": { "type": "number", "minimum": 0 }
     }
   }
 }

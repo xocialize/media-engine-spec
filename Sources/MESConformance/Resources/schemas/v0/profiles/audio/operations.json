@@ -1,0 +1,174 @@
+{
+  "profile": "audio",
+  "version": "0.1",
+  "operations": {
+    "audio.design_voice": {
+      "inputs": {
+        "description": {
+          "kind": "text",
+          "required": true
+        },
+        "text": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "samples": {
+          "kind": "audio"
+        }
+      },
+      "vocabulary": [
+        "language",
+        "seed",
+        "count",
+        "quality",
+        "output",
+        "prompt_enhance"
+      ],
+      "vocabulary_defs": {
+        "count": "voice_count"
+      },
+      "seeded": true
+    },
+    "audio.speak": {
+      "inputs": {
+        "text": {
+          "kind": "text",
+          "required": true
+        },
+        "voice_ref": {
+          "kind": "audio",
+          "required": false
+        },
+        "voice_ref_text": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "audio": {
+          "kind": "audio",
+          "streamable": true
+        }
+      },
+      "vocabulary": [
+        "voice",
+        "language",
+        "emotion",
+        "style",
+        "speed",
+        "target_duration_s",
+        "seed",
+        "quality",
+        "output"
+      ],
+      "seeded": true
+    },
+    "audio.edit_speech": {
+      "inputs": {
+        "audio": {
+          "kind": "audio",
+          "required": true
+        },
+        "transcript": {
+          "kind": "text",
+          "required": false
+        }
+      },
+      "outputs": {
+        "audio": {
+          "kind": "audio"
+        },
+        "transcript": {
+          "kind": "data",
+          "value_schema": "vocabulary.schema.json#/$defs/edited_transcript"
+        }
+      },
+      "vocabulary": [
+        "edit",
+        "seed",
+        "quality",
+        "output"
+      ],
+      "required_params": [
+        "edit"
+      ],
+      "seeded": true
+    },
+    "audio.generate": {
+      "inputs": {
+        "prompt": {
+          "kind": "text",
+          "required": true
+        }
+      },
+      "outputs": {
+        "sounds": {
+          "kind": "audio"
+        }
+      },
+      "vocabulary": [
+        "negative_prompt",
+        "duration_s",
+        "seed",
+        "count",
+        "quality",
+        "output"
+      ],
+      "exact_duration": true,
+      "seeded": true
+    },
+    "audio.compose": {
+      "inputs": {
+        "caption": {
+          "kind": "text",
+          "required": true
+        },
+        "lyrics": {
+          "kind": "text",
+          "required": false
+        },
+        "score": {
+          "kind": "text",
+          "required": false
+        },
+        "reference": {
+          "kind": "audio",
+          "required": false
+        },
+        "source": {
+          "kind": "audio",
+          "required": false
+        }
+      },
+      "outputs": {
+        "song": {
+          "kind": "audio"
+        },
+        "score": {
+          "kind": "text"
+        },
+        "timestamps": {
+          "kind": "data",
+          "value_schema": "vocabulary.schema.json#/$defs/song_timestamps"
+        }
+      },
+      "vocabulary": [
+        "duration_s",
+        "language",
+        "planning",
+        "edit",
+        "anchors",
+        "timestamps",
+        "seed",
+        "quality",
+        "output"
+      ],
+      "vocabulary_defs": {
+        "edit": "compose_edit"
+      },
+      "seeded": true
+    }
+  }
+}

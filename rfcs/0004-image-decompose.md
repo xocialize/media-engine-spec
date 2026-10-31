@@ -178,7 +178,8 @@ Amendments:
   [RFC 0003](0003-offer-supports-and-voices.md) lands, the operation's range is the most any offer allows, and a
   named model that allows fewer refuses with 422 `out_of_limits` before it runs. When RFC 0003 lands, Image defines an
   offer limit `max_layer_count` and a gate key `supports.composite` (boolean, absent `false`, gating an `outputs` that
-  contains `composite`).
+  contains `composite`). *(2026-10-30: RFC 0003 landed; its A4 makes `supports.composite` absent `true`, the
+  current behaviour, as its rule 1 requires.)*
 - **A6. `outputs` refusals.** `layers` is required by §3.2, not the schema (no `contains` in the validators' subset):
   without it, 400 `invalid_request`. An `outputs` value the descriptor doesn't list is 422 `unsupported_parameter`,
   like `output` (§1.2), for `matte` as well.

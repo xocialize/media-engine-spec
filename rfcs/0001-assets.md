@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Draft |
+| **Status** | Accepted, amended (2026-10-30) |
 | **Affects** | Base 0.1 (§4, §7.1, §8, §13, §15, §17, §18) |
 | **Author** | xocialize |
-| **Decision** | A-2 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.1) |
+| **Decision** | A-2 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.1). Decided by mlx-apps, as the spec's owner, for Gaea's phase G2; landed in Base 0.1 §8.1 and §13 rule 6, and MESKit v0.7.0 (see [Decision](#decision)) |
 
 ## Problem
 
@@ -177,3 +177,40 @@ implementation, and the MLXEngine adapter's eviction is where it's checked.
 - **Creation over MCP.** A `mes_create_asset` helper tool taking a data URL would let agents keep a voice. It shares
   the size problem of long audio over MCP (evaluation §3.5), so it waits for that answer.
 - **A count limit** (`max_assets_per_client`) as well as the byte quota.
+
+## Decision
+
+**Accepted, amended (2026-10-30).** The problem is real and blocks every cloning engine: all of our TTS packages cache
+the encoded reference, and Base forbade it. A client-owned resource is the only option that keeps custody honest (the
+client chooses what is kept and ends it) while making the cache legal, and it serves Image's reused references too. It
+lands in the Base 0.1 draft as the optional `assets` feature, with Audio 0.1, in v0.7.0.
+
+Amendments:
+- **A1. Errors named.** A missing or short `ttl_s` (under 60) is 400 `invalid_request`. A wrong `Content-Digest` is
+  400 `invalid_request`, as for uploads.
+- **A2. A job keeps its asset.** The draft's "a job already accepted keeps its input" is made concrete: the engine
+  takes the job's copy when it accepts the job, so deleting the asset afterwards doesn't fail the job. MESKit clones
+  the file (APFS) at submit.
+- **A3. `GET {path}/assets/{id}`** returns one Asset; the list is `{assets: [Asset]}` (`asset.schema.json#/$defs/List`).
+- **A4. Rule 6 says why bytes-keyed caches are out.** A cache keyed by a clip's bytes could serve another client's
+  identical upload, and a hit is a timing signal; the rule now says so in Base §13.
+- **A5. Kit.** MESEngineCore keeps assets beside the spool and wipes them on restart (§8.1 allows it), claims `assets`
+  by default (`EngineConfiguration.assets`, `maxAssetTTLSeconds` 1 day, `maxAssetBytesPerClient` 1 GiB), tells the
+  engine which inputs are assets (`RunContext.assets`), and calls `MediaEngine.assetRemoved(_:)` on delete, expiry and
+  unpairing.
+
+### Open questions, answered
+
+1. **Renewal: no.** Creating an asset again is cheap on a LAN, and a renewal would let a client keep media
+   indefinitely without re-sending it, which the TTL exists to bound.
+2. **Creation over MCP: not in 0.x.** It shares long audio's size problem over MCP. Agents use assets their client
+   created over HTTP, by `asset:<id>`.
+3. **A count limit: no.** `max_asset_bytes_per_client` bounds what matters; an engine that wants a count can refuse
+   with 413 and a `reason`.
+
+### Conformance, as shipped
+
+BASE-032 (lifecycle), BASE-033 (digest and `ttl_s`), BASE-034 (expiry; runs with `--max-ttl-wait` 75 or more) and
+BASE-035 (a second pairing's assets are invisible and unusable; paired mode with `--pair`). That unpairing deletes a
+client's assets, and rule 6's limits on derived data, aren't observable from outside: the rule binds the
+implementation.

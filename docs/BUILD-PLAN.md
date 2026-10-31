@@ -459,17 +459,61 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     bucket, about 1 minute.
   - **Tests:** a slow decompose fails at a 1 s job timeout and is released, then passes IMAGE-003, -014 and -016 at
     30 s, every run at `draft`. 94 tests pass (93 before). No spec or schema change.
+- **`v0.7.0`** (2026-10-30; Gaea phase G2): **Audio 0.1**, and the three Base features audio needs. RFCs
+  [0001](../rfcs/0001-assets.md), [0002](../rfcs/0002-streamed-output.md) and [0003](../rfcs/0003-offer-supports-and-voices.md)
+  are accepted with amendments (each RFC's Decision section). Base and Image stay 0.1 drafts; everything new is optional.
+  - **Audio 0.1** ([`spec/profiles/audio.md`](../spec/profiles/audio.md), from the evaluation's Direction): five generative
+    operations, `audio.design_voice`, `audio.speak` (a preset voice, a cloned one, or the model's own), `audio.edit_speech`
+    (one edit, AuK's set of fourteen kinds), `audio.generate` (sounds, exact lengths) and `audio.compose` (A-10: songs,
+    instrumentals, `cover`/`repaint`/`extend`, an ABC score, timestamps). One label set: 17 emotions with aliases, 9
+    styles, 10 cues in one inline syntax (`[laugh]`, `[pause 1.5s]`), 8 lyrics section tags. Seeds are 0 – 2³²−1.
+    Licence notices go with results and into the file (A-8, A-9, for Audio). Schemas in
+    `schemas/v0/profiles/audio/`: `operations.json`, `operations.schema.json`, `vocabulary.schema.json`,
+    `supports.schema.json` (the offer keys and limit fields per operation) and `job-request.schema.json`.
+  - **What each offer supports** (Base §6.4, §6.5; RFC 0003): `supports` and `limits` on a model offer, keys typed by
+    Base (`stream`, `seed`, `voices`) and the profiles, each a Gate, Warn or Fact. A request implies the offers that
+    admit it; a named model that doesn't is 422; a request with no tier may run at a tier that admits it. Voice lists
+    by `GET {path}/operations/{op}/models/{model}/voices` (ETag) and `mes_list_voices`; `provenance.voice`; the
+    `voice` widget. Image gains `negative_prompt`, `composite` and `max_layer_count` (Image §2.1).
+  - **Assets** (Base §8.1, §13 rule 6; RFC 0001): `POST/GET/DELETE {path}/assets`, `{"asset": id}` inputs, `asset:<id>`
+    over MCP, `max_asset_ttl_s` and `max_asset_bytes_per_client`; an engine may keep what it derives from an asset
+    for its life, keyed by the asset, never by bytes.
+  - **Streamed output** (Base §11; RFC 0002, reversing OQ-6 for output): `stream: [{output, encoding?}]`,
+    `plan.streams`, `job.output_chunk` events (`pcm_s16le`, `pcm_f32le`); the output is exactly the chunks; the final
+    chunk only after success; release is barge-in. Progress gains `phase` and `media_s`; outputs gain `sample_rate`,
+    `channels` and `bit_depth`.
+  - **MESKit:** `AudioProfile` and `ProfileTable` (shared with Image), `WAVFile`, `ProfileRules` and
+    `OfferRequirement` (the kit applies every gate, the request-readable limits and the Warn keys; it removes cues a
+    model can't perform), `MediaEngine.voices(operation:model:)` and `assetRemoved(_:)`, `RunContext.streams`,
+    `.assets` and `.voice`, `RunReporter.chunk(_:samples:final:)` and `progress(phase:mediaSeconds:)`,
+    `ProducedOutput.audio(…)` and `.streamed(_:)`. A new progress phase always passes the throttle (AB-A-0156). MCP
+    results inline audio of at most 1 MB.
+  - **Mock:** `MockAudioEngine` (tones, noise and chords that obey the profile: three `speak` offers, one streaming,
+    three preset voices, two editors, three composers with the evaluation's licence postures) and `MockMediaEngine`,
+    which `mes-mock-engine` now serves: Image's 15 operations and Audio's 5.
+  - **Conformance:** AUDIO-001 to AUDIO-014; BASE-014 to BASE-018 (supports and voices), BASE-032 to BASE-035
+    (assets), BASE-053 to BASE-057 (streaming). The report and CLI say "Audio 0.1: conforms". Every audio test asks
+    for an offer's cheapest tier, so `--job-timeout` covers slow models. Examples: `operations-audio-speak.json`,
+    `operations-audio-edit-generate.json`, `operations-audio-compose.json`, `voices-kokoro.json`, `asset.json`,
+    `job-request-speak-stream.json`, `job-request-edit-speech.json`, `job-request-compose.json`,
+    `event-output-chunk.json`, `job-holding-speak.json` and `job-holding-compose.json`.
+    102 tests pass (94 before); `mes-mock-engine` conforms with 69 passed and 6 skipped in open mode (BASE-034 also
+    passes with `--max-ttl-wait 80`): Base, Image and Audio 0.1.
+  - **Source changes for consumers:** `Feature` gains `assets` and `streaming`, `EventType` gains `outputChunk`, and
+    `InputValue` gains `asset`, so exhaustive `switch`es over them need a case. `MediaEngine` gains two requirements
+    with defaults. `ImageProfile.OperationSpec` and `.Table` are now `ProfileOperationSpec` and `ProfileTable`
+    (aliases kept). MCP lists five helpers, not four. `Descriptor.Limits` keeps profile fields in `profile`.
+    `mes-mock-engine` is named "MES Mock Engine" (was "MES Mock Image Engine"); `MockImageEngine` alone is unchanged.
+    `mes` still passes 11 of 11 and `tools/smoke-cli.sh` end to end.
 
-## Next: the Audio profile
+## Next: Audio after 0.1
 
-Drafting, from [`docs/AUDIO-EVALUATION.md`](AUDIO-EVALUATION.md) and RFCs 0001–0003. The profile has no schemas or
-examples yet: `schemas/v0/profiles/` holds Image only.
-
-- **TODO (A-10, 2026-10-24):** when `spec/profiles/audio.md` is drafted, add `schemas/v0/profiles/audio/operations.json`
-  and `vocabulary.schema.json` covering `audio.compose` (evaluation §4.7: `caption`, `lyrics`, `score`, `reference`,
-  `source`; `duration_s`, `language`, `planning`, `edit`, `anchors`, `timestamps`; outputs `song`, `score`,
-  `timestamps`), and under `examples/v0/` a `job-request-compose.json`, an `operations-audio-compose.json` descriptor
-  with the three offers of §4.7.5 (ACE-Step 1.5 default, YuE2-3B `named_only`, MiniMax Music 3 with its display
-  notice), and a `job-holding-compose.json` showing `effective.duration_s`, `effective.anchors` and `song_truncated`.
-  Base needs `supports` and per-offer `limits` on the offer schema first (RFC 0003), `min_duration_s` in limits, and
-  `phase` and `media_s` on progress (evaluation §3.4).
+- **MESClientKit** gains assets (create, list, delete, re-create on 422), voice lists by ETag, and chunks as an
+  `AsyncSequence` per output; MESInProcess carries chunks with no sockets; MESFormsUI gains the audio input widget
+  (pick, record, play), the `voice` picker and a player.
+- **Base §10.2** takes A-8 and A-9 for every profile (Audio already applies them, Audio §1.12); A-6
+  (`commercial_use: conditional`) is still open.
+- **The MLXEngine adapter** needs the engine-side work of the evaluation's §6: voice lists, declared cues, languages
+  and sample rates per surface, a canonical seed, streaming in the best-tier packages, and a per-asset voice handle.
+- **Later operations:** `audio.speak_dialog`, `audio.separate`, `audio.enhance` (Audio §7). The Video profile shares
+  time with Audio (evaluation §7): `duration_s`, `sample_rate`, `media_s` and streamed chunks are in Base now.

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shape of the Audio profile's operations.json",
+  "type": "object",
+  "required": ["profile", "version", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "profile": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+    "operations": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*\\.[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["inputs", "outputs", "vocabulary"],
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["kind", "required"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "enum": ["text", "image", "mask", "video", "audio", "data"] },
+                "required": { "type": "boolean" }
+              }
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": ["kind"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "enum": ["text", "image", "mask", "video", "audio", "data"] },
+                "value_schema": { "type": "string" },
+                "streamable": {
+                  "type": "boolean",
+                  "description": "The output may stream (Base §6, RFC 0002): an audio output with max 1 whose descriptor may declare stream."
+                }
+              }
+            }
+          },
+          "vocabulary": { "type": "array", "items": { "type": "string" } },
+          "requires_one_of": { "type": "array", "items": { "type": "string" } },
+          "vocabulary_defs": { "type": "object", "additionalProperties": { "type": "string" } },
+          "required_params": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Vocabulary parameters a request MUST carry; a request without one is 400 invalid_request."
+          },
+          "exact_duration": {
+            "type": "boolean",
+            "description": "Each audio output is duration_s long, to the frame (§3.4)."
+          },
+          "seeded": {
+            "type": "boolean",
+            "description": "Results report the seed each used, and an unseeded request gets one the engine picks."
+          }
+        }
+      }
+    }
+  }
+}

@@ -37,6 +37,17 @@ let manifest: [(String, String, any (Codable & Sendable).Type)] = [
     ("job-holding-edit-adapters.json", "base/job.schema.json", Job.self),
     ("operations-image-decompose.json", "base/operations-list.schema.json", OperationsList.self),
     ("job-holding-decompose.json", "base/job.schema.json", Job.self),
+    ("operations-audio-speak.json", "base/operations-list.schema.json", OperationsList.self),
+    ("operations-audio-edit-generate.json", "base/operations-list.schema.json", OperationsList.self),
+    ("operations-audio-compose.json", "base/operations-list.schema.json", OperationsList.self),
+    ("voices-kokoro.json", "base/voices.schema.json", VoiceList.self),
+    ("asset.json", "base/asset.schema.json", Asset.self),
+    ("job-request-speak-stream.json", "profiles/audio/job-request.schema.json", JobRequest.self),
+    ("job-request-edit-speech.json", "profiles/audio/job-request.schema.json", JobRequest.self),
+    ("job-request-compose.json", "profiles/audio/job-request.schema.json", JobRequest.self),
+    ("event-output-chunk.json", "base/event.schema.json", Event.self),
+    ("job-holding-speak.json", "base/job.schema.json", Job.self),
+    ("job-holding-compose.json", "base/job.schema.json", Job.self),
 ]
 
 func schema(_ target: String, loader: SchemaLoader) throws -> (JSONValue, URL, JSONValue) {
@@ -106,6 +117,46 @@ struct MESCoreTests {
         #expect(ImageProfile.operations == canonical)
         #expect(ImageProfile.operations.operations.count == 15)
         #expect(ImageProfile.operations.operations["image.fill"]?.preservesUnmasked == true)
+    }
+
+    @Test("The bundled Audio table and vocabulary are identical to schemas/v0/profiles/audio")
+    func audioTable() throws {
+        let canonical = try MESJSON.decoder.decode(ProfileTable.self, from: Data(contentsOf:
+            schemas.appendingPathComponent("profiles/audio/operations.json")))
+        #expect(AudioProfile.operations == canonical)
+        #expect(AudioProfile.operations.operations.keys.sorted() == ["audio.compose", "audio.design_voice", "audio.edit_speech",
+                                                                    "audio.generate", "audio.speak"])
+        #expect(AudioProfile.vocabulary == (try json(schemas.appendingPathComponent("profiles/audio/vocabulary.schema.json"))))
+        // The label lists are the vocabulary's enums.
+        #expect(AudioProfile.vocabulary["$defs"]?["emotion_label"]?["enum"] == .array(AudioProfile.emotions.map { .string($0) }))
+        #expect(AudioProfile.vocabulary["$defs"]?["style"]?["enum"] == .array(AudioProfile.styles.map { .string($0) }))
+        #expect(AudioProfile.vocabulary["$defs"]?["cue"]?["enum"] == .array(AudioProfile.cues.map { .string($0) }))
+        #expect(AudioProfile.vocabulary["$defs"]?["edit"]?["properties"]?["kind"]?["enum"] == .array(AudioProfile.editKinds.map { .string($0) }))
+        #expect(AudioProfile.vocabulary["$defs"]?["section"]?["enum"] == .array(AudioProfile.sections.map { .string($0) }))
+    }
+
+    @Test("Cues: one syntax, [name] and [pause Ns], with \\[ for a literal bracket")
+    func cues() {
+        let s = AudioProfile.segments("Well [laugh] that's it. [pause 1.5s] See \\[S1] and [a long aside].")
+        #expect(s == [.text("Well "), .cue("laugh", seconds: nil), .text(" that's it. "), .cue("pause", seconds: 1.5),
+                      .text(" See [S1] and [a long aside].")])
+        #expect(AudioProfile.segments(AudioProfile.text(s)) == s)
+        #expect(AudioProfile.canonicalEmotion("Fearful") == "afraid" && AudioProfile.canonicalEmotion("anger") == "angry")
+        #expect(AudioProfile.canonicalEmotion("smug") == nil)
+        #expect(AudioProfile.sectionTags("[Verse]\nla\n[chorus - anthemic, full band]\nla") == ["verse", "chorus"])
+        #expect(AudioProfile.sectionTags("just words") == ["verse"])
+    }
+
+    @Test("WAV: written and read back, integer and float")
+    func wav() throws {
+        let int16 = WAVFile(sampleRate: 24000, channels: 2, samples: [0, 1000, -1000, 32767])
+        let back = try WAVFile(int16.data)
+        #expect(back == int16 && back.frames == 2 && back.durationSeconds == 2.0 / 24000)
+        let plan = StreamPlan(output: "audio", encoding: .pcmF32LE, sampleRate: 48000, channels: 1)
+        var pcm = Data()
+        for x: Float in [0.5, -0.25] { withUnsafeBytes(of: x.bitPattern.littleEndian) { pcm.append(contentsOf: $0) } }
+        let float = try WAVFile(WAVFile(stream: plan, pcm: pcm).data)
+        #expect(float.format == .float && float.bitsPerSample == 32 && float.floatSamples == [0.5, -0.25])
     }
 
     @Test("Pairing code matches the independent Python computation")

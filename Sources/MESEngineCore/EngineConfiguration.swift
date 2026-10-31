@@ -40,6 +40,12 @@ public struct EngineConfiguration: Sendable {
     /// Browser origins allowed to call the engine. Empty refuses every request that carries an `Origin`.
     public var allowedOrigins: Set<String> = []
     public var grants: Bool = true
+    /// Keep assets for clients (Base §8.1): files reused across jobs, so an engine may cache what it derives from them.
+    public var assets: Bool = true
+    /// The longest an asset may be kept (`limits.max_asset_ttl_s`), at most 604 800.
+    public var maxAssetTTLSeconds: Int = 86_400
+    /// The total size of one client's assets (`limits.max_asset_bytes_per_client`); nil for no quota.
+    public var maxAssetBytesPerClient: Int? = 1 << 30
     public var sweepInterval: Duration = .seconds(5)
     /// Closes keep-alive connections idle between requests. A request in flight (a long poll, an SSE stream, an MCP
     /// call waiting `wait_s`) isn't idle.
@@ -88,6 +94,7 @@ public struct EngineConfiguration: Sendable {
 
     package var features: [Feature] {
         [.uploads, .sse] + (grants ? [.grants] : []) + [.previews, .websocket, .mcp] + (mode == .paired ? [.pairing] : [])
+            + (assets ? [.assets] : [])
     }
 }
 

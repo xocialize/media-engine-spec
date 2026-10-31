@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Draft |
+| **Status** | Accepted, amended (2026-10-30) |
 | **Affects** | Base 0.1 (§6, §6.1, §10.1, §10.3, §15, §18); the profiles define their keys |
 | **Author** | xocialize |
-| **Decision** | A-4 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.3) |
+| **Decision** | A-4 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.3). Decided by mlx-apps, as the spec's owner; landed in Base 0.1 §6.4, §6.5, §10.1, §10.3, §15, Image §2.1, Audio §4 and MESKit v0.7.0 (see [Decision](#decision)) |
 
 ## Problem
 
@@ -315,3 +315,38 @@ BASE-080 extends to the `mes_list_voices` helper.
   draft leaves it out.
 - **One list for the operation.** A client that wants a voice before it picks a model would need
   `GET {path}/operations/{op}/voices` across models. This draft keeps the list per model: name the model, then list.
+
+## Decision
+
+**Accepted, amended (2026-10-30).** Without per-offer facts, Base §6 rule 4 ("no surprises") can't be met by any
+operation whose models differ, and the Audio profile has nothing to route a voice, a clone or an emotion by. The
+rule carried over is MLXEngine's declared-control rule, which already works in-process. It lands in the Base 0.1
+draft with Audio 0.1 in v0.7.0; Image gains its keys at the same time.
+
+Amendments:
+- **A1. Profile limit fields.** A descriptor's `limits`, and an offer's, take the profile's `max_…` and `min_…` fields
+  beside Base's (`descriptor.schema.json` `Limits`), and a `min_` limit is satisfied from above.
+- **A2. A tier may follow the gates.** When a request asks for no tier and no offer at the default tier admits it, the
+  engine MAY use another tier whose offers do (§6 rule 2, §6.4 rule 2). Cloning and best-tier models are often the
+  only ones that support a request, and a client that named no tier shouldn't get a 422 for it.
+- **A3. The kit applies the keys.** MESEngineCore filters offers by gates and request-readable limits
+  (`OfferRequirement`, `ProfileRules`), produces the Warn keys' warnings (`seed_ignored`, the profiles'), and reads
+  each offer's voices from `MediaEngine.voices(operation:model:)` when it loads descriptors.
+- **A4. Image's keys.** `negative_prompt` (Warn, absent `true`), `composite` (Gate on `decompose`'s `outputs`) and the
+  limit field `max_layer_count`. `composite` is absent `true`, not RFC 0004 A5's `false`: rule 1 makes an absent key
+  mean the version's current behaviour, which is the descriptor's outputs deciding.
+- **A5. Policy and voices.** `license: commercial-use` covers a voice's own licence (§10.3), and MCP results name the
+  voice with its licence and notice.
+
+### Open questions, answered
+
+1. **Tags vocabulary:** the Audio profile suggests one (Audio §4.3) without requiring it.
+2. **Voices across tiers:** a voice routes like any gate, within the tier rules. A client that chose a voice for its
+   sound names the model too.
+3. **Paging: no.** The largest list has 10 voices.
+4. **One list for the operation: no.** Name the model, then list; the catalogue stays in the client.
+
+### Conformance, as shipped
+
+BASE-014 (declarations), BASE-015 (a gate on a named model and without one, by `stream`), BASE-016 (a voice implies
+its model), BASE-017 (`seed_ignored`) and BASE-018 (voice lists, ETag, 404s); AUDIO-002 types the Audio keys.

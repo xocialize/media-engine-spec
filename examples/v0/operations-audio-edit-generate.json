@@ -1,0 +1,521 @@
+{
+  "etag": "\"ops-03274f190f93\"",
+  "operations": [
+    {
+      "operation": "audio.edit_speech",
+      "profile": "audio",
+      "profile_version": "0.1",
+      "title": "Edit speech",
+      "summary": "One edit to a spoken take: its feeling, its delivery, a cue, the words, or the noise.",
+      "inputs": [
+        {
+          "name": "audio",
+          "kind": "audio",
+          "required": true,
+          "max": 1,
+          "media_types": [
+            "audio/wav",
+            "audio/flac",
+            "audio/mpeg",
+            "audio/mp4"
+          ]
+        },
+        {
+          "name": "transcript",
+          "kind": "text",
+          "required": false
+        }
+      ],
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edit"
+        ],
+        "properties": {
+          "edit": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false,
+            "x-mes-ui": {
+              "label": "Edit"
+            },
+            "properties": {
+              "kind": {
+                "enum": [
+                  "emotion",
+                  "style",
+                  "add_cue",
+                  "remove_cue",
+                  "replace_text",
+                  "insert_text",
+                  "remove_text",
+                  "speed",
+                  "pitch",
+                  "volume",
+                  "timbre",
+                  "de_accent",
+                  "denoise",
+                  "trim_silence"
+                ]
+              },
+              "emotion": {
+                "enum": [
+                  "neutral",
+                  "happy",
+                  "sad",
+                  "angry",
+                  "afraid",
+                  "disgusted",
+                  "surprised",
+                  "calm",
+                  "melancholic",
+                  "excited",
+                  "humorous",
+                  "confused",
+                  "empathetic",
+                  "embarrassed",
+                  "depressed",
+                  "cold",
+                  "admiring"
+                ]
+              },
+              "style": {
+                "enum": [
+                  "normal",
+                  "whisper",
+                  "shout",
+                  "gentle",
+                  "serious",
+                  "warm",
+                  "narration",
+                  "conversational",
+                  "news"
+                ]
+              },
+              "cue": {
+                "enum": [
+                  "laugh",
+                  "cough",
+                  "sigh",
+                  "breath",
+                  "gasp",
+                  "clear_throat",
+                  "hesitation",
+                  "sob",
+                  "sniff",
+                  "pause"
+                ]
+              },
+              "at": {
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "with": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "anchor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "position": {
+                "enum": [
+                  "before",
+                  "after"
+                ]
+              },
+              "factor": {
+                "type": "number",
+                "minimum": 0.25,
+                "maximum": 4
+              },
+              "semitones": {
+                "type": "number",
+                "minimum": -12,
+                "maximum": 12
+              },
+              "gain_db": {
+                "type": "number",
+                "minimum": -40,
+                "maximum": 40
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "x-mes-ui": {
+              "label": "Seed",
+              "widget": "seed",
+              "advanced": true
+            }
+          },
+          "quality": {
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "default": "standard",
+            "x-mes-ui": {
+              "label": "Quality",
+              "widget": "picker"
+            }
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "audio/wav",
+                  "audio/flac"
+                ]
+              },
+              "sample_rate": {
+                "type": "integer",
+                "minimum": 8000,
+                "maximum": 192000
+              },
+              "bit_depth": {
+                "enum": [
+                  16,
+                  24
+                ]
+              },
+              "channels": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              }
+            },
+            "x-mes-ui": {
+              "label": "Format",
+              "advanced": true
+            }
+          }
+        }
+      },
+      "outputs": [
+        {
+          "name": "audio",
+          "kind": "audio",
+          "media_types": [
+            "audio/wav"
+          ],
+          "min": 1,
+          "max": 1
+        },
+        {
+          "name": "transcript",
+          "kind": "data",
+          "media_types": [
+            "application/json"
+          ],
+          "min": 0,
+          "max": 1
+        }
+      ],
+      "limits": {
+        "max_duration_s": 90
+      },
+      "quality_tiers": [
+        "standard"
+      ],
+      "models": [
+        {
+          "id": "step-audio-editx",
+          "title": "Step-Audio-EditX (int8)",
+          "license": {
+            "spdx": "Apache-2.0",
+            "commercial_use": true,
+            "terms_url": "https://huggingface.co/stepfun-ai/Step-Audio-EditX"
+          },
+          "memory_class": "large",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "standard"
+          ],
+          "default": true,
+          "notes": "Give the take's transcript. The take is made again, so its length changes.",
+          "supports": {
+            "edits": [
+              "emotion",
+              "style",
+              "add_cue",
+              "denoise",
+              "trim_silence"
+            ],
+            "emotions": [
+              "happy",
+              "sad",
+              "angry",
+              "afraid",
+              "disgusted",
+              "surprised",
+              "excited",
+              "neutral",
+              "humorous",
+              "confused",
+              "empathetic",
+              "embarrassed",
+              "depressed",
+              "cold",
+              "admiring"
+            ],
+            "styles": [
+              "whisper",
+              "shout",
+              "gentle",
+              "serious",
+              "warm",
+              "narration",
+              "conversational",
+              "news",
+              "normal"
+            ],
+            "cues": [
+              "laugh",
+              "sigh",
+              "breath",
+              "hesitation"
+            ],
+            "transcript": "required",
+            "keeps_length": false,
+            "sample_rate": 24000
+          },
+          "limits": {
+            "max_duration_s": 90
+          }
+        },
+        {
+          "id": "auk",
+          "title": "AuK",
+          "license": {
+            "spdx": "LicenseRef-Qwen-Research",
+            "commercial_use": false,
+            "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-7B/blob/main/LICENSE",
+            "notice": "Research or evaluation use only.",
+            "accepted_required": true
+          },
+          "memory_class": "large",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "standard"
+          ],
+          "named_only": true,
+          "supports": {
+            "edits": [
+              "emotion",
+              "style",
+              "denoise"
+            ],
+            "emotions": [
+              "happy",
+              "sad",
+              "angry",
+              "afraid",
+              "disgusted",
+              "surprised",
+              "calm",
+              "excited"
+            ],
+            "styles": [
+              "whisper",
+              "normal"
+            ],
+            "transcript": "unused",
+            "keeps_length": true,
+            "languages": [
+              "en",
+              "zh"
+            ],
+            "sample_rate": 24000
+          },
+          "limits": {
+            "max_duration_s": 30
+          }
+        }
+      ],
+      "remote": {
+        "possible": false
+      }
+    },
+    {
+      "operation": "audio.generate",
+      "profile": "audio",
+      "profile_version": "0.1",
+      "title": "Generate a sound",
+      "summary": "Foley, ambience, creatures and effects from a description: sounds, not voices.",
+      "inputs": [
+        {
+          "name": "prompt",
+          "kind": "text",
+          "required": true
+        }
+      ],
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "negative_prompt": {
+            "type": "string",
+            "maxLength": 4000,
+            "x-mes-ui": {
+              "label": "Avoid",
+              "widget": "textarea",
+              "advanced": true
+            }
+          },
+          "duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 30,
+            "x-mes-ui": {
+              "label": "Length (s)",
+              "widget": "slider"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 1,
+            "x-mes-ui": {
+              "label": "Count",
+              "widget": "stepper"
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "x-mes-ui": {
+              "label": "Seed",
+              "widget": "seed",
+              "advanced": true
+            }
+          },
+          "quality": {
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "default": "standard",
+            "x-mes-ui": {
+              "label": "Quality",
+              "widget": "picker"
+            }
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "audio/wav",
+                  "audio/flac"
+                ]
+              },
+              "sample_rate": {
+                "type": "integer",
+                "minimum": 8000,
+                "maximum": 192000
+              },
+              "bit_depth": {
+                "enum": [
+                  16,
+                  24
+                ]
+              },
+              "channels": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              }
+            },
+            "x-mes-ui": {
+              "label": "Format",
+              "advanced": true
+            }
+          }
+        }
+      },
+      "outputs": [
+        {
+          "name": "sounds",
+          "kind": "audio",
+          "media_types": [
+            "audio/wav",
+            "audio/flac"
+          ],
+          "min": 1,
+          "max": 4
+        }
+      ],
+      "limits": {
+        "max_duration_s": 30,
+        "max_count": 4
+      },
+      "quality_tiers": [
+        "draft",
+        "standard",
+        "best"
+      ],
+      "models": [
+        {
+          "id": "moss-soundeffect-2.0",
+          "title": "MOSS-SoundEffect 2.0 (int4)",
+          "license": {
+            "spdx": "Apache-2.0",
+            "commercial_use": true,
+            "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"
+          },
+          "memory_class": "large",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "draft",
+            "standard",
+            "best"
+          ],
+          "default": true,
+          "notes": "Captions in English or Chinese. It always makes 30 s and crops, so a 2 s sound costs as much as a 30 s one.",
+          "supports": {
+            "languages": [
+              "en",
+              "zh"
+            ],
+            "sample_rate": 48000,
+            "channels": 1
+          },
+          "limits": {
+            "max_duration_s": 30
+          }
+        }
+      ],
+      "remote": {
+        "possible": false
+      }
+    }
+  ]
+}

@@ -42,6 +42,22 @@ def delp(path):
 
 
 CASES = [
+    ("job-request-speak-stream.json", "profiles/audio/job-request.schema.json", setp(["params", "guidance"], 3),
+     "audio request param outside the vocabulary"),
+    ("job-request-speak-stream.json", "profiles/audio/job-request.schema.json", delp(["inputs", "text"]), "speak without its text"),
+    ("job-request-speak-stream.json", "profiles/audio/job-request.schema.json", setp(["params", "seed"], 4294967296),
+     "audio seed above 2^32-1"),
+    ("job-request-speak-stream.json", "profiles/audio/job-request.schema.json", setp(["params", "emotion"], {"label": "smug"}),
+     "unregistered emotion label"),
+    ("job-request-speak-stream.json", "base/job-request.schema.json", setp(["stream", 0, "encoding"], "opus"),
+     "unregistered stream encoding"),
+    ("job-request-edit-speech.json", "profiles/audio/job-request.schema.json", delp(["params", "edit"]), "edit_speech without an edit"),
+    ("job-request-compose.json", "profiles/audio/job-request.schema.json", setp(["params", "anchors", "key"], "E"),
+     "anchor key without a mode"),
+    ("event-output-chunk.json", "base/event.schema.json", delp(["data", "index"]), "chunk without an index"),
+    ("asset.json", "base/asset.schema.json", delp(["expires_at"]), "asset without an expiry"),
+    ("operations-audio-speak.json", "base/operations-list.schema.json",
+     setp(["operations", 0, "models", 0, "supports", "seed"], "no"), "Base supports key of the wrong type"),
     ("job-request-generate.json", "base/job-request.schema.json", setp(["policy", "license"], "free"), "unknown licence policy"),
     ("job-request-generate.json", "base/job-request.schema.json", setp(["operation"], "Generate"), "operation id not profile.verb"),
     ("job-request-generate.json", "base/job-request.schema.json", setp(["extensions"], {"lora": {}}), "extension without x-vendor. prefix"),

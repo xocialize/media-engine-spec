@@ -6,7 +6,7 @@
 | **Spec** | Base 0.1, Image 0.1 (media-engine-spec v0.4.0) |
 | **Models** | The audio rows of the MLXEngine registry (`MLXEngine/mlx-engine-swift/docs/model-registry.md` § Audio), `mlxengine-audio/PROD`, `mlx-vibevoice-asr-swift`; for music, `mlxengine-audio/WIP/music-survey/MUSIC-MODEL-SURVEY.md` (AB-R-0604) |
 | **Engine contract** | MLXToolKit 1.50 (`TTS.swift`, `Streaming.swift`, `LiveSTT.swift`, `SpeechEdit.swift`, `ToolDescriptor.swift`) |
-| **Status** | Evaluation. Nothing here changes the spec yet; §8 lists the decisions it needs. RFCs [0001](../rfcs/0001-assets.md), [0002](../rfcs/0002-streamed-output.md) and [0003](../rfcs/0003-offer-supports-and-voices.md) draft A-2, A-1 and A-4. |
+| **Status** | Evaluation, now taken up: [Audio 0.1](../spec/profiles/audio.md) is drafted from its Direction (v0.7.0, 2026-10-30), and RFCs [0001](../rfcs/0001-assets.md), [0002](../rfcs/0002-streamed-output.md) and [0003](../rfcs/0003-offer-supports-and-voices.md) (A-2, A-1, A-4) are accepted with amendments. A-8 and A-9 apply to Audio (Audio §1.12) and are proposed for Base; A-6 is open. Where this document and the profile differ, the profile wins. |
 
 ## Direction (2026-10-24)
 

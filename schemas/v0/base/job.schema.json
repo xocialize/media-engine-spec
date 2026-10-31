@@ -35,7 +35,13 @@
       "properties": {
         "model": { "$ref": "common.schema.json#/$defs/ModelRef" },
         "effective": { "type": "object" },
-        "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" }
+        "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" },
+        "streams": {
+          "type": "array",
+          "minItems": 1,
+          "description": "The streams, once the model is chosen (§7.2).",
+          "items": { "$ref": "#/$defs/StreamPlan" }
+        }
       }
     },
     "Output": {
@@ -54,7 +60,10 @@
         "height": { "type": "integer", "minimum": 1 },
         "duration_s": { "type": "number", "minimum": 0 },
         "fps": { "type": "number", "exclusiveMinimum": 0 },
-        "value": {}
+        "value": {},
+        "sample_rate": { "type": "integer", "minimum": 1 },
+        "channels": { "type": "integer", "minimum": 1 },
+        "bit_depth": { "type": "integer", "minimum": 1 }
       }
     },
     "Result": {
@@ -86,8 +95,16 @@
         "operation": { "$ref": "common.schema.json#/$defs/OperationId" },
         "profile_version": { "$ref": "common.schema.json#/$defs/Version" },
         "model": { "$ref": "common.schema.json#/$defs/ModelRef" },
-        "adapters": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/AdapterRef" } },
-        "helpers": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/HelperRef" } },
+        "adapters": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/AdapterRef" }
+        },
+        "helpers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/HelperRef" }
+        },
         "remote_provider": { "$ref": "common.schema.json#/$defs/RemoteProvider" },
         "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "timings": {
@@ -102,7 +119,19 @@
             "prepare_ms": { "type": "integer", "minimum": 0 },
             "run_ms": { "type": "integer", "minimum": 0 }
           }
-        }
+        },
+        "voice": { "$ref": "common.schema.json#/$defs/VoiceRef" }
+      }
+    },
+    "StreamPlan": {
+      "type": "object",
+      "required": ["output", "encoding", "sample_rate", "channels"],
+      "additionalProperties": false,
+      "properties": {
+        "output": { "type": "string" },
+        "encoding": { "$ref": "common.schema.json#/$defs/StreamEncoding" },
+        "sample_rate": { "type": "integer", "minimum": 1 },
+        "channels": { "type": "integer", "minimum": 1 }
       }
     }
   }

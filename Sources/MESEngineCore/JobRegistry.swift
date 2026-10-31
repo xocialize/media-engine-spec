@@ -10,6 +10,23 @@ package actor JobRegistry {
         var file: URL
     }
 
+    package struct AssetRecord {
+        var asset: Asset
+        var owner: String
+        var file: URL
+    }
+
+    /// A streamed output while it runs (Base §11): what's been sent, the file it's written to, and the final chunk,
+    /// held back until the job succeeds.
+    struct StreamState {
+        var plan: StreamPlan
+        var file: URL
+        var index = 0
+        var frames = 0
+        var remainder = Data()
+        var finalPending: Data?
+    }
+
     package struct Record {
         var job: Job
         var owner: String
@@ -20,7 +37,13 @@ package actor JobRegistry {
         var quality: QualityTier
         var adapters: [AdapterChoice] = []
         var initialEffective: [String: JSONValue]
+        var streams: [StreamPlan] = []
+        var voice: Voice?
+        var streamStates: [String: StreamState] = [:]
         var inputs: [String: [RunInput]] = [:]
+        var assetInputs: [String: [String?]] = [:]
+        /// Each asset input's copy, made at submit (§8.1: a job already accepted keeps its input), by name and index.
+        var assetCopies: [String: [Int: (file: URL, mediaType: String)]] = [:]
         var outputFiles: [Int: URL] = [:]
         var events: [Event] = []
         var seq = 0
@@ -30,6 +53,7 @@ package actor JobRegistry {
         var cancelled = false
         var confirmed = false
         var lastProgressAt: ContinuousClock.Instant?
+        var lastPhase: String?
         var startedAt: Date?
         var finishedAt: Date?
     }
@@ -41,6 +65,9 @@ package actor JobRegistry {
     package private(set) var operationsList = OperationsList(operations: [], etag: "\"empty\"")
     private var records: [String: Record] = [:]
     private var uploads: [String: UploadRecord] = [:]
+    private var assets: [String: AssetRecord] = [:]
+    /// Each offer's preset voices (Base §6.5), by operation then model, read from the engine with the descriptors.
+    package private(set) var voiceLists: [String: [String: VoiceList]] = [:]
     private var idempotency: [String: (job: String, expires: Date)] = [:]
     private var runningCount = 0
     private var slotWaiters: [(id: String, continuation: CheckedContinuation<Bool, Never>)] = []
@@ -79,6 +106,15 @@ package actor JobRegistry {
     package func reloadDescriptors() async {
         let list = await engine.descriptors()
         descriptors = Dictionary(list.map { ($0.operation, $0) }, uniquingKeysWith: { first, _ in first })
+        var voices: [String: [String: VoiceList]] = [:]
+        for d in list {
+            for m in d.models where m.voiceCount > 0 {
+                let found = await engine.voices(operation: d.operation, model: m.id)
+                let data = (try? MESJSON.encoder.encode(found)) ?? Data()
+                voices[d.operation, default: [:]][m.id] = VoiceList(voices: found, etag: "\"voices-\(Hashing.sha256(data).prefix(16))\"")
+            }
+        }
+        voiceLists = voices
         let data = (try? MESJSON.encoder.encode(list)) ?? Data()
         let previous = operationsList.etag
         operationsList = OperationsList(operations: list, etag: "\"ops-\(Hashing.sha256(data).prefix(16))\"")
@@ -109,10 +145,19 @@ package actor JobRegistry {
                                   url: config.implementationURL),
             baseVersions: EngineConfiguration.baseVersions, profiles: profiles, auth: config.mode,
             tls: tlsFingerprint.map { EngineInfo.TLS(fingerprintSHA256: $0) },
-            features: config.features,
+            features: features,
             limits: .init(maxUploadBytes: config.maxUploadBytes, maxInlineBytes: config.maxInlineBytes,
-                          maxQueuedJobsPerClient: config.maxQueuedJobsPerClient),
+                          maxQueuedJobsPerClient: config.maxQueuedJobsPerClient,
+                          maxAssetTTLSeconds: config.assets ? config.maxAssetTTLSeconds : nil,
+                          maxAssetBytesPerClient: config.assets ? config.maxAssetBytesPerClient : nil),
             retention: .init(outputsTTLSeconds: config.outputsTTLSeconds, jobRecordTTLSeconds: config.jobRecordTTLSeconds))
+    }
+
+    /// The configuration's features, plus `streaming` exactly when some offer streams (Base §6.4).
+    package var features: [Feature] {
+        var f = config.features
+        if descriptors.values.contains(where: { d in d.models.contains(where: \.streams) }) { f.append(.streaming) }
+        return f
     }
 
     package func health() async -> Health {
@@ -132,6 +177,64 @@ package actor JobRegistry {
         return upload
     }
 
+    // MARK: - Assets (§8.1)
+
+    /// Keeps a client's file for `ttlSeconds` (at most `max_asset_ttl_s`), for any number of its jobs.
+    package func createAsset(owner: String, mediaType: String, file: URL, bytes: Int, sha256: String, ttlSeconds: Int) throws -> Asset {
+        guard config.assets else {
+            try? FileManager.default.removeItem(at: file)
+            throw MESError(.notFound, "This engine doesn't keep assets.")
+        }
+        let held = assets.values.filter { $0.owner == owner }.reduce(0) { $0 + $1.asset.bytes }
+        if let quota = config.maxAssetBytesPerClient, held + bytes > quota {
+            try? FileManager.default.removeItem(at: file)
+            throw MESError(.tooLarge, "This client's assets would exceed \(quota) bytes.", reason: "max_asset_bytes_per_client")
+        }
+        let now = Date()
+        let id = file.lastPathComponent
+        let asset = Asset(assetID: id, mediaType: mediaType, bytes: bytes, sha256: sha256, createdAt: now,
+                          expiresAt: now.addingTimeInterval(TimeInterval(min(ttlSeconds, config.maxAssetTTLSeconds))))
+        assets[id] = AssetRecord(asset: asset, owner: owner, file: file)
+        return asset
+    }
+
+    package func listAssets(owner: String) -> [Asset] {
+        assets.values.filter { $0.owner == owner }.map(\.asset).sorted { $0.createdAt < $1.createdAt }
+    }
+
+    package func asset(_ id: String, owner: String) throws -> Asset {
+        guard let record = assets[id], record.owner == owner else { throw MESError(.notFound, "No asset \(id).") }
+        return record.asset
+    }
+
+    package func deleteAsset(_ id: String, owner: String) async throws {
+        guard let record = assets[id], record.owner == owner else { throw MESError(.notFound, "No asset \(id).") }
+        await dropAsset(id, record)
+    }
+
+    /// Deletes every asset of a client whose pairing was removed (§13 rule 6).
+    package func removeAssets(owner: String) async {
+        for (id, record) in assets where record.owner == owner { await dropAsset(id, record) }
+    }
+
+    private func dropAsset(_ id: String, _ record: AssetRecord) async {
+        assets[id] = nil
+        try? FileManager.default.removeItem(at: record.file)
+        await engine.assetRemoved(id)
+    }
+
+    /// An offer's voice list, or 404 (§6.5).
+    package func voices(operation: String, model: String) throws -> VoiceList {
+        guard let descriptor = descriptors[operation] else {
+            throw MESError(.unknownOperation, "No operation \(operation) on this engine.")
+        }
+        guard descriptor.models.contains(where: { $0.id == model }) else {
+            throw MESError(.notFound, "\(operation) offers no model \(model).")
+        }
+        guard let list = voiceLists[operation]?[model] else { throw MESError(.notFound, "Model \(model) has no voices.") }
+        return list
+    }
+
     // MARK: - Submit (§7.1)
 
     package func submit(_ request: JobRequest, owner: String, clientHost: String?, idempotencyKey: String?) throws -> Job {
@@ -146,12 +249,18 @@ package actor JobRegistry {
         if active.count >= config.maxQueuedJobsPerClient {
             throw MESError(.busy, "At most \(config.maxQueuedJobsPerClient) jobs may be queued per client.")
         }
+        let request = ProfileRules.normalize(request, descriptor: descriptor)
         try validateInputs(request, descriptor: descriptor, owner: owner)
         try validateParams(request, descriptor: descriptor)
         try validateExtensions(request, descriptor: descriptor)
         try engine.validate(request, descriptor: descriptor)
-        let (model, quality) = try chooseModel(request, descriptor: descriptor)
+        let wantedStreams = try validateStreams(request, descriptor: descriptor)
+        let (model, quality) = try chooseModel(request, descriptor: descriptor, streams: !wantedStreams.isEmpty)
         let adapters = try chooseAdapters(request, model: model)
+        let streams = try planStreams(wantedStreams, request: request, model: model)
+        let voice = request.params?[AudioProfile.Param.voice]?.stringValue.flatMap { id in
+            voiceLists[descriptor.operation]?[model.id]?.voices.first { $0.id == id }
+        }
 
         let now = Date()
         let id = IDs.make("job_")
@@ -162,10 +271,20 @@ package actor JobRegistry {
                       warnings: [], retention: .init(recordExpiresAt: now.addingTimeInterval(TimeInterval(config.jobRecordTTLSeconds))),
                       createdAt: now, updatedAt: now)
         records[id] = Record(job: job, owner: owner, clientHost: clientHost, request: request, descriptor: descriptor,
-                             model: model, quality: quality, adapters: adapters, initialEffective: effective)
+                             model: model, quality: quality, adapters: adapters, initialEffective: effective,
+                             streams: streams, voice: voice)
         // Uploads are single-use: claimed now, so a second job naming one is refused.
         for value in (request.inputs ?? [:]).values.flatMap(\.values) {
             if case .upload(let uid) = value { uploads[uid]?.owner = "\u{0}claimed:\(id)" }
+        }
+        // Assets are copied now (a clone on APFS), so deleting one later doesn't take it from this job (§8.1).
+        for (name, input) in request.inputs ?? [:] {
+            for (i, value) in input.values.enumerated() {
+                guard case .asset(let aid) = value, let asset = assets[aid] else { continue }
+                let file = spool.inputsDirectory(id).appendingPathComponent("\(name)-\(i).\(MediaTypes.fileExtension(asset.asset.mediaType))")
+                guard (try? FileManager.default.copyItem(at: asset.file, to: file)) != nil else { continue }   // fails the job at start
+                records[id]?.assetCopies[name, default: [:]][i] = (file, asset.asset.mediaType)
+            }
         }
         if let key = idempotencyKey { idempotency["\(owner)\u{0}\(key)"] = (id, now.addingTimeInterval(86_400)) }
         emit(id, .state, ["state": "received"])
@@ -220,6 +339,11 @@ package actor JobRegistry {
                         throw MESError(.unsupportedParameter, "This engine doesn't fetch grants; upload the input.", param: spec.name)
                     }
                     mediaType = grant.mediaType
+                case .asset(let aid):
+                    guard let record = assets[aid], record.owner == owner, record.asset.expiresAt > Date() else {
+                        throw MESError(.inputInvalid, "Asset \(aid) is unknown, expired or deleted; create it again.", param: spec.name)
+                    }
+                    mediaType = record.asset.mediaType
                 }
                 if spec.kind == .data, mediaType != nil {
                     throw MESError(.inputInvalid, "Input '\(spec.name)' is data: send {\"data\": …}.", param: spec.name)
@@ -262,9 +386,77 @@ package actor JobRegistry {
         }
     }
 
-    /// Model choice (Base §6 rule 2, §6.3, §10.3): a named model must exist, satisfy the policy and list every requested
-    /// adapter; otherwise the default offer for the requested quality tier that satisfies the policy and lists them.
-    private func chooseModel(_ request: JobRequest, descriptor: Descriptor) throws -> (ModelOffer, QualityTier) {
+    /// The outputs a request asks to stream, each with its encoding (§7.1): an output whose spec declares `stream`, in
+    /// an encoding it lists.
+    private func validateStreams(_ request: JobRequest, descriptor: Descriptor) throws -> [(OutputSpec, StreamEncoding)] {
+        let wanted = request.stream ?? []
+        if Set(wanted.map(\.output)).count != wanted.count {
+            throw MESError(.invalidRequest, "Each output may be streamed once.", param: "stream")
+        }
+        return try wanted.map { w in
+            guard let spec = descriptor.outputs.first(where: { $0.name == w.output }) else {
+                throw MESError(.unsupportedParameter, "\(descriptor.operation) has no output '\(w.output)'.", param: "stream")
+            }
+            guard let encodings = spec.stream?.encodings, let first = encodings.first else {
+                throw MESError(.unsupportedParameter, "Output '\(w.output)' doesn't stream.", param: "stream")
+            }
+            let encoding = w.encoding ?? first
+            guard encodings.contains(encoding) else {
+                throw MESError(.unsupportedParameter, "Output '\(w.output)' streams as \(encodings.map(\.rawValue).joined(separator: ", ")).",
+                               param: "stream")
+            }
+            return (spec, encoding)
+        }
+    }
+
+    /// The streams' format (§7.2): the request's `output` sample rate and channels, else the offer's own.
+    private func planStreams(_ wanted: [(OutputSpec, StreamEncoding)], request: JobRequest, model: ModelOffer) throws -> [StreamPlan] {
+        let output = request.params?[AudioProfile.Param.output]?.objectValue
+        if let mt = output?["media_type"]?.stringValue, mt != "audio/wav", !wanted.isEmpty {
+            throw MESError(.unsupportedParameter, "A streamed output is written as audio/wav, the chunks' samples with a header.",
+                           param: "stream")
+        }
+        return try wanted.map { spec, encoding in
+            guard let rate = output?["sample_rate"]?.intValue ?? model.supports(AudioProfile.SupportsKey.sampleRate)?.intValue else {
+                throw MESError(.unsupportedParameter, "\(model.id) doesn't declare its sample rate, so it can't stream.", param: "stream")
+            }
+            let channels = output?["channels"]?.intValue ?? model.supports(AudioProfile.SupportsKey.channels)?.intValue ?? 1
+            return StreamPlan(output: spec.name, encoding: encoding, sampleRate: rate, channels: channels)
+        }
+    }
+
+    /// What the request needs of its offer (§6.4): the profile's gates and limits, `stream`, and a named voice (§6.5).
+    private func requirements(_ request: JobRequest, descriptor: Descriptor, streams: Bool) -> [OfferRequirement] {
+        var out = ProfileRules.requirements(request, descriptor: descriptor)
+        if streams { out.insert(OfferRequirement(param: "stream", what: "streaming") { $0.streams }, at: 0) }
+        if descriptor.profile == AudioProfile.id, let voice = request.params?[AudioProfile.Param.voice]?.stringValue {
+            let lists = voiceLists[descriptor.operation] ?? [:]
+            out.insert(OfferRequirement(param: AudioProfile.Param.voice, what: "the voice '\(voice)'") { offer in
+                lists[offer.id]?.voices.contains { $0.id == voice } ?? false
+            }, at: 0)
+        }
+        return out
+    }
+
+    /// Model choice (Base §6 rule 2, §6.3, §6.4, §10.3): a named model must exist, satisfy the policy, list every
+    /// requested adapter and support what the request uses; otherwise the default among the offers for the quality tier
+    /// that do. With no tier asked for, a tier whose offers admit the request is used when the default tier's don't.
+    private func chooseModel(_ request: JobRequest, descriptor: Descriptor, streams: Bool = false) throws -> (ModelOffer, QualityTier) {
+        let needs = requirements(request, descriptor: descriptor, streams: streams)
+        if request.model == nil, !needs.isEmpty, request.params?[ImageProfile.Param.quality] == nil {
+            var firstError: Error?
+            let tiers = [QualityTier.standard, .draft, .best].filter(descriptor.qualityTiers.contains)
+            for tier in tiers {
+                var r = request
+                r.params = (r.params ?? [:]).merging([ImageProfile.Param.quality: .string(tier.rawValue)]) { a, _ in a }
+                do { return try chooseModel(r, descriptor: descriptor, needs: needs) } catch { firstError = firstError ?? error }
+            }
+            throw firstError ?? MESError(.unsupportedParameter, "No model offers that.")
+        }
+        return try chooseModel(request, descriptor: descriptor, needs: needs)
+    }
+
+    private func chooseModel(_ request: JobRequest, descriptor: Descriptor, needs: [OfferRequirement]) throws -> (ModelOffer, QualityTier) {
         var quality = QualityTier.standard
         if let raw = request.params?[ImageProfile.Param.quality]?.stringValue {
             guard let q = QualityTier(rawValue: raw) else {
@@ -300,10 +492,23 @@ package actor JobRegistry {
             if let misfit = wanted.first(where: { model.adapter($0) == nil }) {
                 throw MESError(.unsupportedParameter, "Model \(named) doesn't take the adapter \(misfit).", param: "adapters")
             }
+            // §6.4 rule 3: a named model that doesn't support what the request uses is refused, never substituted.
+            if let unmet = needs.first(where: { !$0.admits(model) }) {
+                throw MESError(unmet.code, "Model \(named) doesn't support \(unmet.what).", param: unmet.param)
+            }
             return (model, model.qualityTiers.contains(quality) ? quality : (model.qualityTiers.first ?? quality))
         }
         // Named-only offers (research, opt-in) never run by default (Base §6 rule 2), adapters or not.
-        let forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) && $0.namedOnly != true && fits($0) }
+        var forTier = descriptor.models.filter { $0.qualityTiers.contains(quality) && $0.namedOnly != true && fits($0) }
+        // §6.4 rule 2: the request implies the offers whose gates and limits admit it.
+        for need in needs where !forTier.isEmpty {
+            let admitted = forTier.filter(need.admits)
+            if admitted.isEmpty {
+                throw MESError(need.code, "No model of \(descriptor.operation) this request may use at the \(quality.rawValue) tier supports \(need.what).",
+                               param: need.param)
+            }
+            forTier = admitted
+        }
         let allowed = forTier.filter(satisfies)
         guard let model = allowed.first(where: { $0.isDefault == true }) ?? allowed.first else {
             if forTier.isEmpty, !wanted.isEmpty {
@@ -368,21 +573,35 @@ package actor JobRegistry {
         record.startedAt = Date()
         record.job.state = .running
         record.job.plan = Plan(model: record.model.ref, effective: record.initialEffective,
-                               remoteProvider: record.model.remoteProvider)
+                               remoteProvider: record.model.remoteProvider, streams: record.streams.isEmpty ? nil : record.streams)
+        for plan in record.streams {
+            let file = spool.outputsDirectory(id).appendingPathComponent("stream-\(plan.output).pcm")
+            FileManager.default.createFile(atPath: file.path, contents: nil)
+            record.streamStates[plan.output] = StreamState(plan: plan, file: file)
+        }
+        let (inputs, cueWarnings) = ProfileRules.prepareInputs(record.inputs, descriptor: record.descriptor, model: record.model)
+        record.inputs = inputs
         record.job.progress = JobProgress(stage: .running)
         record.job.updatedAt = Date()
         records[id] = record
         emit(id, .state, ["state": "running"])
         emit(id, .plan, (try? JSONValue(encoding: record.job.plan!)) ?? .null)
+        for w in ProfileRules.warnings(record.request, descriptor: record.descriptor, model: record.model) + cueWarnings {
+            reportWarning(id, w)
+        }
 
-        let context = RunContext(
+        var context = RunContext(
             jobID: id, operation: record.request.operation, descriptor: record.descriptor, model: record.model,
             adapters: record.adapters, quality: record.quality, params: record.request.params ?? [:], extensions: record.request.extensions ?? [:],
-            inputs: record.inputs, policy: record.request.policy ?? Policy(), outputDirectory: spool.outputsDirectory(id),
+            inputs: inputs, policy: record.request.policy ?? Policy(), outputDirectory: spool.outputsDirectory(id),
             reporter: RunReporter(
                 progress: { [weak self] p in await self?.reportProgress(id, p) },
                 warning: { [weak self] w in await self?.reportWarning(id, w) },
-                preview: { [weak self] d, mt in await self?.reportPreview(id, d, mt) }))
+                preview: { [weak self] d, mt in await self?.reportPreview(id, d, mt) },
+                chunk: { [weak self] output, data, final in await self?.reportChunk(id, output, data, final) }))
+        context.streams = record.streams
+        context.assets = record.assetInputs
+        context.voice = record.voice
         let startedAt = Date()
         do {
             let output = try await engine.run(context)
@@ -400,11 +619,19 @@ package actor JobRegistry {
         let hasGrants = (record.request.inputs ?? [:]).values.flatMap(\.values).contains { if case .grant = $0 { true } else { false } }
         if hasGrants { setState(id, .fetching, progress: JobProgress(stage: .fetching)) }
         var resolved: [String: [RunInput]] = [:]
+        var assetIDs: [String: [String?]] = [:]
         for (name, input) in (record.request.inputs ?? [:]).sorted(by: { $0.key < $1.key }) {
             if case .text(let s) = input { resolved[name] = [.text(s)]; continue }
             var list: [RunInput] = []
             for (i, value) in input.values.enumerated() {
+                if case .asset(let aid) = value { assetIDs[name, default: []].append(aid) } else { assetIDs[name, default: []].append(nil) }
                 switch value {
+                case .asset(let aid):
+                    // The job's own copy, made at submit, deleted with its other inputs (§13 rule 1).
+                    guard let copy = record.assetCopies[name]?[i] else {
+                        throw MESError(.inputInvalid, "Asset \(aid) is no longer available.", param: name)
+                    }
+                    list.append(.file(copy.file, mediaType: copy.mediaType))
                 case .data(let v):
                     list.append(.data(v))
                 case .inline(let mt, let data):
@@ -427,6 +654,7 @@ package actor JobRegistry {
             resolved[name] = list
         }
         records[id]?.inputs = resolved
+        records[id]?.assetInputs = assetIDs.filter { $0.value.contains { $0 != nil } }
     }
 
     private func finishSuccess(_ id: String, _ output: RunOutput, startedAt: Date) throws {
@@ -436,7 +664,25 @@ package actor JobRegistry {
         let outDir = spool.outputsDirectory(id)
         let names = Set(record.descriptor.outputs.map(\.name))
         var outputs: [Output] = []
-        for (index, produced) in output.outputs.enumerated() {
+        // A streamed output is the chunks (§10.1): the kit writes it, in place of anything the engine produced.
+        var produced = output.outputs
+        for plan in record.streams {
+            guard let state = record.streamStates[plan.output] else { continue }
+            let pcm = (try? Data(contentsOf: state.file)) ?? Data()
+            try? FileManager.default.removeItem(at: state.file)
+            let wav = WAVFile(stream: plan, pcm: pcm + (state.finalPending ?? Data()))
+            let file = outDir.appendingPathComponent("stream-\(plan.output).wav")
+            try wav.data.write(to: file)
+            let streamed = ProducedOutput.audio(file, name: plan.output, durationSeconds: wav.durationSeconds, sampleRate: plan.sampleRate,
+                                                channels: plan.channels, bitDepth: wav.bitsPerSample)
+            if let i = produced.firstIndex(where: { $0.name == plan.output }) {
+                if let src = produced[i].file, src != file { try? FileManager.default.removeItem(at: src) }
+                produced[i] = streamed
+            } else {
+                produced.append(streamed)
+            }
+        }
+        for (index, produced) in produced.enumerated() {
             guard names.contains(produced.name) else {
                 throw MESError(.engineError, "The engine produced an undeclared output '\(produced.name)'.")
             }
@@ -457,7 +703,8 @@ package actor JobRegistry {
             outputs.append(Output(index: index, name: produced.name, kind: produced.kind, mediaType: produced.mediaType,
                                   bytes: bytes, sha256: sha, href: "\(config.basePath)/jobs/\(id)/outputs/\(index)",
                                   width: produced.width, height: produced.height, durationSeconds: produced.durationSeconds,
-                                  fps: produced.fps, value: bytes <= 65_536 ? produced.value : nil))
+                                  fps: produced.fps, sampleRate: produced.sampleRate, channels: produced.channels,
+                                  bitDepth: produced.bitDepth, value: bytes <= 65_536 ? produced.value : nil))
         }
         guard !outputs.isEmpty else { throw MESError(.engineError, "The engine produced no outputs.") }
         var effective = record.initialEffective
@@ -480,7 +727,7 @@ package actor JobRegistry {
                     ref.revision = output.revisions[a.id]
                     return ref
                 },
-                helpers: output.helpers.isEmpty ? nil : output.helpers,
+                helpers: output.helpers.isEmpty ? nil : output.helpers, voice: record.voice?.ref,
                 remoteProvider: record.model.remoteProvider, seed: output.seed,
                 timings: .init(receivedAt: record.job.createdAt, startedAt: startedAt, finishedAt: now,
                                queueMs: Int(startedAt.timeIntervalSince(record.job.createdAt) * 1000),
@@ -494,6 +741,12 @@ package actor JobRegistry {
         record.job.updatedAt = now
         records[id] = record
         for w in output.warnings { emit(id, .warning, (try? JSONValue(encoding: w)) ?? .null) }
+        // Each stream's final chunk, held back until now (§11 rule 5: a job that fails sends none).
+        for plan in record.streams {
+            guard let state = records[id]?.streamStates[plan.output] else { continue }
+            emitChunk(id, plan.output, state.finalPending ?? Data(), index: state.index, frames: state.frames, plan: plan, final: true)
+        }
+        records[id]?.streamStates = [:]
         emit(id, .outputReady, ["outputs": (try? JSONValue(encoding: outputs)) ?? .null])
         emit(id, .state, ["state": "holding", "outcome": "succeeded"])
         releaseSlotIfHeld(id)
@@ -510,7 +763,9 @@ package actor JobRegistry {
         record.job.outcome = .failed
         record.job.error = mesError
         record.job.updatedAt = Date()
+        record.streamStates = [:]
         records[id] = record
+        stripChunkData(id)
         emit(id, .state, ["state": "purged", "outcome": "failed"])
         emit(id, .ended, ["outcome": "failed", "error": (try? JSONValue(encoding: mesError)) ?? .null])
         finishSubscribers(id)
@@ -518,6 +773,8 @@ package actor JobRegistry {
     }
 
     private func cleanUpCancelled(_ id: String) {
+        records[id]?.streamStates = [:]
+        stripChunkData(id)
         spool.deleteJob(id)
         releaseSlotIfHeld(id)
     }
@@ -730,12 +987,22 @@ package actor JobRegistry {
             try? FileManager.default.removeItem(at: up.file)
             uploads[uid] = nil
         }
+        let expired = assets.filter { $0.value.asset.expiresAt <= now }
+        for (aid, record) in expired {
+            assets[aid] = nil
+            try? FileManager.default.removeItem(at: record.file)
+        }
+        if !expired.isEmpty {
+            let engine = self.engine
+            Task { for aid in expired.keys { await engine.assetRemoved(aid) } }
+        }
         idempotency = idempotency.filter { $0.value.expires > now }
     }
 
     private func discardOutputs(_ id: String, outcome: Outcome?) {
         spool.deleteJob(id)                                      // §13 rule 2
         records[id]?.outputFiles = [:]
+        stripChunkData(id)
         records[id]?.job.state = .purged
         if let outcome { records[id]?.job.outcome = outcome }
         records[id]?.job.retention.outputsExpireAt = nil
@@ -759,8 +1026,11 @@ package actor JobRegistry {
         guard let record = records[id], record.job.state == .running, !record.cancelled else { return }
         let now = ContinuousClock.now
         let final = progress.fraction == 1 || (progress.step != nil && progress.step == progress.steps)
-        if let last = record.lastProgressAt, now - last < config.minProgressInterval, !final { return }
+        // A new phase always goes out: dropping it would leave a client showing the last one (AB-A-0156).
+        let newPhase = progress.phase != nil && progress.phase != record.lastPhase
+        if let last = record.lastProgressAt, now - last < config.minProgressInterval, !final, !newPhase { return }
         records[id]?.lastProgressAt = now
+        records[id]?.lastPhase = progress.phase
         records[id]?.job.progress = progress
         emit(id, .progress, (try? JSONValue(encoding: progress)) ?? .null)
     }
@@ -768,6 +1038,53 @@ package actor JobRegistry {
     private func reportWarning(_ id: String, _ warning: Warning) {
         records[id]?.job.warnings.append(warning)
         emit(id, .warning, (try? JSONValue(encoding: warning)) ?? .null)
+    }
+
+    /// Samples from the engine for a streamed output (§11): appended to its file, and sent as chunks of at most 256 KiB
+    /// of base64, whole frames only. The final chunk waits for the job to succeed.
+    private func reportChunk(_ id: String, _ output: String, _ data: Data, _ final: Bool) {
+        guard let record = records[id], record.job.state == .running, !record.cancelled,
+              var state = record.streamStates[output], state.finalPending == nil else { return }
+        var pending = state.remainder + data
+        let whole = pending.count - pending.count % state.plan.frameBytes
+        state.remainder = pending.subdata(in: whole..<pending.count)
+        pending = pending.prefix(whole)
+        let maxBytes = 196_608 - 196_608 % state.plan.frameBytes        // 256 KiB of base64
+        var pieces: [Data] = []
+        var offset = 0
+        while offset < pending.count {
+            let end = min(pending.count, offset + maxBytes)
+            pieces.append(pending.subdata(in: (pending.startIndex + offset)..<(pending.startIndex + end)))
+            offset = end
+        }
+        // The last piece of the final call is held back, and sent (with `final`) once the job succeeds.
+        if final { state.finalPending = pieces.popLast() ?? Data() }
+        if !pieces.isEmpty, let handle = try? FileHandle(forWritingTo: state.file) {
+            handle.seekToEndOfFile()
+            for piece in pieces { handle.write(piece) }
+            try? handle.close()
+        }
+        for piece in pieces {
+            emitChunk(id, output, piece, index: state.index, frames: state.frames, plan: state.plan, final: false)
+            state.index += 1
+            state.frames += piece.count / state.plan.frameBytes
+        }
+        records[id]?.streamStates[output] = state
+    }
+
+    private func emitChunk(_ id: String, _ output: String, _ data: Data, index: Int, frames: Int, plan: StreamPlan, final: Bool) {
+        emit(id, .outputChunk, ["output": .string(output), "index": .number(Double(index)),
+                                "offset_s": .number(Double(frames) / Double(plan.sampleRate)), "final": .bool(final),
+                                "data": .string(data.base64EncodedString())])
+    }
+
+    /// Chunk events keep their place in the record, without their samples, once the output is gone (§13 rule 2).
+    private func stripChunkData(_ id: String) {
+        guard var events = records[id]?.events, events.contains(where: { $0.type == .outputChunk }) else { return }
+        for i in events.indices where events[i].type == .outputChunk {
+            if case .object(var data) = events[i].data { data["data"] = nil; events[i].data = .object(data) }
+        }
+        records[id]?.events = events
     }
 
     private func reportPreview(_ id: String, _ data: Data, _ mediaType: String) {
@@ -784,7 +1101,7 @@ package actor JobRegistry {
         records[id] = record
         for continuation in record.subscribers.values { continuation.yield(event) }
         for sub in ownerSubscribers.values where sub.owner == record.owner { sub.continuation.yield(event) }
-        if type != .preview { publishActivity() }
+        if type != .preview, type != .outputChunk { publishActivity() }
     }
 
     private func finishSubscribers(_ id: String) {

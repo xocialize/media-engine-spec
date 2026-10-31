@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Audio 0.1 — what each offer supports, and its limits (spec/profiles/audio.md §4)",
+  "description": "Base §6.4 (RFC 0003): supports on a model offer, with the keys Base and the Audio profile define, typed per operation. The offer's limits take the Base fields and these.",
+  "$defs": {
+    "design_voice_supports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+      "description": "supports on an audio.design_voice offer (§4). Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "properties": {
+        "stream": { "type": "boolean" },
+        "seed": { "type": "boolean" },
+        "voices": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "vocabulary.schema.json#/$defs/language" }
+        },
+        "sample_rate": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 }
+      },
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+    },
+    "design_voice_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_text_chars": { "type": "integer", "minimum": 1 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Limit fields on an audio.design_voice descriptor or offer (§4.2)."
+    },
+    "speak_supports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+      "description": "supports on an audio.speak offer (§4). Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "properties": {
+        "stream": { "type": "boolean" },
+        "seed": { "type": "boolean" },
+        "voices": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "vocabulary.schema.json#/$defs/language" }
+        },
+        "sample_rate": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "default_voice": { "type": "boolean" },
+        "voice_ref": { "type": "boolean" },
+        "voice_ref_text": { "enum": ["unused", "optional", "required"] },
+        "emotions": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/emotion_label" } },
+        "emotion_description": { "type": "boolean" },
+        "emotion_intensity": { "type": "boolean" },
+        "styles": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/style" } },
+        "cues": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/cue" } },
+        "speed": { "type": "boolean" },
+        "target_duration": { "type": "boolean" }
+      },
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+    },
+    "speak_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_text_chars": { "type": "integer", "minimum": 1 },
+        "max_voice_ref_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Limit fields on an audio.speak descriptor or offer (§4.2)."
+    },
+    "edit_speech_supports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+      "description": "supports on an audio.edit_speech offer (§4). Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "properties": {
+        "stream": { "type": "boolean" },
+        "seed": { "type": "boolean" },
+        "voices": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "vocabulary.schema.json#/$defs/language" }
+        },
+        "sample_rate": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "edits": {
+          "type": "array",
+          "items": { "$ref": "vocabulary.schema.json#/$defs/edit/properties/kind" }
+        },
+        "emotions": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/emotion_label" } },
+        "styles": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/style" } },
+        "cues": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/cue" } },
+        "transcript": { "enum": ["required", "optional", "unused"] },
+        "keeps_length": { "type": "boolean" }
+      },
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+    },
+    "edit_speech_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_text_chars": { "type": "integer", "minimum": 1 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Limit fields on an audio.edit_speech descriptor or offer (§4.2)."
+    },
+    "generate_supports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+      "description": "supports on an audio.generate offer (§4). Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "properties": {
+        "stream": { "type": "boolean" },
+        "seed": { "type": "boolean" },
+        "voices": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "vocabulary.schema.json#/$defs/language" }
+        },
+        "sample_rate": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 }
+      },
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+    },
+    "generate_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Limit fields on an audio.generate descriptor or offer (§4.2)."
+    },
+    "compose_supports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
+      "description": "supports on an audio.compose offer (§4). Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "properties": {
+        "stream": { "type": "boolean" },
+        "seed": { "type": "boolean" },
+        "voices": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "vocabulary.schema.json#/$defs/language" }
+        },
+        "sample_rate": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "instrumental": { "type": "boolean" },
+        "score": { "enum": ["unused", "optional"] },
+        "reference": { "type": "boolean" },
+        "edits": {
+          "type": "array",
+          "items": { "$ref": "vocabulary.schema.json#/$defs/compose_edit/properties/kind" }
+        },
+        "sections": { "type": "array", "items": { "$ref": "vocabulary.schema.json#/$defs/section" } },
+        "anchors": { "type": "array", "items": { "enum": ["bpm", "key", "time_signature"] } },
+        "timestamps": { "type": "boolean" }
+      },
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+    },
+    "compose_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_lyrics_chars": { "type": "integer", "minimum": 1 },
+        "max_reference_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_source_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_repaint_s": { "type": "number", "exclusiveMinimum": 0 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Limit fields on an audio.compose descriptor or offer (§4.2)."
+    }
+  }
+}

@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Draft |
+| **Status** | Accepted, amended (2026-10-30) |
 | **Affects** | Base 0.1 (§4, §6, §7, §10.1, §11, §13, §15, §18) |
 | **Author** | xocialize |
-| **Decision** | A-1 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.2). Reopens MES-PRD OQ-6 ("previews only in v1", D-32). |
+| **Decision** | A-1 in [`docs/AUDIO-EVALUATION.md`](../docs/AUDIO-EVALUATION.md) §8 (from §3.2). Reopens MES-PRD OQ-6 ("previews only in v1", D-32) for output. Decided by mlx-apps, as the spec's owner; landed in Base 0.1 §6, §7, §10.1, §11, §13 and MESKit v0.7.0 (see [Decision](#decision)) |
 | **Depends on** | [RFC 0003](0003-offer-supports-and-voices.md) for which models stream (`supports.stream`) |
 
 ## Problem
@@ -239,3 +239,42 @@ data: {"outputs":[{"index":0,"name":"audio","media_type":"audio/wav","duration_s
 - **Outputs with several values**, such as separation stems. A chunk would need the value's position as well as the
   output's name.
 - **Compressed streams** (`opus` packets) for clients on slow links.
+
+## Decision
+
+**Accepted, amended (2026-10-30).** Interactive speech needs first audio in well under a second, and five of our
+packages already stream in-process. Output-only chunks keep the job model, cost a client that ignores them nothing,
+and make the finished output exactly what was heard. It lands in the Base 0.1 draft as the optional `streaming`
+feature, with Audio 0.1, in v0.7.0. Reversing OQ-6 for output is recorded here; the MES-PRD owner records it there.
+
+Amendments:
+- **A1. `data` is optional in the schema.** It is present while the job's outputs exist and absent once they are
+  purged (rule 4), so `event.schema.json` requires `output`, `index`, `offset_s` and `final` only. This reconciles
+  rule 4 with the draft's schema line.
+- **A2. The final chunk waits for success.** Rule 5 (no final chunk from a job that fails) is only implementable if the
+  final chunk is sent once the run has succeeded, right before `job.output_ready`. MESKit holds the engine's last
+  chunk back until then.
+- **A3. The stream's format is known before the run.** `plan.streams` takes the request's `output` sample rate and
+  channels, else the offer's own; so a profile states them as Facts, and an Audio offer with `supports.stream` MUST
+  declare `supports.sample_rate` (Audio §4.1).
+- **A4. Encodings.** An encoding not in the registry is 400 by the schema; a registered one the output doesn't list
+  is 422 `unsupported_parameter`.
+- **A5. Progress gains `phase` and `media_s`** (evaluation §3.4), since a streamed take has no `fraction` until it
+  ends. A new `phase` always passes an engine's progress throttle (MESKit; AB-A-0156).
+- **A6. Kit.** `RunReporter.chunk(_:samples:final:)` and `RunContext.streams`; the kit carries a partial frame to the
+  next chunk, splits chunks to 256 KiB of base64, writes the output (WAV) from the chunks itself so parity holds by
+  construction, and strips chunk data from the record at purge. An engine returns `ProducedOutput.streamed(name)` for
+  a streamed output. MESKit writes streamed outputs as `audio/wav` only, so it refuses `stream` with another
+  `output.media_type`.
+
+### Open questions, answered
+
+1. **Other kinds: not yet.** Video frames wait for the Video profile; speech-to-text is outside MES.
+2. **Outputs with several values: not yet.** Stems come with `audio.separate`, later.
+3. **Compressed streams: no.** A LAN stream of 24 kHz 16-bit mono is 64 KB/s as base64.
+
+### Conformance, as shipped
+
+BASE-053 (declarations, and `streaming` claimed exactly when an offer streams), BASE-054 (format, order, frames, one
+final, parity with the output), BASE-055 (release mid-stream), BASE-056 (refusals) and BASE-057 (replay after
+confirm), on the mock's streamed `audio.speak`.

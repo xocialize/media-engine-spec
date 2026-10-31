@@ -13,7 +13,9 @@
     "State": { "enum": ["received", "fetching", "waiting", "running", "holding", "purged"] },
     "Outcome": { "enum": ["succeeded", "failed", "cancelled", "expired"] },
     "Stage": { "enum": ["fetching", "waiting", "preparing", "running", "finishing"] },
-    "Feature": { "enum": ["uploads", "grants", "sse", "websocket", "mcp", "previews", "pairing"] },
+    "Feature": {
+      "enum": ["uploads", "grants", "sse", "websocket", "mcp", "previews", "pairing", "assets", "streaming"]
+    },
     "License": {
       "type": "object",
       "required": ["spdx", "commercial_use"],
@@ -69,7 +71,17 @@
         "step": { "type": "integer", "minimum": 0 },
         "steps": { "type": "integer", "minimum": 1 },
         "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
-        "message": { "type": "string" }
+        "message": { "type": "string" },
+        "phase": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "The part of the run in progress (e.g. plan, generate, denoise, decode); step and steps count within it."
+        },
+        "media_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds of media produced so far, for a job whose length isn't known in advance."
+        }
       }
     },
     "ModelRef": {
@@ -108,6 +120,21 @@
         "revision": { "type": "string" },
         "license": { "$ref": "#/$defs/License" },
         "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      }
+    },
+    "StreamEncoding": {
+      "enum": ["pcm_s16le", "pcm_f32le"],
+      "description": "Raw interleaved little-endian PCM, without a header (§6, RFC 0002)."
+    },
+    "VoiceRef": {
+      "description": "A preset voice a job used (§6.5, §10.1).",
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "license": { "$ref": "#/$defs/License" }
       }
     }
   }

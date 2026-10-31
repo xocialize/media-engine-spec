@@ -431,8 +431,8 @@ public enum Catalogue {
     public static let version = "0.1"
 
     public static var all: [ConformanceTest] {
-        let base = BaseTests.all
-        return base.filter { $0.id != "BASE-090" } + ImageTests.all + base.filter { $0.id == "BASE-090" }
+        let base = BaseTests.all + BaseTests.supports + BaseTests.assets + BaseTests.streaming
+        return base.filter { $0.id != "BASE-090" } + ImageTests.all + AudioTests.all + base.filter { $0.id == "BASE-090" }
     }
 
     /// The catalogue as Markdown (docs/CONFORMANCE.md): engine tests, then client tests.

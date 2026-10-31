@@ -26,12 +26,23 @@ public protocol MediaEngine: Sendable {
     /// request's policy allows. Runs at submit, before the plan, so the plan and provenance name what runs.
     func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer,
                       candidates: [ModelOffer]) -> ModelOffer?
+
+    /// The preset voices a model offers (Base §6.5), for an offer whose `supports.voices` is above 0. The kit asks when
+    /// it loads the descriptors, serves the list (`GET …/voices`, `mes_list_voices`) and routes `voice` by it.
+    func voices(operation: String, model: String) async -> [Voice]
+
+    /// An asset was deleted or expired, or its client unpaired (Base §8.1, §13 rule 6): drop anything cached from it,
+    /// within 60 s.
+    func assetRemoved(_ id: String) async
 }
 
 extension MediaEngine {
     public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
         if descriptor.profile == ImageProfile.id { try ImageProfileRules.validate(request, descriptor: descriptor) }
+        if descriptor.profile == AudioProfile.id { try AudioProfileRules.validate(request, descriptor: descriptor) }
     }
+    public func voices(operation: String, model: String) async -> [Voice] { [] }
+    public func assetRemoved(_ id: String) async {}
     public func residentModels() async -> [String] { [] }
     public func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer,
                              candidates: [ModelOffer]) -> ModelOffer? { nil }
@@ -66,8 +77,18 @@ public struct RunContext: Sendable {
     /// Write outputs here. The kit hashes, serves and purges them.
     public let outputDirectory: URL
     public let reporter: RunReporter
+    /// The outputs to stream, with their format (Base §7.2): send their samples through `reporter.chunk`. The kit
+    /// writes a streamed output's file from the chunks itself, so the engine produces no file for it.
+    public var streams: [StreamPlan] = []
+    /// The asset id behind each input value, by input name (nil for a value that isn't an asset): key a cache of what
+    /// the engine derives from an input by this, never by its bytes (Base §13 rule 6).
+    public var assets: [String: [String?]] = [:]
+    /// The preset voice the request named (Base §6.5), from the model's list.
+    public var voice: Voice?
 
     public func input(_ name: String) -> RunInput? { inputs[name]?.first }
+    /// The stream for an output, if the request asked for one.
+    public func stream(_ output: String) -> StreamPlan? { streams.first { $0.output == output } }
     public func param(_ name: String) -> JSONValue? { params[name] }
 }
 
@@ -84,19 +105,30 @@ public struct RunReporter: Sendable {
     let progressSink: @Sendable (JobProgress) async -> Void
     let warningSink: @Sendable (Warning) async -> Void
     let previewSink: @Sendable (Data, String) async -> Void
+    let chunkSink: @Sendable (String, Data, Bool) async -> Void
 
     public init(progress: @escaping @Sendable (JobProgress) async -> Void,
                 warning: @escaping @Sendable (Warning) async -> Void,
-                preview: @escaping @Sendable (Data, String) async -> Void) {
-        progressSink = progress; warningSink = warning; previewSink = preview
+                preview: @escaping @Sendable (Data, String) async -> Void,
+                chunk: @escaping @Sendable (String, Data, Bool) async -> Void = { _, _, _ in }) {
+        progressSink = progress; warningSink = warning; previewSink = preview; chunkSink = chunk
     }
 
-    public func progress(_ stage: Stage = .running, step: Int? = nil, steps: Int? = nil, fraction: Double? = nil,
-                         message: String? = nil) async {
+    /// Progress. `phase` names the part of the run (`plan`, `generate`, `denoise`, `decode`), and `step`/`steps` count
+    /// within it; `mediaSeconds` is the media produced so far, for a run whose length isn't known in advance. A step
+    /// count alone sets `fraction`, unless a phase is named (a phase's steps aren't the whole run's).
+    public func progress(_ stage: Stage = .running, phase: String? = nil, step: Int? = nil, steps: Int? = nil,
+                         fraction: Double? = nil, mediaSeconds: Double? = nil, message: String? = nil) async {
         var f = fraction
-        if f == nil, let step, let steps, steps > 0 { f = Double(step) / Double(steps) }
-        await progressSink(JobProgress(stage: stage, step: step, steps: steps, fraction: f, message: message))
+        if f == nil, phase == nil, let step, let steps, steps > 0 { f = Double(step) / Double(steps) }
+        await progressSink(JobProgress(stage: stage, phase: phase, step: step, steps: steps, fraction: f,
+                                       mediaSeconds: mediaSeconds, message: message))
     }
+
+    /// Samples of a streamed output (Base §11 `job.output_chunk`), in the stream's encoding: whole frames, in order.
+    /// Mark the last call `final`. The kit splits large chunks, numbers them, and sends the final one only once the job
+    /// succeeds, so a job that fails or is cancelled sends none.
+    public func chunk(_ output: String, samples: Data, final: Bool = false) async { await chunkSink(output, samples, final) }
 
     public func warn(_ code: String, _ message: String, param: String? = nil) async {
         await warningSink(Warning(code: code, message: message, param: param))
@@ -119,6 +151,22 @@ public struct ProducedOutput: Sendable {
     public var height: Int?
     public var durationSeconds: Double?
     public var fps: Double?
+    /// Audio facts (Base §10.1).
+    public var sampleRate: Int?
+    public var channels: Int?
+    public var bitDepth: Int?
+
+    /// An audio file, with its facts.
+    public static func audio(_ url: URL, name: String, mediaType: String = "audio/wav", durationSeconds: Double, sampleRate: Int,
+                             channels: Int, bitDepth: Int?) -> ProducedOutput {
+        ProducedOutput(name: name, kind: .audio, mediaType: mediaType, file: url, value: nil, durationSeconds: durationSeconds,
+                       sampleRate: sampleRate, channels: channels, bitDepth: bitDepth)
+    }
+
+    /// A placeholder for an output the engine streamed: the kit writes its file from the chunks (Base §10.1).
+    public static func streamed(_ name: String) -> ProducedOutput {
+        ProducedOutput(name: name, kind: .audio, mediaType: "audio/wav", file: nil, value: nil)
+    }
 
     public static func file(_ url: URL, name: String, kind: Kind, mediaType: String, width: Int? = nil, height: Int? = nil,
                             durationSeconds: Double? = nil, fps: Double? = nil) -> ProducedOutput {

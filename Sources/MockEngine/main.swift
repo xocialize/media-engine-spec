@@ -4,7 +4,7 @@ import MockEngineCore
 
 setvbuf(stdout, nil, _IOLBF, 0)   // line-buffered, so the listening line shows up when piped
 
-// mes-mock-engine — the MES Image-profile mock engine.
+// mes-mock-engine — the MES mock engine: the Image profile's 15 operations and the Audio profile's 5.
 //
 //   mes-mock-engine [--port 17600] [--spool <dir>] [--state <dir>] [--delay-ms 0] [--steps 4] [--ttl 3600]
 //                   [--paired [--host 0.0.0.0] [--approve prompt|auto]] [--no-advertise]
@@ -43,7 +43,7 @@ while let arg = args.next() {
     }
 }
 
-var config = EngineConfiguration(id: "eng_mock", name: "MES Mock Image Engine", implementationName: "mes-mock-engine",
+var config = EngineConfiguration(id: "eng_mock", name: "MES Mock Engine", implementationName: "mes-mock-engine",
                                  implementationVersion: "0.1.0", spoolDirectory: spool)
 config.port = port
 config.outputsTTLSeconds = ttl
@@ -65,7 +65,7 @@ if paired {
     config.host = host
 }
 let basePath = config.basePath
-let server = MESEngineServer(engine: MockImageEngine(stepDelay: .milliseconds(delayMs), steps: steps), configuration: config)
+let server = MESEngineServer(engine: MockMediaEngine(stepDelay: .milliseconds(delayMs), steps: steps), configuration: config)
 let scheme = paired ? "https" : "http"
 let modeNote = paired ? "paired mode, approve: \(approve)" : "open mode, loopback only"
 let bindHost = config.host

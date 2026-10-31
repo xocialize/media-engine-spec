@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Base 0.1 — an asset (§8.1)",
+  "$ref": "#/$defs/Asset",
+  "$defs": {
+    "Asset": {
+      "type": "object",
+      "required": ["asset_id", "media_type", "bytes", "sha256", "created_at", "expires_at"],
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": { "$ref": "common.schema.json#/$defs/Id" },
+        "media_type": { "$ref": "common.schema.json#/$defs/MediaType" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+        "created_at": { "$ref": "common.schema.json#/$defs/Timestamp" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "List": {
+      "type": "object",
+      "required": ["assets"],
+      "additionalProperties": false,
+      "properties": { "assets": { "type": "array", "items": { "$ref": "#/$defs/Asset" } } }
+    }
+  }
+}

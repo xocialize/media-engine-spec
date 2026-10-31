@@ -1,0 +1,16 @@
+{
+  "operation": "audio.edit_speech",
+  "inputs": {
+    "audio": {
+      "upload": "upl_c9"
+    },
+    "transcript": "I can't believe you did that."
+  },
+  "params": {
+    "edit": {
+      "kind": "emotion",
+      "emotion": "surprised"
+    },
+    "seed": 7
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Audio 0.1 — POST {path}/jobs for an audio operation",
+  "description": "A Base JobRequest whose operation is an Audio 0.1 operation: the operation's inputs by name, its required inputs, and only vocabulary parameters (spec/profiles/audio.md §2, §3). An engine's own descriptor narrows these further.",
+  "allOf": [
+    { "$ref": "../../base/job-request.schema.json" },
+    {
+      "properties": {
+        "operation": {
+          "enum": [
+            "audio.design_voice",
+            "audio.speak",
+            "audio.edit_speech",
+            "audio.generate",
+            "audio.compose"
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.design_voice" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": ["description"],
+            "propertyNames": { "enum": ["description", "text"] }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "language": { "$ref": "vocabulary.schema.json#/$defs/language" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "count": { "$ref": "vocabulary.schema.json#/$defs/voice_count" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" },
+              "prompt_enhance": { "$ref": "vocabulary.schema.json#/$defs/prompt_enhance" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.speak" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": ["text"],
+            "propertyNames": { "enum": ["text", "voice_ref", "voice_ref_text"] }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "voice": { "$ref": "vocabulary.schema.json#/$defs/voice" },
+              "language": { "$ref": "vocabulary.schema.json#/$defs/language" },
+              "emotion": { "$ref": "vocabulary.schema.json#/$defs/emotion" },
+              "style": { "$ref": "vocabulary.schema.json#/$defs/style" },
+              "speed": { "$ref": "vocabulary.schema.json#/$defs/speed" },
+              "target_duration_s": { "$ref": "vocabulary.schema.json#/$defs/target_duration_s" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.edit_speech" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": ["audio"],
+            "propertyNames": { "enum": ["audio", "transcript"] }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "edit": { "$ref": "vocabulary.schema.json#/$defs/edit" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
+            },
+            "required": ["edit"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.generate" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": { "type": "object", "required": ["prompt"], "propertyNames": { "enum": ["prompt"] } },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "negative_prompt": { "$ref": "vocabulary.schema.json#/$defs/negative_prompt" },
+              "duration_s": { "$ref": "vocabulary.schema.json#/$defs/duration_s" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "count": { "$ref": "vocabulary.schema.json#/$defs/count" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.compose" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": ["caption"],
+            "propertyNames": { "enum": ["caption", "lyrics", "score", "reference", "source"] }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "duration_s": { "$ref": "vocabulary.schema.json#/$defs/duration_s" },
+              "language": { "$ref": "vocabulary.schema.json#/$defs/language" },
+              "planning": { "$ref": "vocabulary.schema.json#/$defs/planning" },
+              "edit": { "$ref": "vocabulary.schema.json#/$defs/compose_edit" },
+              "anchors": { "$ref": "vocabulary.schema.json#/$defs/anchors" },
+              "timestamps": { "$ref": "vocabulary.schema.json#/$defs/timestamps" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

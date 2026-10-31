@@ -1,0 +1,14 @@
+{
+  "type": "job.output_chunk",
+  "job": "job_01JA02",
+  "client_ref": "line-0042",
+  "seq": 9,
+  "time": "2026-10-30T17:01:02Z",
+  "data": {
+    "output": "audio",
+    "index": 3,
+    "offset_s": 1.5,
+    "final": false,
+    "data": "AAABAP7/AAD/fwCA"
+  }
+}
