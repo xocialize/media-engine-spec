@@ -506,7 +506,7 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     `mes-mock-engine` is named "MES Mock Engine" (was "MES Mock Image Engine"); `MockImageEngine` alone is unchanged.
     `mes` still passes 11 of 11 and `tools/smoke-cli.sh` end to end.
 
-- **Unreleased** (2026-10-30; after v0.7.0, for Gaea G2 and Gaea Lab, AB-A-0232): **the client side of Audio 0.1**, so a
+- **`v0.8.0`** (2026-10-30; for Gaea G2 and Gaea Lab, AB-A-0232): **the client side of Audio 0.1**, so a
   client built on MESKit drives what v0.7.0 added to engines. No spec or schema change.
   - **MESClientKit:** `EngineConnection` gains `createAsset(contentsOf:mediaType:ttlSeconds:)`, `assets()`,
     `asset(_:)`, `deleteAsset(_:)`, `voices(operation:model:)` and `sample(of:)`, each with a default that answers as an

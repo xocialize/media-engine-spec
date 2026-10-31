@@ -7,8 +7,9 @@ compliant engine, on any platform.
 
 > **Status:** Base 0.1, Image profile 0.1 and Audio profile 0.1 are **drafts** (Audio since `v0.7.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
-> kit (discovery, pairing, jobs, events, grants, an engine picker for several servers) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms
-> from descriptors); the conformance suite for engines and clients; and a mock engine for both profiles. The mock and `mes` both
+> kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
+> audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
+> voice pickers and audio players); the conformance suite for engines and clients; and a mock engine for both profiles. The mock and `mes` both
 > conform. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 
 ## Reference implementations
