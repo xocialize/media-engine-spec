@@ -90,15 +90,21 @@ public struct WAVFile: Sendable, Equatable {
             }
         case (.int, 32):
             return stride(from: 0, to: raw.count - 3, by: 4).map {
-                Float(Int32(bitPattern: UInt32(raw[$0]) | UInt32(raw[$0 + 1]) << 8 | UInt32(raw[$0 + 2]) << 16 | UInt32(raw[$0 + 3]) << 24)) / 2_147_483_648
+                Float(Int32(bitPattern: Self.word(raw, $0))) / 2_147_483_648
             }
         case (.float, 32):
-            return stride(from: 0, to: raw.count - 3, by: 4).map {
-                Float(bitPattern: UInt32(raw[$0]) | UInt32(raw[$0 + 1]) << 8 | UInt32(raw[$0 + 2]) << 16 | UInt32(raw[$0 + 3]) << 24)
-            }
+            return stride(from: 0, to: raw.count - 3, by: 4).map { Float(bitPattern: Self.word(raw, $0)) }
         default:
             return []
         }
+    }
+
+    /// The little-endian 32-bit word at `i`. Its own function, with typed parts, because Swift 6.3 can't type-check the
+    /// four shifted bytes in one expression in reasonable time.
+    private static func word(_ raw: [UInt8], _ i: Int) -> UInt32 {
+        let b0 = UInt32(raw[i]), b1: UInt32 = UInt32(raw[i + 1]) << 8
+        let b2: UInt32 = UInt32(raw[i + 2]) << 16, b3: UInt32 = UInt32(raw[i + 3]) << 24
+        return b0 | b1 | b2 | b3
     }
 
     /// Root-mean-square level of frames `from..<to` across channels, 0…1.

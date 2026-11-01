@@ -71,7 +71,9 @@ public enum Clips {
     /// copyright items go into the file's metadata.
     public static func write(_ clip: Clip, to url: URL, codec: Codec = .h264, fileType: AVFileType = .mp4) async throws {
         try? FileManager.default.removeItem(at: url)
-        let writer = try AVAssetWriter(outputURL: url, fileType: fileType)
+        // MP4 is written as M4V, Apple's MP4 (Video §1.1: `video/mp4`): macOS 26's writer leaves the iTunes items, the
+        // comment `©cmt` among them, out of a `.mp4` and keeps them in a `.m4v` (AB-A-0244).
+        let writer = try AVAssetWriter(outputURL: url, fileType: fileType == .mp4 ? .m4v : fileType)
         writer.metadata = metadata(clip, quickTime: fileType == .mov)
         let bitRate = max(2_000_000, Int(Double(clip.width * clip.height) * clip.fps * 2))
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -272,34 +274,44 @@ public enum Clips {
             audioOutput = o
         }
         guard reader.startReading() else { throw Failure.read(reader.error?.localizedDescription ?? "startReading") }
-        var frames: [[UInt8]] = []
-        var count = 0
-        var times: [Double] = []
-        while let sample = output.copyNextSampleBuffer() {
-            let n = CMSampleBufferGetNumSamples(sample)
-            guard n > 0 else { continue }
-            count += wantFrames ? 1 : n
-            times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
-            if wantFrames, let image = CMSampleBufferGetImageBuffer(sample) { frames.append(bytes(image, width: width, height: height)) }
-        }
-        var audio: [Float]?
-        if let audioOutput {
-            var samples: [Float] = []
-            while let sample = audioOutput.copyNextSampleBuffer() {
-                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-                let length = CMBlockBufferGetDataLength(block)
-                var chunk = [Float](repeating: 0, count: length / 4)
-                chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
-                samples += chunk
+        // copyNextSampleBuffer blocks, and on macOS 26 the reader needs a cooperative thread to make progress: read on
+        // a queue of our own, or a few clips read at once on a small machine take every cooperative thread and wait for
+        // ever (GitHub's three-core runner did, AB-A-0244).
+        let (frames, count, times, audio) = try await Self.blocking { [video = Box(output), audioOutput = audioOutput.map(Box.init), reader = Box(reader)] in
+            let output = video.value
+            var frames: [[UInt8]] = []
+            var count = 0
+            var times: [Double] = []
+            while let sample = output.copyNextSampleBuffer() {
+                let n = CMSampleBufferGetNumSamples(sample)
+                guard n > 0 else { continue }
+                count += wantFrames ? 1 : n
+                times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+                if wantFrames, let image = CMSampleBufferGetImageBuffer(sample) { frames.append(bytes(image, width: width, height: height)) }
             }
-            audio = samples
+            var audio: [Float]?
+            if let audioOutput = audioOutput?.value {
+                var samples: [Float] = []
+                while let sample = audioOutput.copyNextSampleBuffer() {
+                    guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+                    let length = CMBlockBufferGetDataLength(block)
+                    var chunk = [Float](repeating: 0, count: length / 4)
+                    chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
+                    samples += chunk
+                }
+                audio = samples
+            }
+            if reader.value.status == .failed { throw Failure.read(reader.value.error?.localizedDescription ?? "reading failed") }
+            return (frames, count, times, audio)
         }
-        if reader.status == .failed { throw Failure.read(reader.error?.localizedDescription ?? "reading failed") }
+        var sortedTimes = times
         // The rate: from the frame times (exact for a constant rate), else the track's nominal one, which AVFoundation
         // estimates from the track's duration and can be off by a fraction of a frame.
         var fps = Double(nominal)
-        times.sort()
-        if times.count > 1, times.last! > times.first! { fps = Double(times.count - 1) / (times.last! - times.first!) }
+        sortedTimes.sort()
+        if sortedTimes.count > 1, sortedTimes.last! > sortedTimes.first! {
+            fps = Double(sortedTimes.count - 1) / (sortedTimes.last! - sortedTimes.first!)
+        }
         fps = (fps * 1000).rounded() / 1000
         var comment: String?, copyright: String?
         for item in try await asset.load(.metadata) {
@@ -319,6 +331,13 @@ public enum Clips {
                               audioSeconds: audio.flatMap { a in sampleRate.map { Double(a.count / max(1, ch)) / Double($0) } },
                               comment: comment, copyright: copyright)
         return (clip, facts)
+    }
+
+    /// Runs `body`, which blocks, on a queue of its own rather than a cooperative thread.
+    static func blocking<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue(label: "mes.mock.clips.read").async { continuation.resume(with: Result { try body() }) }
+        }
     }
 
     /// A clip's facts, counting its frames without decoding them.

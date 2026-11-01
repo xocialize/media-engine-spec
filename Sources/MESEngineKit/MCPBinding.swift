@@ -271,8 +271,10 @@ struct MCPToolbox: Sendable {
             case "mes_list_operations":
                 let ops = await registry.operationsList.operations
                 let lines = ops.map { "\(Self.toolName($0.operation)) — \($0.title) · models: \($0.models.map(\.id).joined(separator: ", "))" }
+                // Typed, so Swift 6.3 picks the non-generic `Value?` init as 6.4 does, not the generic one that throws.
+                let structured: Value? = Self.value(try JSONValue(encoding: ops))
                 return CallTool.Result(content: [.text(text: lines.joined(separator: "\n"), annotations: nil, _meta: nil)],
-                                       structuredContent: Optional(Self.value(try JSONValue(encoding: ops))))
+                                       structuredContent: structured)
             case "mes_get_job":
                 let id = try Self.string(args, "job_id")
                 let wait = min(Self.maxWait, max(0, args["wait_s"]?.intValue ?? 0))
@@ -291,8 +293,9 @@ struct MCPToolbox: Sendable {
                                         v.license.map { "\($0.spdx) · commercial use \(Self.commercial($0.commercialUse))" }].compactMap { $0 })
                         .joined(separator: " · ")
                 }
+                let structured: Value? = Self.value(try JSONValue(encoding: list))
                 return CallTool.Result(content: [.text(text: lines.isEmpty ? "No voices." : lines.joined(separator: "\n"), annotations: nil, _meta: nil)],
-                                       structuredContent: Optional(Self.value(try JSONValue(encoding: list))))
+                                       structuredContent: structured)
             default:
                 guard let descriptor = await registry.operationsList.operations.first(where: { Self.toolName($0.operation) == params.name }) else {
                     throw MESError(.unknownOperation, "No tool \(params.name).")

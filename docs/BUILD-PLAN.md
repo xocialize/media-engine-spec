@@ -601,6 +601,19 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     operations: a test that counted 20 operations needs 25. An offer whose licence sets `user_accept_required` no
     longer runs for clients that don't send `policy.accepted`.
 
+- **`v0.9.1`** (2026-11-01; AB-A-0244, for Gaea's release CI, AB-T-0409): MESKit builds and its tests pass on Xcode 26
+  (Swift 6.3) as well as Xcode 27 (Swift 6.4); the spec is unchanged. `.github/workflows/build.yml` builds every product
+  in release, then the tests, on GitHub's `macos-26` runner with its newest Xcode, for every push and tag.
+  - **Swift 6.3:** `WAVFile`'s 32-bit decoders read each word through a helper with typed parts (6.3 can't type-check
+    the four shifted bytes in reasonable time); MCP's `mes_list_operations` and `mes_list_voices` pass
+    `structuredContent` as a typed `Value?`, so 6.3 picks swift-sdk's non-generic initializer, as 6.4 does, rather
+    than the generic one that throws.
+  - **macOS 26:** `Clips.read` runs its blocking sample loops on a queue of its own: there the reader needs a
+    cooperative thread to make progress, and three clips read at once on the runner's three cores took every one and
+    waited for ever. `Clips.write` writes MP4 as M4V (Apple's MP4, `video/mp4` by Video §1.1), because macOS 26's
+    writer leaves the iTunes items, the comment `©cmt` and the copyright, out of a `.mp4`; on macOS 26 the mock failed
+    VIDEO-013 against itself. An engine that writes MP4 with AVFoundation on macOS 26 has the same problem.
+
 ## Next: Video after 0.1
 
 - **The packages** (evaluation §8): typed time spans, keyframes and `content` in MLXToolKit; audio passthrough in
