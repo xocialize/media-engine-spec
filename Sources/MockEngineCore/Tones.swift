@@ -131,4 +131,16 @@ enum Tones {
         guard count != samples.count, !samples.isEmpty, count > 0 else { return count == 0 ? [] : samples }
         return resample(samples, from: samples.count, to: count)
     }
+
+    /// A centred moving average over `window` samples: a mask's low band, sample-aligned with the input and as long.
+    static func smooth(_ samples: [Float], window: Int) -> [Float] {
+        guard window > 1, !samples.isEmpty else { return samples }
+        var prefix = [Float](repeating: 0, count: samples.count + 1)
+        for (i, x) in samples.enumerated() { prefix[i + 1] = prefix[i] + x }
+        let half = window / 2
+        return samples.indices.map { i in
+            let lo = max(0, i - half), hi = min(samples.count, i + half + 1)
+            return (prefix[hi] - prefix[lo]) / Float(hi - lo)
+        }
+    }
 }

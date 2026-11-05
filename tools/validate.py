@@ -70,6 +70,10 @@ MANIFEST = {
     "job-holding-video-generate.json": "base/job.schema.json",
     "event-preview-frame.json": "base/event.schema.json",
     "error-terms-not-accepted.json": "base/error.schema.json",
+    "job-request-edit-speech-fit.json": "profiles/audio/job-request.schema.json",
+    "operations-audio-separate.json": "base/operations-list.schema.json",
+    "job-request-separate.json": "profiles/audio/job-request.schema.json",
+    "job-holding-separate.json": "base/job.schema.json",
 }
 
 _cache = {}
@@ -240,9 +244,16 @@ def profile_checks():
                 if name in names and names[name]["kind"] != req["kind"]:
                     errs.append(f"{ex.name} {d['operation']}: input '{name}' kind {names[name]['kind']} != {req['kind']}")
             outs = {o["name"]: o for o in d["outputs"]}
+            stems = {name for name, out in spec["outputs"].items() if out.get("stem")}
+            if stems:
+                # Audio §3.6: outputs named by stem, the ones the offers produce, at least one; nothing else
+                if not stems & set(outs):
+                    errs.append(f"{ex.name} {d['operation']}: lists no stem output")
+                errs += [f"{ex.name} {d['operation']}: output '{n}' isn't a registered stem" for n in outs if n not in spec["outputs"]]
             for name, out in spec["outputs"].items():
                 if name not in outs:
-                    errs.append(f"{ex.name} {d['operation']}: output '{name}' missing")
+                    if not out.get("stem"):
+                        errs.append(f"{ex.name} {d['operation']}: output '{name}' missing")
                 elif "stream" in outs[name] and not out.get("streamable"):
                     errs.append(f"{ex.name} {d['operation']}: output '{name}' declares stream; the profile doesn't let it")
             for pname, pschema in d["params"]["properties"].items():

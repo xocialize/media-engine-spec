@@ -1,7 +1,7 @@
 import Foundation
 
 /// The Audio profile 0.1 (spec/profiles/audio.md): the operations table, the vocabulary names, the one label set
-/// (emotions, styles, cues, edit kinds, section tags), the `supports` keys and the cue syntax.
+/// (emotions, styles, cues, edit kinds, section tags, stems), the `supports` keys and the cue syntax.
 public enum AudioProfile {
     public static let id = "audio"
     public static let version = "0.1"
@@ -13,6 +13,8 @@ public enum AudioProfile {
         public static let targetDuration = "target_duration_s", edit = "edit", negativePrompt = "negative_prompt"
         public static let duration = "duration_s", planning = "planning", anchors = "anchors", timestamps = "timestamps"
         public static let promptEnhance = "prompt_enhance"
+        /// `separate` (§3.6, RFC 0006).
+        public static let stems = "stems", speaker = "speaker"
     }
 
     /// The operations' input names (§3).
@@ -32,10 +34,27 @@ public enum AudioProfile {
     /// The registered style labels (§2.1): delivery rather than feeling.
     public static let styles = ["normal", "whisper", "shout", "gentle", "serious", "warm", "narration", "conversational", "news"]
     /// The registered nonverbal cues (§2.2).
-    public static let cues = ["laugh", "cough", "sigh", "breath", "gasp", "clear_throat", "hesitation", "sob", "sniff", "pause"]
+    public static let cues = ["laugh", "cough", "sigh", "breath", "gasp", "clear_throat", "hesitation", "sob", "sniff", "pause", "hum"]
     /// Speech edit kinds (§3.3), modelled on AuK's instruction set.
     public static let editKinds = ["emotion", "style", "add_cue", "remove_cue", "replace_text", "insert_text", "remove_text",
-                                   "speed", "pitch", "volume", "timbre", "de_accent", "denoise", "trim_silence"]
+                                   "speed", "pitch", "volume", "timbre", "de_accent", "denoise", "dereverb", "trim_silence"]
+    /// The fields each speech edit kind needs (§3.3).
+    public static let editFields: [String: [String]] = [
+        "emotion": ["emotion"], "style": ["style"], "add_cue": ["cue"], "remove_cue": [], "replace_text": ["text", "with"],
+        "insert_text": ["text", "anchor", "position"], "remove_text": ["text"], "speed": ["factor"], "pitch": ["semitones"],
+        "volume": ["gain_db"], "timbre": ["description"], "de_accent": [], "denoise": [], "dereverb": [], "trim_silence": [],
+    ]
+    /// The fields a speech edit kind may carry beyond the ones it needs.
+    public static let editOptionalFields: [String: [String]] = ["add_cue": ["at", "text"], "remove_cue": ["cue"]]
+    /// Where an `add_cue` edit puts its cue (§3.3): `edge` (`at`) or `inline` (`text`).
+    public static let cuePlacements = ["edge", "inline"]
+    /// The registered stems (§3.6): AuK's speech stems, then the music separators'.
+    public static let stems = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"]
+    /// The ways `separate` picks one speaker (§3.6).
+    public static let speakerSelections = ["ordinal", "saying"]
+    /// How an offer makes its stems (§3.6): `masked` stems are sample-aligned with the mixture; `regenerated` ones are
+    /// made again and must never be subtracted from it.
+    public static let stemMethods = ["masked", "regenerated"]
     /// Song edit kinds (§3.5).
     public static let composeEditKinds = ["cover", "repaint", "extend"]
     /// Lyrics section tags (§3.5.1).
@@ -75,6 +94,10 @@ public enum AudioProfile {
         public static let keepsLength = "keeps_length", instrumental = "instrumental", score = "score"
         public static let reference = "reference", sections = "sections", anchors = "anchors", timestamps = "timestamps"
         public static let sampleRate = "sample_rate", channels = "channels"
+        /// `edit_speech` (RFC 0006): where `add_cue` may put a cue, and whether `remove_cue` may remove every cue.
+        public static let cuePlacement = "cue_placement", removeAllCues = "remove_all_cues"
+        /// `separate` (RFC 0006): the stems an offer makes, the speaker picks it takes, and how it makes stems.
+        public static let stems = "stems", speakerSelection = "speaker_selection", stemMethod = "stem_method"
     }
 
     /// Limit fields the profile defines (§4.2), on a descriptor or an offer.
@@ -160,5 +183,18 @@ public enum AudioProfile {
             return m.1.lowercased()
         }
         return tags.isEmpty ? ["verse"] : tags
+    }
+}
+
+extension JobResult {
+    /// The output named `name` (its first, for an output with several values).
+    public func output(named name: String) -> Output? { outputs.first { $0.name == name } }
+
+    /// Audio `separate` (§3.6, RFC 0006): each stem the job made with its output, in the order the job made them
+    /// (`effective.stems`, else the outputs' order).
+    public var stems: [(stem: String, output: Output)] {
+        let order = effective[AudioProfile.Param.stems]?.arrayValue?.compactMap(\.stringValue)
+            ?? outputs.map(\.name).filter(AudioProfile.stems.contains)
+        return order.compactMap { stem in output(named: stem).map { (stem, $0) } }
     }
 }

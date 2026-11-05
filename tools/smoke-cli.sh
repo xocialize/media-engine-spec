@@ -1,7 +1,8 @@
 #!/bin/zsh
 # R0c exit check: `mes` against the mock engine end to end — discovery, pairing, generate → matte → fill (each
 # output feeding the next), download and confirm; then Audio 0.1 — a designed voice kept as an asset, speech streamed
-# with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted; then Video
+# with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted, the take
+# separated into stems; then Video
 # 0.1 — a clip generated under a licence its users accept, refused without that acceptance, then interpolated; then
 # unpair. Everything runs in a temporary directory.
 #
@@ -94,6 +95,14 @@ step "mes run audio.speak with a preset voice"
 mes run audio.speak -i text="A preset voice." -p voice=mock-tenor -o "$work/preset" --json > "$work/preset.json"
 grep -q '"voice":{"id":"mock-tenor"' "$work/preset.json" && print "spoke with mock-tenor"
 
+step "mes run audio.separate on the preset take (RFC 0006): an output per stem; a speaker picked by words"
+take=$(ls "$work/preset"/*.wav | head -1)
+mes run audio.separate -i audio="$take" -o "$work/stems" | tee "$work/stems.txt"
+grep -q "output 0 vocals" "$work/stems.txt" && grep -q "output 1 instrumental" "$work/stems.txt"
+mes run audio.separate -i audio="$take" -p stems='["speaker"]' -p speaker='{"saying":"a preset voice"}' -p quality=draft \
+  -o "$work/speaker" | tee "$work/speaker.txt"
+grep -q "output 0 speaker" "$work/speaker.txt"
+
 step "mes describe video.generate · mes run video.generate --accept · refused without it"
 mes describe video.generate | grep "users accept its terms"
 mes run video.generate -i prompt="a kite over green hills" -p size=128x96 -p duration_s=0.375 -p quality=draft \
@@ -111,4 +120,4 @@ grep -q '(succeeded)' "$work/tween.txt"
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → video generate (accepted) → interpolate → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → video generate (accepted) → interpolate → unpair"

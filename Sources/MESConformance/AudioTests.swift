@@ -61,6 +61,15 @@ enum AudioTests {
         case "audio.generate":
             inputs[I.prompt] = .text("Rain on a tin roof, steady, with distant thunder.")
             params[P.duration] = .number(duration(d, m, wanted: 1.5))
+        case "audio.separate":
+            inputs[I.audio] = clip
+            let stems = list(m, K.stems)
+            if let stem = stems.first(where: { $0 != "speaker" }) {
+                params[P.stems] = [.string(stem)]
+            } else if let pick = pick(m) {
+                params[P.stems] = ["speaker"]
+                params[P.speaker] = pick
+            }
         case "audio.compose":
             inputs[I.caption] = .text("Upbeat synth-pop with a bright female vocal and a driving beat.")
             inputs[I.lyrics] = .text("[verse]\nLights on the water\nWe follow the line\n[chorus]\nRun all night\n")
@@ -81,7 +90,16 @@ enum AudioTests {
         switch kind {
         case "emotion": e["emotion"] = .string(list(m, K.emotions).first ?? "happy")
         case "style": e["style"] = .string(list(m, K.styles).first ?? "whisper")
-        case "add_cue": e["cue"] = .string(list(m, K.cues).first ?? "laugh"); e["at"] = "end"
+        case "add_cue":
+            let cue = list(m, K.cues).first ?? "laugh"
+            e["cue"] = .string(cue)
+            if m.supports(K.cuePlacement) != nil, !list(m, K.cuePlacement).contains("edge") {
+                e["text"] = .string("Hello [\(cue)] from the conformance suite.")
+            } else {
+                e["at"] = "end"
+            }
+        case "remove_cue":
+            if m.supports(K.removeAllCues)?.boolValue == false { e["cue"] = .string(list(m, K.cues).first ?? "laugh") }
         case "replace_text": e["text"] = "Hello"; e["with"] = "Hi"
         case "insert_text": e["text"] = "warmly"; e["anchor"] = "Hello"; e["position"] = "after"
         case "remove_text": e["text"] = "Hello"
@@ -92,6 +110,14 @@ enum AudioTests {
         default: break
         }
         return .object(e)
+    }
+
+    /// A speaker pick an offer takes (§3.6): by order where it can, else by words.
+    static func pick(_ m: ModelOffer) -> JSONValue? {
+        let kinds = list(m, K.speakerSelection)
+        if kinds.contains("ordinal") { return ["ordinal": 1] }
+        if kinds.contains("saying") { return ["saying": "hello"] }
+        return nil
     }
 
     static func voices(_ p: Probe, _ d: Descriptor, _ m: ModelOffer) async throws -> [Voice] {
@@ -155,8 +181,22 @@ enum AudioTests {
                 }
                 for name in inputs.keys { try check(spec.inputs[name] != nil, "\(d.operation) has input '\(name)', which the profile doesn't define") }
                 let outputs = Dictionary(d.outputs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+                let stems = spec.outputs.filter { $0.value.stem == true }.map(\.key)
+                if !stems.isEmpty {
+                    // §3.6: outputs named by stem, the ones the offers make, at least one; nothing else.
+                    try check(outputs.keys.contains(where: stems.contains), "\(d.operation) lists no stem as an output")
+                    for name in outputs.keys { try check(spec.outputs[name] != nil, "\(d.operation) output '\(name)' isn't a registered stem") }
+                    for m in d.models {
+                        for stem in list(m, K.stems) {
+                            try check(outputs[stem] != nil, "\(d.operation) / \(m.id) makes '\(stem)', which the descriptor doesn't list as an output")
+                        }
+                    }
+                }
                 for (name, io) in spec.outputs {
-                    guard let output = outputs[name] else { throw Failure("\(d.operation) lacks output '\(name)'") }
+                    guard let output = outputs[name] else {
+                        if io.stem == true { continue }
+                        throw Failure("\(d.operation) lacks output '\(name)'")
+                    }
                     try check(output.kind == io.kind, "\(d.operation) output '\(name)' is \(output.kind.rawValue), not \(io.kind.rawValue)")
                     if output.stream != nil { try check(io.streamable == true, "\(d.operation) output '\(name)' declares stream; the profile doesn't let it") }
                 }
@@ -471,6 +511,142 @@ enum AudioTests {
             seed.params?[P.seed] = .number(4_294_967_296)
             try await refuse(p, seed, 422, "out_of_limits", "a seed of 2³²")
             return nil
+        },
+        ConformanceTest("AUDIO-015", "separate: each offer's stems run, one output per stem named by it, with its facts and the mixture's length",
+                        spec: "Audio §3.6", applies: offers("audio.separate")) { p in
+            let d = p.descriptor("audio.separate")!
+            var made: [String] = []
+            for m in d.models {
+                let stems = list(m, K.stems)
+                try check(!stems.isEmpty, "\(m.id) lists no stems (supports.stems is required)")
+                try check(AudioProfile.stemMethods.contains(m.supports(K.stemMethod)?.stringValue ?? ""),
+                          "\(m.id) doesn't say how it makes stems (supports.stem_method is required)")
+                var r = try await request(p, d, m)
+                let seconds = min(2, m.limits?.maxDurationSeconds ?? 2, d.limits?.maxDurationSeconds ?? 2)
+                r.inputs?[I.audio] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav(seconds: seconds)))
+                r.params?[P.stems] = .array(stems.map { .string($0) })
+                r.params?[P.speaker] = nil
+                if stems.contains("speaker") {
+                    guard let pick = pick(m) else { throw Failure("\(m.id) makes the speaker stem but lists no speaker_selection") }
+                    r.params?[P.speaker] = pick
+                }
+                let job = try await p.succeed(r)
+                let outs = audioOutputs(job)
+                try check(outs.map(\.name) == stems, "\(m.id) was asked for \(stems) and returned \(outs.map(\.name))")
+                for o in outs {
+                    _ = try await audio(p, job, o)
+                    let length = o.durationSeconds ?? 0
+                    try check(abs(length - seconds) <= 1.5 / Double(o.sampleRate ?? 8000) + 0.001,
+                              "\(m.id)'s \(o.name) stem is \(length) s; the mixture is \(seconds) s")
+                }
+                try check(job.result?.effective[P.stems]?.arrayValue?.compactMap(\.stringValue) == stems,
+                          "effective.stems isn't \(stems): \(job.result?.effective[P.stems].map { "\($0)" } ?? "missing")")
+                made.append("\(m.id) \(stems.joined(separator: "+")) (\(m.supports(K.stemMethod)?.stringValue ?? "?"))")
+                await p.confirm(job)
+            }
+            return Note(made.joined(separator: "; "))
+        },
+        ConformanceTest("AUDIO-016", "separate: an unlisted stem and an unlisted pick kind are 422; the speaker stem without a pick, or a pick without it, is 400",
+                        spec: "Audio §3.6, Base §6.4 rule 3", applies: offers("audio.separate")) { p in
+            let d = p.descriptor("audio.separate")!
+            var checked: [String] = []
+            let offered = Set(d.models.flatMap { list($0, K.stems) })
+            if let m = d.models.first(where: { !offered.subtracting(list($0, K.stems)).isEmpty }),
+               let missing = offered.subtracting(list(m, K.stems)).sorted().first {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = [.string(missing)]
+                r.params?[P.speaker] = missing == "speaker" ? ["saying": "hello"] : nil
+                try await refuse(p, r, 422, "unsupported_parameter", "the stem '\(missing)' to \(m.id), which doesn't list it")
+                checked.append("unlisted stem")
+            }
+            if let m = d.models.first, offered.contains("speaker") {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = ["speaker"]
+                r.params?[P.speaker] = nil
+                try await refuse(p, r, 400, "invalid_request", "the speaker stem without a pick")
+                checked.append("speaker without a pick")
+            }
+            if let m = d.models.first, let other = offered.sorted().first(where: { $0 != "speaker" }) {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = [.string(other)]
+                r.params?[P.speaker] = ["ordinal": 1]
+                try await refuse(p, r, 400, "invalid_request", "a speaker pick with stems that don't name speaker")
+                checked.append("a pick without the speaker stem")
+            }
+            if let m = d.models.first(where: { list($0, K.stems).contains("speaker") && list($0, K.speakerSelection).count < 2 }),
+               let kind = AudioProfile.speakerSelections.first(where: { !list(m, K.speakerSelection).contains($0) }) {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = ["speaker"]
+                r.params?[P.speaker] = kind == "ordinal" ? ["ordinal": 1] : ["saying": "hello"]
+                try await refuse(p, r, 422, "unsupported_parameter", "a speaker picked by \(kind) on \(m.id), which doesn't list it")
+                checked.append("unlisted pick kind")
+            }
+            return Note("refused: " + checked.joined(separator: ", "))
+        },
+        ConformanceTest("AUDIO-017", "separate: a mixture longer than the offer's max_duration_s is 422 out_of_limits",
+                        spec: "Audio §1.7, §3.6, §4.2", applies: offers("audio.separate")) { p in
+            guard let (d, m) = find(p, "audio.separate", { ($0.limits?.maxDurationSeconds ?? .infinity) <= 300 }),
+                  let max = m.limits?.maxDurationSeconds else {
+                return Note("no separate offer limits its mixture to 300 s or less")
+            }
+            let seconds = (max + 1).rounded(.up)
+            var r = try await request(p, d, m)
+            r.inputs?[I.audio] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav(seconds: seconds, rate: 8000)))
+            let reply = try await p.wire.json("POST", "jobs", r)
+            if reply.status == 201 {
+                // An input's length is the engine's to check (§4.1): at submission, or when the job starts.
+                let job = try await p.settle(try reply.decode(Job.self))
+                try check(job.outcome == .failed && job.error?.code == "out_of_limits",
+                          "a \(Int(seconds)) s mixture to \(m.id) (max_duration_s \(max)) wasn't refused out_of_limits: "
+                          + "\(job.outcome?.rawValue ?? job.state.rawValue) \(job.error?.code ?? "")")
+                await p.confirm(job)
+            } else {
+                try expect(reply, 422, code: "out_of_limits", "a \(Int(seconds)) s mixture to \(m.id)", schemas: p.schemas)
+            }
+            return nil
+        },
+        ConformanceTest("AUDIO-018", "edit_speech: a cue placement, removing every cue and target_duration_s each need their key; a fitted take is that long",
+                        spec: "Audio §3.3, §4.1", applies: offers("audio.edit_speech")) { p in
+            let d = p.descriptor("audio.edit_speech")!
+            var checked: [String] = []
+            if let m = d.models.first(where: { list($0, "edits").contains("add_cue") && !list($0, K.cues).isEmpty
+                                               && $0.supports(K.cuePlacement) != nil && list($0, K.cuePlacement).count < 2 }) {
+                let cue = list(m, K.cues)[0]
+                let inline = !list(m, K.cuePlacement).contains("inline")
+                var r = try await request(p, d, m)
+                r.params?[P.edit] = inline ? ["kind": "add_cue", "cue": .string(cue), "text": .string("Hello [\(cue)] from the suite.")]
+                                           : ["kind": "add_cue", "cue": .string(cue), "at": "end"]
+                try await refuse(p, r, 422, "unsupported_parameter", "a cue placed \(inline ? "inline" : "at an edge") on \(m.id)")
+                checked.append(inline ? "inline cue" : "edge cue")
+            }
+            if let m = d.models.first(where: { list($0, "edits").contains("remove_cue") && $0.supports(K.removeAllCues)?.boolValue == false }) {
+                var r = try await request(p, d, m)
+                r.params?[P.edit] = ["kind": "remove_cue"]
+                try await refuse(p, r, 422, "unsupported_parameter", "removing every cue on \(m.id)")
+                checked.append("removing every cue")
+            }
+            guard d.params["properties"]?[P.targetDuration] != nil else {
+                return Note("refused: \(checked.joined(separator: ", ")); the descriptor has no target_duration_s")
+            }
+            if let m = d.models.first(where: { !list($0, "edits").isEmpty && !flag($0, K.targetDuration) }) {
+                var r = try await request(p, d, m)
+                r.params?[P.targetDuration] = 1.5
+                try await refuse(p, r, 422, "unsupported_parameter", "target_duration_s on \(m.id), which has no target_duration")
+                checked.append("target_duration_s")
+            }
+            if let m = d.models.first(where: { !list($0, "edits").isEmpty && flag($0, K.targetDuration) }) {
+                let target = min(1.5, m.limits?.maxDurationSeconds ?? 1.5)
+                var r = try await request(p, d, m)
+                r.params?[P.targetDuration] = .number(target)
+                let job = try await p.succeed(r)
+                if let out = audioOutputs(job).first, let wav = try await audio(p, job, out), abs(wav.durationSeconds - target) > 0.05 {
+                    try check(job.warnings.contains { $0.code == AudioProfile.WarningCode.durationMissed },
+                              "\(m.id) fitted a take to \(target) s, made \(wav.durationSeconds) s, and didn't warn duration_missed")
+                }
+                await p.confirm(job)
+                checked.append("fitted \(m.id) to \(target) s")
+            }
+            return Note(checked.joined(separator: ", "))
         },
     ]
 

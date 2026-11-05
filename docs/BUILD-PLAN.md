@@ -614,6 +614,53 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     writer leaves the iTunes items, the comment `©cmt` and the copyright, out of a `.mp4`; on macOS 26 the mock failed
     VIDEO-013 against itself. An engine that writes MP4 with AVFoundation on macOS 26 has the same problem.
 
+- **`v0.10.0`** (2026-11-05; Gaea G5 order 3, AB-A-0250): **separation, and what AuK's editor needs**
+  ([RFC 0006](../rfcs/0006-audio-separate-and-auk-edits.md), accepted). Audio stays a 0.1 draft and every change is
+  additive: a 0.9 client never sends the new values, and the new keys default to today's behaviour.
+  - **`audio.separate`** (Audio §3.6, gap S-1): a mixture in, one audio output per stem out, named by the stem and the
+    mixture's length. Stems are a registered set: AuK's `speaker`, `singing` and `voices`, and the music separators'
+    `vocals`, `instrumental`, `drums`, `bass` and `other` (G-29: HTDemucs and Mel-Band-RoFormer make `vocals` and
+    `instrumental`). `stems` asks for some (absent: the offer's, less `speaker`); `speaker` picks one speaker,
+    `{ordinal}` or `{saying}`. Every offer states `supports.stems` and `supports.stem_method` (`masked`, or
+    `regenerated`: AuK's stems are made again, so nothing may be derived by subtraction), and `speaker_selection`
+    gates the pick. `max_duration_s` bounds the mixture (AuK 30 s). The speaker stem without a pick, a pick without it,
+    and a stem twice are 400.
+  - **`edit_speech`:** a `dereverb` kind (S-2); a `hum` cue (S-3); `supports.cue_placement` (`edge`, `inline`) gates
+    where an `add_cue` goes (S-4); `supports.remove_all_cues` lets an offer refuse a `remove_cue` with no cue, as AuK
+    does (S-6, found in AuK's surfaces); `target_duration_s` fits an edited take to a length, gated by
+    `supports.target_duration` and bounded by `max_duration_s` (S-5).
+  - **Schemas:** `operations.json` gains `audio.separate` with stem outputs (an output field, `stem`), and
+    `target_duration_s` on `edit_speech`; the vocabulary gains `stem`, `stems`, `speaker`, `hum` and `dereverb`;
+    `supports.schema.json` gains `separate_supports` (with `stems` and `stem_method` required), `separate_limits` and
+    the three `edit_speech` keys; the job request schema takes `audio.separate`.
+  - **MESKit:** `AudioProfile.stems`, `cuePlacements`, `speakerSelections`, `stemMethods`, `editFields` and the new
+    `Param` and `SupportsKey` names; `ProfileOperationSpec.IO.stem`. `AudioProfileRules` applies the new 400s and gates
+    and the limit on `target_duration_s`, and the plan names the stems a separation makes (`effective.stems`);
+    `RunContext.stems` tells an engine which to make, in order. Clients: `JobResult.output(named:)`,
+    `JobResult.stems`, `EngineConnection.downloadStems`.
+  - **Mock:** `mock-separator` (default; masked vocals and instrumental, 44.1 kHz stereo), `mock-separator-voices`
+    (`named_only`; regenerated speaker, singing and voices, picked either way, ≤ 30 s) and `mock-separator-flash`
+    (regenerated, picked only by words); `mock-editor-research` takes AuK's shape (edge-only cues, one kind removed at
+    a time, `hum`, `dereverb`, fitting to a length). `MockMediaEngine` serves 26 operations.
+  - **MESFormsUI:** the Audio fields follow the request's offers: `stems` lists what they make, `speaker` the pick
+    kinds they take, and `edit` shows its kind, then only that kind's fields, with labels, cues and placements
+    narrowed to the model. The form says before sending what an engine would refuse (the speaker stem without a pick,
+    a stem or edit the chosen model lacks, a length it can't fit, every cue on an editor that removes one kind).
+  - **Conformance:** AUDIO-015 (each offer's stems: names, facts, the mixture's length, `effective.stems`), AUDIO-016
+    (stem and pick gates, the 400s), AUDIO-017 (an over-long mixture is `out_of_limits`, at submission or as the job's
+    error), AUDIO-018 (cue placement, removing every cue, `target_duration_s`); AUDIO-001 reads stem outputs, AUDIO-002
+    requires `stems` and `stem_method`. A separator whose stems are short fails AUDIO-015 and nothing else. Examples:
+    `operations-audio-separate.json` (HTDemucs-like and AuK offers), `job-request-separate.json`,
+    `job-holding-separate.json`, `job-request-edit-speech-fit.json`, and AuK's real `edit_speech` offer; nine new
+    negative tests (63 in all). `tools/smoke-cli.sh` adds a separation leg. 142 tests pass (134 before);
+    `mes-mock-engine` conforms with 89 passed and 6 skipped in open mode: Base, Image, Audio and Video 0.1.
+  - **The conformance tool.** Build it from the tag: `swift build -c release --product mes-conformance`, then
+    `.build/release/mes-conformance engine <url>`. A `mes-conformance` built before `v0.10.0` doesn't know
+    `audio.separate` and fails AUDIO-001 on an engine that offers it.
+  - **Source changes for consumers:** `AudioProfile.cues` and `editKinds` gain a value each, and `MockMediaEngine`'s
+    descriptors gain one operation (26). `MockAudioEngine`'s `mock-editor-research` now refuses an inline cue and a
+    `remove_cue` without a cue.
+
 ## Next: Video after 0.1
 
 - **The packages** (evaluation §8): typed time spans, keyframes and `content` in MLXToolKit; audio passthrough in
@@ -630,5 +677,7 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   (`commercial_use: conditional`) is still open.
 - **The MLXEngine adapter** needs the engine-side work of the evaluation's §6: voice lists, declared cues, languages
   and sample rates per surface, a canonical seed, streaming in the best-tier packages, and a per-asset voice handle.
-- **Later operations:** `audio.speak_dialog`, `audio.separate`, `audio.enhance` (Audio §7). The Video profile shares
+- **Later operations:** `audio.speak_dialog`, `audio.enhance` (Audio §7). Separation shipped in `v0.10.0`; the
+  fleet's HTDemucs and Mel-Band-RoFormer ports can follow AuK as `separate` offers (`masked`, `vocals` and
+  `instrumental`). The Video profile shares
   time with Audio (evaluation §7): `duration_s`, `sample_rate`, `media_s` and streamed chunks are in Base now.

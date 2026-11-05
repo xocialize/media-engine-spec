@@ -1,0 +1,23 @@
+{
+  "operation": "audio.edit_speech",
+  "inputs": {
+    "audio": {
+      "asset": "ast_7m2k9q"
+    }
+  },
+  "params": {
+    "edit": {
+      "kind": "replace_text",
+      "text": "on Tuesday",
+      "with": "first thing on Wednesday morning"
+    },
+    "target_duration_s": 4.2,
+    "seed": 3
+  },
+  "model": "auk",
+  "policy": {
+    "accepted": [
+      "LicenseRef-Qwen-Research"
+    ]
+  }
+}

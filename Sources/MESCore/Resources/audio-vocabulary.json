@@ -105,7 +105,8 @@
         "hesitation",
         "sob",
         "sniff",
-        "pause"
+        "pause",
+        "hum"
       ]
     },
     "speed": {
@@ -119,7 +120,7 @@
       "type": "number",
       "exclusiveMinimum": 0,
       "maximum": 600,
-      "description": "speak: how long the take should be (dub timing)."
+      "description": "speak: how long the take should be (dub timing). edit_speech: how long the edited take should be (§3.3)."
     },
     "edit": {
       "type": "object",
@@ -142,6 +143,7 @@
             "timbre",
             "de_accent",
             "denoise",
+            "dereverb",
             "trim_silence"
           ]
         },
@@ -208,6 +210,36 @@
       "enum": ["auto", "on", "off"],
       "default": "auto",
       "description": "design_voice: whether the engine may rewrite the description before the model sees it (as Image §1.9)."
+    },
+    "stem": {
+      "enum": ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"],
+      "description": "A source of a mixture (§3.6). A stem is registered when one model produces it."
+    },
+    "stems": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/stem" },
+      "description": "separate: the stems to make, each once (a stem listed twice is 400). Absent: every stem the chosen offer lists, except speaker, which needs a pick; with a speaker pick and no stems, just [speaker]."
+    },
+    "speaker": {
+      "description": "separate: the one speaker the speaker stem keeps: ordinal, the n-th to start talking (from 1), or saying, the one who says these words.",
+      "oneOf": [
+        {
+          "title": "By order",
+          "type": "object",
+          "required": ["ordinal"],
+          "additionalProperties": false,
+          "properties": { "ordinal": { "type": "integer", "minimum": 1, "maximum": 32, "description": "The n-th speaker to start talking, from 1." } }
+        },
+        {
+          "title": "By words",
+          "type": "object",
+          "required": ["saying"],
+          "additionalProperties": false,
+          "properties": { "saying": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Words this speaker says." } }
+        }
+      ]
     },
     "section": {
       "enum": ["intro", "verse", "pre-chorus", "chorus", "bridge", "solo", "instrumental", "outro"]

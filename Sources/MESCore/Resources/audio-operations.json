@@ -87,6 +87,7 @@
       },
       "vocabulary": [
         "edit",
+        "target_duration_s",
         "seed",
         "quality",
         "output"
@@ -168,6 +169,56 @@
       "vocabulary_defs": {
         "edit": "compose_edit"
       },
+      "seeded": true
+    },
+    "audio.separate": {
+      "inputs": {
+        "audio": {
+          "kind": "audio",
+          "required": true
+        }
+      },
+      "outputs": {
+        "speaker": {
+          "kind": "audio",
+          "stem": true
+        },
+        "singing": {
+          "kind": "audio",
+          "stem": true
+        },
+        "voices": {
+          "kind": "audio",
+          "stem": true
+        },
+        "vocals": {
+          "kind": "audio",
+          "stem": true
+        },
+        "instrumental": {
+          "kind": "audio",
+          "stem": true
+        },
+        "drums": {
+          "kind": "audio",
+          "stem": true
+        },
+        "bass": {
+          "kind": "audio",
+          "stem": true
+        },
+        "other": {
+          "kind": "audio",
+          "stem": true
+        }
+      },
+      "vocabulary": [
+        "stems",
+        "speaker",
+        "seed",
+        "quality",
+        "output"
+      ],
       "seeded": true
     }
   }

@@ -12,7 +12,8 @@
             "audio.speak",
             "audio.edit_speech",
             "audio.generate",
-            "audio.compose"
+            "audio.compose",
+            "audio.separate"
           ]
         }
       }
@@ -85,6 +86,7 @@
             "additionalProperties": false,
             "properties": {
               "edit": { "$ref": "vocabulary.schema.json#/$defs/edit" },
+              "target_duration_s": { "$ref": "vocabulary.schema.json#/$defs/target_duration_s" },
               "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
               "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
               "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
@@ -135,6 +137,26 @@
               "edit": { "$ref": "vocabulary.schema.json#/$defs/compose_edit" },
               "anchors": { "$ref": "vocabulary.schema.json#/$defs/anchors" },
               "timestamps": { "$ref": "vocabulary.schema.json#/$defs/timestamps" },
+              "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
+              "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
+              "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "audio.separate" } }, "required": ["operation"] },
+      "then": {
+        "required": ["inputs"],
+        "properties": {
+          "inputs": { "type": "object", "required": ["audio"], "propertyNames": { "enum": ["audio"] } },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "stems": { "$ref": "vocabulary.schema.json#/$defs/stems" },
+              "speaker": { "$ref": "vocabulary.schema.json#/$defs/speaker" },
               "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
               "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
               "output": { "$ref": "vocabulary.schema.json#/$defs/output" }

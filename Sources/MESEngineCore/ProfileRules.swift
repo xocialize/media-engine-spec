@@ -117,16 +117,9 @@ public enum AudioProfileRules {
     typealias K = AudioProfile.SupportsKey
     typealias L = AudioProfile.LimitField
 
-    /// The fields each speech edit kind needs (§3.3).
-    static let editFields: [String: [String]] = [
-        "emotion": ["emotion"], "style": ["style"], "add_cue": ["cue"], "remove_cue": [], "replace_text": ["text", "with"],
-        "insert_text": ["text", "anchor", "position"], "remove_text": ["text"], "speed": ["factor"], "pitch": ["semitones"],
-        "volume": ["gain_db"], "timbre": ["description"], "de_accent": [], "denoise": [], "trim_silence": [],
-    ]
-    /// The fields each speech edit kind may carry, beyond `kind`.
-    static let editAllowed: [String: [String]] = [
-        "add_cue": ["cue", "at", "text"], "remove_cue": ["cue"],
-    ]
+    /// The fields each speech edit kind needs, and may carry (§3.3).
+    static let editFields = AudioProfile.editFields
+    static let editAllowed = AudioProfile.editOptionalFields
 
     /// Emotion aliases resolved (§2.1): `emotion.label` and an `emotion` edit's label.
     public static func normalize(_ request: JobRequest) -> JobRequest {
@@ -175,6 +168,21 @@ public enum AudioProfileRules {
             }
             if kind == "add_cue", edit["at"] != nil, edit["text"] != nil {
                 throw MESError(.invalidRequest, "An add_cue edit places the cue with 'at' or with 'text', not both.", param: P.edit)
+            }
+        case "audio.separate":
+            // §3.6: each stem once; the speaker stem and its pick go together.
+            let stems = params[P.stems]?.arrayValue?.compactMap(\.stringValue)
+            if let stems, let twice = stems.first(where: { s in stems.filter { $0 == s }.count > 1 }) {
+                throw MESError(.invalidRequest, "The stem '\(twice)' is listed twice.", param: P.stems)
+            }
+            let pick = params[P.speaker]
+            if stems?.contains("speaker") == true, pick == nil {
+                throw MESError(.invalidRequest, "The speaker stem keeps one speaker: say which with 'speaker' ({ordinal} or {saying}).",
+                               param: P.speaker)
+            }
+            if let stems, pick != nil, !stems.contains("speaker") {
+                throw MESError(.invalidRequest, "A speaker pick is for the speaker stem; add 'speaker' to stems, or drop the pick.",
+                               param: P.speaker)
             }
         case "audio.compose":
             let edit = params[P.edit]?.objectValue
@@ -279,11 +287,26 @@ public enum AudioProfileRules {
                     if let cue = edit["cue"]?.stringValue {
                         out.append(.listed(K.cues, cue, absent: [], param: P.edit, what: "the cue '\(cue)'"))
                     } else {
-                        out.append(OfferRequirement(param: P.edit, what: "removing cues") {
-                            !($0.supports(K.cues)?.arrayValue ?? []).isEmpty
+                        // RFC 0006 S-6: an offer that removes one kind of sound at a time says remove_all_cues: false.
+                        out.append(OfferRequirement(param: P.edit, what: "removing every cue") {
+                            !($0.supports(K.cues)?.arrayValue ?? []).isEmpty && ($0.supports(K.removeAllCues)?.boolValue ?? true)
                         })
                     }
                 }
+                // RFC 0006 S-4: where an add_cue may go.
+                if kind == "add_cue", edit["at"] != nil {
+                    out.append(.listed(K.cuePlacement, "edge", absent: AudioProfile.cuePlacements, param: P.edit,
+                                       what: "a cue at the \(edit["at"]?.stringValue ?? "edge") (at)"))
+                }
+                if kind == "add_cue", edit["text"] != nil {
+                    out.append(.listed(K.cuePlacement, "inline", absent: AudioProfile.cuePlacements, param: P.edit,
+                                       what: "a cue placed inline (text)"))
+                }
+            }
+            // RFC 0006 S-5: an edit fitted to a length.
+            if let d = params[P.targetDuration]?.numberValue {
+                out.append(.flag(K.targetDuration, param: P.targetDuration, what: "an edit fitted to a length (target_duration_s)"))
+                out.append(.limit(L.maxDuration, d, param: P.targetDuration, what: "a \(d) s take"))
             }
             if let t = text(I.transcript) {
                 out.append(.limit(L.maxTextChars, Double(t.count), param: I.transcript, what: "a \(t.count)-character transcript"))
@@ -292,6 +315,22 @@ public enum AudioProfileRules {
                 out.append(OfferRequirement(param: I.transcript, what: "an edit without a transcript") {
                     $0.supports(K.transcript)?.stringValue != "required"
                 })
+            }
+        case "audio.separate":
+            // §3.6: each stem asked for, or (asked for none) the stems the offer makes; then the pick's kind.
+            if let stems = params[P.stems]?.arrayValue?.compactMap(\.stringValue) {
+                for stem in stems {
+                    out.append(.listed(K.stems, stem, absent: [], param: P.stems, what: "the stem '\(stem)'"))
+                }
+            } else if params[P.speaker] != nil {
+                out.append(.listed(K.stems, "speaker", absent: [], param: P.stems, what: "the stem 'speaker'"))
+            } else {
+                out.append(OfferRequirement(param: P.stems, what: "a stem that needs no speaker pick") { offer in
+                    (offer.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? []).contains { $0 != "speaker" }
+                })
+            }
+            if let pick = params[P.speaker]?.objectValue, let kind = pick.keys.first(where: AudioProfile.speakerSelections.contains) {
+                out.append(.listed(K.speakerSelection, kind, absent: [], param: P.speaker, what: "picking a speaker by \(kind)"))
             }
         case "audio.generate":
             if let d = params[P.duration]?.numberValue {
@@ -370,6 +409,14 @@ public enum AudioProfileRules {
         return out
     }
 
+    /// The stems a `separate` job makes (§3.6): the request's `stems`, in its order; or, asked for none, `[speaker]`
+    /// with a speaker pick and otherwise every stem the offer lists except `speaker`.
+    public static func stems(_ params: [String: JSONValue], model: ModelOffer) -> [String] {
+        if let asked = params[P.stems]?.arrayValue?.compactMap(\.stringValue) { return asked }
+        if params[P.speaker] != nil { return ["speaker"] }
+        return (model.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? []).filter { $0 != "speaker" }
+    }
+
     /// `speak` text without the cues the model can't perform (§2.2): each removed cue warns `cue_unsupported` once.
     /// `pause` is always kept: every engine honours it.
     public static func removeUnsupportedCues(_ text: String, model: ModelOffer) -> (String, [Warning]) {
@@ -391,6 +438,11 @@ public enum AudioProfileRules {
         }
         return (AudioProfile.text(kept), warnings)
     }
+}
+
+extension RunContext {
+    /// Audio `separate` (§3.6): the stems to make, in the order to return them, already checked against the offer.
+    public var stems: [String] { AudioProfileRules.stems(params, model: model) }
 }
 
 /// The Video profile's rules (spec/profiles/video.md): request structure (400s), gates and limits per offer (§4), and

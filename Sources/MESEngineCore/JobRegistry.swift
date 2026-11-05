@@ -273,6 +273,10 @@ package actor JobRegistry {
         try spool.makeJobDirectories(id)
         var effective = request.params ?? [:]
         effective[ImageProfile.Param.quality] = .string(quality.rawValue)
+        if descriptor.operation == "audio.separate" {
+            // Audio §3.6: the plan says which stems the job makes, when the request left it to the offer.
+            effective[AudioProfile.Param.stems] = .array(AudioProfileRules.stems(request.params ?? [:], model: model).map { .string($0) })
+        }
         let job = Job(id: id, operation: request.operation, clientRef: request.clientRef, state: .received,
                       warnings: [], retention: .init(recordExpiresAt: now.addingTimeInterval(TimeInterval(config.jobRecordTTLSeconds))),
                       createdAt: now, updatedAt: now)

@@ -40,6 +40,10 @@
                 "streamable": {
                   "type": "boolean",
                   "description": "The output may stream (Base §6, RFC 0002): an audio output with max 1 whose descriptor may declare stream."
+                },
+                "stem": {
+                  "type": "boolean",
+                  "description": "The output is a stem, named by it (Audio §3.6, RFC 0006): a descriptor lists as outputs the stems its offers produce, at least one, each 0–1."
                 }
               }
             }

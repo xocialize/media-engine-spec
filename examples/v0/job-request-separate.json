@@ -1,0 +1,24 @@
+{
+  "operation": "audio.separate",
+  "inputs": {
+    "audio": {
+      "upload": "upl_d4"
+    }
+  },
+  "params": {
+    "stems": [
+      "speaker",
+      "singing"
+    ],
+    "speaker": {
+      "saying": "pass me the salt"
+    },
+    "seed": 12
+  },
+  "model": "auk",
+  "policy": {
+    "accepted": [
+      "LicenseRef-Qwen-Research"
+    ]
+  }
+}

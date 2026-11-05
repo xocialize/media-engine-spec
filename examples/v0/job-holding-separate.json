@@ -1,0 +1,116 @@
+{
+  "id": "job_01JC02",
+  "operation": "audio.separate",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "auk",
+      "title": "AuK",
+      "license": {
+        "spdx": "LicenseRef-Qwen-Research",
+        "commercial_use": false,
+        "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE",
+        "notice": "AuK needs the Qwen2.5-Omni-3B encoder, under the Qwen Research License: research or evaluation use only, not commercial use.",
+        "accepted_required": true,
+        "user_accept_required": true
+      }
+    },
+    "effective": {
+      "stems": [
+        "speaker",
+        "singing"
+      ],
+      "speaker": {
+        "saying": "pass me the salt"
+      },
+      "seed": 12,
+      "quality": "standard"
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "fraction": 1
+  },
+  "warnings": [
+    {
+      "code": "audio_resampled",
+      "message": "The mixture was resampled from 48000 Hz to 24000 Hz.",
+      "param": "audio"
+    }
+  ],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "speaker",
+        "kind": "audio",
+        "media_type": "audio/wav",
+        "bytes": 1032044,
+        "sha256": "035e3f8b96aeb456b520ed623497baf82541d6cc646b4815cb59ab74c96cf217",
+        "href": "/mes/v0/jobs/job_01JC02/outputs/0",
+        "duration_s": 21.5,
+        "sample_rate": 24000,
+        "channels": 1,
+        "bit_depth": 16
+      },
+      {
+        "index": 1,
+        "name": "singing",
+        "kind": "audio",
+        "media_type": "audio/wav",
+        "bytes": 1032044,
+        "sha256": "3cd262e0c17c620d141238485557dda11738f827820282b34da07091e861eb74",
+        "href": "/mes/v0/jobs/job_01JC02/outputs/1",
+        "duration_s": 21.5,
+        "sample_rate": 24000,
+        "channels": 1,
+        "bit_depth": 16
+      }
+    ],
+    "effective": {
+      "stems": [
+        "speaker",
+        "singing"
+      ],
+      "speaker": {
+        "saying": "pass me the salt"
+      },
+      "seed": 12,
+      "quality": "standard"
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "0.9.0"
+      },
+      "operation": "audio.separate",
+      "profile_version": "0.1",
+      "model": {
+        "id": "auk",
+        "title": "AuK",
+        "license": {
+          "spdx": "LicenseRef-Qwen-Research",
+          "commercial_use": false,
+          "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE",
+          "notice": "AuK needs the Qwen2.5-Omni-3B encoder, under the Qwen Research License: research or evaluation use only, not commercial use.",
+          "accepted_required": true,
+          "user_accept_required": true
+        }
+      },
+      "seed": 12,
+      "timings": {
+        "received_at": "2026-11-05T21:00:00Z",
+        "run_ms": 38900
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-11-05T22:00:40Z",
+    "record_expires_at": "2026-11-06T21:00:40Z"
+  },
+  "created_at": "2026-11-05T21:00:00Z",
+  "updated_at": "2026-11-05T21:00:40Z"
+}

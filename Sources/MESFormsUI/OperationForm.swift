@@ -111,7 +111,7 @@ public struct OperationFormContent<MediaSlot: View>: View {
     }
 
     func rows(_ fields: [FormField], issues: [String: String]) -> some View {
-        ForEach(fields) { field in
+        ForEach(fields.map(form.narrowed)) { field in
             FieldRow(field: field, value: Binding(get: { form.value(at: [field.name]) }, set: { form.setValue($0, at: [field.name]) }),
                      issue: issues[field.name])
         }

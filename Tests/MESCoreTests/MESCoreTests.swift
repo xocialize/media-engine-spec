@@ -125,7 +125,11 @@ struct MESCoreTests {
             schemas.appendingPathComponent("profiles/audio/operations.json")))
         #expect(AudioProfile.operations == canonical)
         #expect(AudioProfile.operations.operations.keys.sorted() == ["audio.compose", "audio.design_voice", "audio.edit_speech",
-                                                                    "audio.generate", "audio.speak"])
+                                                                    "audio.generate", "audio.separate", "audio.speak"])
+        // RFC 0006: separate's outputs are the registered stems, each marked a stem.
+        let separate = try #require(AudioProfile.operations.operations["audio.separate"])
+        #expect(Set(separate.outputs.keys) == Set(AudioProfile.stems) && separate.outputs.values.allSatisfy { $0.stem == true && $0.kind == .audio })
+        #expect(AudioProfile.vocabulary["$defs"]?["stem"]?["enum"] == .array(AudioProfile.stems.map { .string($0) }))
         #expect(AudioProfile.vocabulary == (try json(schemas.appendingPathComponent("profiles/audio/vocabulary.schema.json"))))
         // The label lists are the vocabulary's enums.
         #expect(AudioProfile.vocabulary["$defs"]?["emotion_label"]?["enum"] == .array(AudioProfile.emotions.map { .string($0) }))
@@ -133,6 +137,23 @@ struct MESCoreTests {
         #expect(AudioProfile.vocabulary["$defs"]?["cue"]?["enum"] == .array(AudioProfile.cues.map { .string($0) }))
         #expect(AudioProfile.vocabulary["$defs"]?["edit"]?["properties"]?["kind"]?["enum"] == .array(AudioProfile.editKinds.map { .string($0) }))
         #expect(AudioProfile.vocabulary["$defs"]?["section"]?["enum"] == .array(AudioProfile.sections.map { .string($0) }))
+    }
+
+    @Test("JobResult.stems reads a separation's outputs by stem, in effective.stems order")
+    func stems() {
+        func out(_ i: Int, _ name: String) -> Output {
+            Output(index: i, name: name, kind: .audio, mediaType: "audio/wav", bytes: 44, sha256: String(repeating: "0", count: 64),
+                   href: "/mes/v0/jobs/j/outputs/\(i)")
+        }
+        let provenance = Provenance(engine: .init(id: "e", name: "E", implementation: "i", version: "1"), operation: "audio.separate",
+                                    profileVersion: "0.1", model: ModelRef(id: "m", title: "M", license: .apache2),
+                                    timings: .init(receivedAt: Date()))
+        let result = JobResult(outputs: [out(0, "singing"), out(1, "speaker")], effective: ["stems": ["speaker", "singing"]],
+                               provenance: provenance)
+        #expect(result.stems.map(\.stem) == ["speaker", "singing"] && result.stems.map(\.output.index) == [1, 0])
+        #expect(result.output(named: "singing")?.index == 0 && result.output(named: "vocals") == nil)
+        let unordered = JobResult(outputs: [out(0, "vocals"), out(1, "instrumental")], effective: [:], provenance: provenance)
+        #expect(unordered.stems.map(\.stem) == ["vocals", "instrumental"])
     }
 
     @Test("The bundled Video table and vocabulary are identical to schemas/v0/profiles/video")

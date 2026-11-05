@@ -386,8 +386,9 @@ INDEX = {"spdx": "LicenseRef-Bilibili-Model-Use", "commercial_use": True,
          "terms_url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/blob/main/LICENSE", "accepted_required": True}
 QWEN_TTS = {"spdx": "Apache-2.0", "commercial_use": True, "terms_url": "https://www.apache.org/licenses/LICENSE-2.0"}
 EDITX = {"spdx": "Apache-2.0", "commercial_use": True, "terms_url": "https://huggingface.co/stepfun-ai/Step-Audio-EditX"}
-AUK = {"spdx": "LicenseRef-Qwen-Research", "commercial_use": False, "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-7B/blob/main/LICENSE",
-       "notice": "Research or evaluation use only.", "accepted_required": True}
+AUK = {"spdx": "LicenseRef-Qwen-Research", "commercial_use": False, "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE",
+       "notice": "AuK needs the Qwen2.5-Omni-3B encoder, under the Qwen Research License: research or evaluation use only, not commercial use.",
+       "accepted_required": True, "user_accept_required": True}
 ACE = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://github.com/ace-step/ACE-Step-1.5/blob/main/LICENSE"}
 YUE = {"spdx": "CC-BY-NC-4.0", "commercial_use": False, "terms_url": "https://huggingface.co/m-a-p/YuE2-3B/blob/main/LICENSE",
        "accepted_required": True,
@@ -508,15 +509,18 @@ examples.update({
                  "edit": {"type": "object", "required": ["kind"], "additionalProperties": False, "x-mes-ui": {"label": "Edit"},
                           "properties": {"kind": {"enum": ["emotion", "style", "add_cue", "remove_cue", "replace_text", "insert_text",
                                                            "remove_text", "speed", "pitch", "volume", "timbre", "de_accent", "denoise",
-                                                           "trim_silence"]},
+                                                           "dereverb", "trim_silence"]},
                                          "emotion": {"enum": EMOTIONS}, "style": {"enum": ["normal", "whisper", "shout", "gentle", "serious", "warm", "narration", "conversational", "news"]},
-                                         "cue": {"enum": ["laugh", "cough", "sigh", "breath", "gasp", "clear_throat", "hesitation", "sob", "sniff", "pause"]},
+                                         "cue": {"enum": ["laugh", "cough", "sigh", "breath", "gasp", "clear_throat", "hesitation", "sob", "sniff", "pause", "hum"]},
                                          "at": {"enum": ["start", "end"]}, "text": {"type": "string", "minLength": 1, "maxLength": 2000},
                                          "with": {"type": "string", "maxLength": 2000}, "anchor": {"type": "string", "minLength": 1, "maxLength": 2000},
                                          "position": {"enum": ["before", "after"]}, "factor": {"type": "number", "minimum": 0.25, "maximum": 4},
                                          "semitones": {"type": "number", "minimum": -12, "maximum": 12},
                                          "gain_db": {"type": "number", "minimum": -40, "maximum": 40},
                                          "description": {"type": "string", "minLength": 1, "maxLength": 500}}},
+                 "target_duration_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 90,
+                                       "x-mes-ui": {"label": "Fit to (s)", "advanced": True,
+                                                    "help": "How long the edited take should be. Needs a model that fits edits to a length."}},
                  "seed": SEED, "quality": QUALITY, "output": OUTPUT}},
              "outputs": [{"name": "audio", "kind": "audio", "media_types": ["audio/wav"], "min": 1, "max": 1},
                          {"name": "transcript", "kind": "data", "media_types": ["application/json"], "min": 0, "max": 1}],
@@ -535,9 +539,14 @@ examples.update({
                   "limits": {"max_duration_s": 90}},
                  {"id": "auk", "title": "AuK", "license": AUK, "memory_class": "large", "speed_class": "standard",
                   "quality_tiers": ["standard"], "named_only": True,
-                  "supports": {"edits": ["emotion", "style", "denoise"], "emotions": ["happy", "sad", "angry", "afraid", "disgusted", "surprised", "calm", "excited"],
-                               "styles": ["whisper", "normal"], "transcript": "unused", "keeps_length": True, "languages": ["en", "zh"],
-                               "sample_rate": 24000},
+                  "notes": "Needs no transcript. Content and speed edits change the length: give target_duration_s to fit a cue. "
+                           "Sounds are added at the start or end only. Speed, pitch and volume snap to its trained steps.",
+                  "supports": {"edits": ["emotion", "style", "add_cue", "remove_cue", "replace_text", "insert_text", "remove_text",
+                                         "speed", "pitch", "volume", "timbre", "de_accent", "denoise", "dereverb"],
+                               "emotions": ["happy", "sad", "angry", "afraid", "disgusted", "surprised", "calm", "excited"],
+                               "styles": ["whisper", "normal"], "cues": ["breath", "laugh", "cough", "hum"],
+                               "cue_placement": ["edge"], "remove_all_cues": False, "target_duration": True,
+                               "transcript": "unused", "keeps_length": False, "languages": ["en", "zh"], "sample_rate": 24000},
                   "limits": {"max_duration_s": 30}},
              ],
              "remote": {"possible": False}},
@@ -564,6 +573,14 @@ examples.update({
         "operation": "audio.edit_speech",
         "inputs": {"audio": {"upload": "upl_c9"}, "transcript": "I can't believe you did that."},
         "params": {"edit": {"kind": "emotion", "emotion": "surprised"}, "seed": 7},
+    },
+    "job-request-edit-speech-fit.json": {
+        "operation": "audio.edit_speech",
+        "inputs": {"audio": {"asset": "ast_7m2k9q"}},
+        "params": {"edit": {"kind": "replace_text", "text": "on Tuesday", "with": "first thing on Wednesday morning"},
+                   "target_duration_s": 4.2, "seed": 3},
+        "model": "auk",
+        "policy": {"accepted": ["LicenseRef-Qwen-Research"]},
     },
     "operations-audio-compose.json": {
         "etag": "\"ops-" + H("audio-compose")[:12] + "\"",
@@ -812,6 +829,86 @@ examples.update({
                   "message": "LTX 2.5 compact24 is under LicenseRef-LTX-2-Community, whose terms bind each user: show them its notice and "
                              "terms (https://huggingface.co/Lightricks/LTX-2/blob/main/LICENSE), and once they accept, list "
                              "LicenseRef-LTX-2-Community in policy.accepted."},
+    },
+})
+
+# RFC 0006 (v0.10.0): audio.separate, with AuK's regenerated speech stems and HTDemucs's masked music stems.
+HTDEMUCS = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://github.com/facebookresearch/demucs/blob/main/LICENSE"}
+STEMS = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"]
+
+examples.update({
+    "operations-audio-separate.json": {
+        "etag": "\"ops-" + H("audio-separate")[:12] + "\"",
+        "operations": [{
+            "operation": "audio.separate", "profile": "audio", "profile_version": "0.1", "title": "Separate sources",
+            "summary": "Split a recording into its sources: one speaker, the singing, every voice, or a song's vocals and instrumental.",
+            "inputs": [{"name": "audio", "kind": "audio", "required": True, "max": 1, "media_types": AUDIO_TYPES}],
+            "params": {"type": "object", "additionalProperties": False, "properties": {
+                "stems": {"type": "array", "minItems": 1, "maxItems": 8,
+                          "items": {"enum": ["speaker", "singing", "voices", "vocals", "instrumental"]},
+                          "x-mes-ui": {"label": "Stems", "help": "Absent: every stem the model makes (the speaker needs a pick)."}},
+                "speaker": {"oneOf": [{"title": "By order", "type": "object", "required": ["ordinal"], "additionalProperties": False,
+                                       "properties": {"ordinal": {"type": "integer", "minimum": 1, "maximum": 32}}},
+                                      {"title": "By words", "type": "object", "required": ["saying"], "additionalProperties": False,
+                                       "properties": {"saying": {"type": "string", "minLength": 1, "maxLength": 500}}}],
+                            "x-mes-ui": {"label": "Speaker", "help": "The n-th to start talking, or the one who says these words."}},
+                "seed": SEED, "quality": QUALITY, "output": OUTPUT}},
+            "outputs": [{"name": s, "kind": "audio", "media_types": ["audio/wav", "audio/flac"], "min": 0, "max": 1}
+                        for s in ["speaker", "singing", "voices", "vocals", "instrumental"]],
+            "limits": {"max_duration_s": 600},
+            "quality_tiers": ["draft", "standard"],
+            "models": [
+                {"id": "htdemucs-ft", "title": "HTDemucs v4 (fine-tuned vocals)", "license": HTDEMUCS, "memory_class": "small",
+                 "speed_class": "fast", "quality_tiers": ["standard"], "default": True,
+                 "notes": "Music: the vocals, and the instrumental as the mixture minus the vocals.",
+                 "supports": {"stems": ["vocals", "instrumental"], "stem_method": "masked", "seed": False,
+                              "sample_rate": 44100, "channels": 2},
+                 "limits": {"max_duration_s": 600}},
+                {"id": "auk-flash", "title": "AuK-Flash", "license": AUK, "memory_class": "large", "speed_class": "fast",
+                 "quality_tiers": ["draft"], "named_only": True,
+                 "notes": "Picking a later speaker by order is unreliable: name words they say instead. Each stem is made again, "
+                          "so none can be subtracted from the mixture.",
+                 "supports": {"stems": ["speaker", "singing"], "speaker_selection": ["ordinal", "saying"],
+                              "stem_method": "regenerated", "languages": ["en", "zh"], "sample_rate": 24000, "channels": 1},
+                 "limits": {"max_duration_s": 30}},
+                {"id": "auk", "title": "AuK", "license": AUK, "memory_class": "large", "speed_class": "standard",
+                 "quality_tiers": ["standard"], "named_only": True,
+                 "notes": "Each stem is made again, so none can be subtracted from the mixture.",
+                 "supports": {"stems": ["speaker", "singing", "voices"], "speaker_selection": ["ordinal", "saying"],
+                              "stem_method": "regenerated", "languages": ["en", "zh"], "sample_rate": 24000, "channels": 1},
+                 "limits": {"max_duration_s": 30}},
+            ],
+            "remote": {"possible": False},
+        }],
+    },
+    "job-request-separate.json": {
+        "operation": "audio.separate",
+        "inputs": {"audio": {"upload": "upl_d4"}},
+        "params": {"stems": ["speaker", "singing"], "speaker": {"saying": "pass me the salt"}, "seed": 12},
+        "model": "auk",
+        "policy": {"accepted": ["LicenseRef-Qwen-Research"]},
+    },
+    "job-holding-separate.json": {
+        "id": "job_01JC02", "operation": "audio.separate", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "auk", "title": "AuK", "license": AUK},
+                 "effective": {"stems": ["speaker", "singing"], "speaker": {"saying": "pass me the salt"}, "seed": 12,
+                               "quality": "standard"}},
+        "progress": {"stage": "finishing", "fraction": 1},
+        "warnings": [{"code": "audio_resampled", "message": "The mixture was resampled from 48000 Hz to 24000 Hz.", "param": "audio"}],
+        "result": {
+            "outputs": [
+                {"index": 0, "name": "speaker", "kind": "audio", "media_type": "audio/wav", "bytes": 1032044, "sha256": H("stem-speaker"),
+                 "href": "/mes/v0/jobs/job_01JC02/outputs/0", "duration_s": 21.5, "sample_rate": 24000, "channels": 1, "bit_depth": 16},
+                {"index": 1, "name": "singing", "kind": "audio", "media_type": "audio/wav", "bytes": 1032044, "sha256": H("stem-singing"),
+                 "href": "/mes/v0/jobs/job_01JC02/outputs/1", "duration_s": 21.5, "sample_rate": 24000, "channels": 1, "bit_depth": 16},
+            ],
+            "effective": {"stems": ["speaker", "singing"], "speaker": {"saying": "pass me the salt"}, "seed": 12, "quality": "standard"},
+            "provenance": {"engine": AUDIO_ENGINE, "operation": "audio.separate", "profile_version": "0.1",
+                           "model": {"id": "auk", "title": "AuK", "license": AUK}, "seed": 12,
+                           "timings": {"received_at": "2026-11-05T21:00:00Z", "run_ms": 38900}},
+        },
+        "retention": {"outputs_expire_at": "2026-11-05T22:00:40Z", "record_expires_at": "2026-11-06T21:00:40Z"},
+        "created_at": "2026-11-05T21:00:00Z", "updated_at": "2026-11-05T21:00:40Z",
     },
 })
 

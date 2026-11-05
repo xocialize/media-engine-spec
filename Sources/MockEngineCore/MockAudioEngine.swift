@@ -2,7 +2,7 @@ import Foundation
 import MESCore
 import MESEngineCore
 
-/// A mock Audio-profile engine: the five Audio 0.1 operations, with synthetic results that obey the profile's rules and
+/// A mock Audio-profile engine: the six Audio 0.1 operations, with synthetic results that obey the profile's rules and
 /// offers that differ in what they support (Base §6.4), so clients and the conformance suite can exercise routing,
 /// gates, voices, streaming and assets. It runs no model: speech is tone bursts, sounds are seeded noise, songs are
 /// chords.
@@ -11,7 +11,11 @@ import MESEngineCore
 ///   cues, no seed), `mock-clone` (cloning, streaming at 22.05 kHz, emotion intensity, target duration) and
 ///   `mock-clone-research` (`named_only`, a research licence, needs the reference's transcript).
 /// - **edit_speech**: `mock-editor` (the default; a transcript is required) and `mock-editor-research` (`named_only`;
-///   every edit kind, keeps the length).
+///   every edit kind, keeps the length, adds cues only at an edge, removes one kind of cue at a time, fits an edit to a
+///   length: AuK's shape, RFC 0006).
+/// - **separate**: `mock-separator` (the default; masked `vocals` and `instrumental`, the second the mixture minus the
+///   first), `mock-separator-voices` (`named_only`; regenerated `speaker`, `singing` and `voices`, a speaker picked
+///   either way, ≤ 30 s) and `mock-separator-flash` (regenerated `speaker` and `singing`, picked only by words).
 /// - **compose**: `mock-composer` (MIT-like, the default), `mock-composer-research` (`named_only`, non-commercial, with a
 ///   notice and a score) and `mock-composer-notice` (commercial, with a name to display).
 public struct MockAudioEngine: MediaEngine {
@@ -100,10 +104,30 @@ public struct MockAudioEngine: MediaEngine {
                                  "sample_rate": 24000, "channels": 1],
                       limits: .init(maxDurationSeconds: 90)),
                 offer("mock-editor-research", "Mock research editor", license: researchLicense, tiers: [.standard], namedOnly: true,
+                      notes: "Adds sounds at the start or end only, and removes one kind at a time. Give target_duration_s to fit an edit to a cue.",
                       supports: ["edits": .array(AudioProfile.editKinds.map { .string($0) }),
                                  "emotions": ["happy", "sad", "angry", "afraid", "disgusted", "surprised", "calm", "excited"],
-                                 "styles": ["whisper", "normal"], "cues": ["laugh", "cough", "breath"], "transcript": "unused",
+                                 "styles": ["whisper", "normal"], "cues": ["laugh", "cough", "breath", "hum"], "transcript": "unused",
+                                 "cue_placement": ["edge"], "remove_all_cues": false, "target_duration": true,
                                  "keeps_length": true, "sample_rate": 24000, "channels": 1],
+                      limits: .init(maxDurationSeconds: 30)),
+            ]
+        case "audio.separate":
+            return [
+                offer("mock-separator", "Mock music separator", tiers: [.draft, .standard], isDefault: true,
+                      notes: "Music: the vocals, and the instrumental as the mixture minus the vocals.",
+                      supports: ["stems": ["vocals", "instrumental"], "stem_method": "masked", "seed": false,
+                                 "sample_rate": 44100, "channels": 2],
+                      limits: .init(maxDurationSeconds: 600)),
+                offer("mock-separator-voices", "Mock voice separator", license: researchLicense, tiers: [.standard], namedOnly: true,
+                      notes: "Each stem is made again, so none can be subtracted from the mixture.",
+                      supports: ["stems": ["speaker", "singing", "voices"], "speaker_selection": ["ordinal", "saying"],
+                                 "stem_method": "regenerated", "languages": ["en", "zh"], "sample_rate": 24000, "channels": 1],
+                      limits: .init(maxDurationSeconds: 30)),
+                offer("mock-separator-flash", "Mock fast voice separator", tiers: [.draft],
+                      notes: "Pick the speaker by words they say. Each stem is made again.",
+                      supports: ["stems": ["speaker", "singing"], "speaker_selection": ["saying"], "stem_method": "regenerated",
+                                 "sample_rate": 24000, "channels": 1],
                       limits: .init(maxDurationSeconds: 30)),
             ]
         case "audio.generate":
@@ -159,9 +183,16 @@ public struct MockAudioEngine: MediaEngine {
             schema["x-mes-ui"] = .object(ui(name, order: order))
             properties[name] = .object(schema)
         }
-        let outputs = spec.outputs.sorted { $0.key < $1.key }.map { name, io -> OutputSpec in
+        // §3.6: a separator's outputs are the stems its offers make, in the registry's order.
+        let made = Set(models(operation).flatMap { $0.supports(AudioProfile.SupportsKey.stems)?.arrayValue?.compactMap(\.stringValue) ?? [] })
+        let ordered = spec.outputs.sorted { a, b in
+            a.value.stem == true && b.value.stem == true
+                ? (AudioProfile.stems.firstIndex(of: a.key) ?? 0) < (AudioProfile.stems.firstIndex(of: b.key) ?? 0) : a.key < b.key
+        }
+        let outputs = ordered.filter { $0.value.stem != true || made.contains($0.key) }.map { name, io -> OutputSpec in
             let many = ["samples", "sounds"].contains(name)
             let optional = (operation == "audio.edit_speech" && name == "transcript") || (operation == "audio.compose" && name != "song")
+                || io.stem == true
             let mediaTypes = io.kind == .data ? ["application/json"] : io.kind == .text ? ["text/vnd.abc"] : ["audio/wav"]
             return OutputSpec(name: name, kind: io.kind, mediaTypes: mediaTypes, min: optional ? 0 : 1,
                               max: many ? (operation == "audio.design_voice" ? 4 : 8) : 1,
@@ -176,6 +207,7 @@ public struct MockAudioEngine: MediaEngine {
         case "audio.speak": .init(maxDurationSeconds: 300, profile: [AudioProfile.LimitField.maxTextChars: 4000,
                                                                      AudioProfile.LimitField.maxVoiceRefSeconds: 30])
         case "audio.edit_speech": .init(maxDurationSeconds: 90)
+        case "audio.separate": .init(maxDurationSeconds: 600)
         default: .init(maxCount: 4, profile: [AudioProfile.LimitField.maxTextChars: 1000])
         }
         return Descriptor(
@@ -188,7 +220,7 @@ public struct MockAudioEngine: MediaEngine {
 
     static func title(_ op: String) -> String {
         ["audio.design_voice": "Design a voice", "audio.speak": "Speak", "audio.edit_speech": "Edit speech",
-         "audio.generate": "Generate a sound", "audio.compose": "Compose a song"][op] ?? op
+         "audio.generate": "Generate a sound", "audio.compose": "Compose a song", "audio.separate": "Separate sources"][op] ?? op
     }
 
     static func ui(_ name: String, order: Int) -> [String: JSONValue] {
@@ -350,11 +382,45 @@ public struct MockAudioEngine: MediaEngine {
                 mono += Tones.silence(0.1, rate: outRate)            // EditX-like: the take is made again, a little longer
             }
             if keeps, let source = try? input(AudioProfile.Input.audio) { mono = Tones.fit(mono, count: source.count) }
+            if let target = context.param(AudioProfile.Param.targetDuration)?.numberValue {
+                mono = Tones.fit(mono, count: Tones.frames(target, rate: outRate))      // RFC 0006 S-5: fitted to the cue
+                effective[AudioProfile.Param.targetDuration] = .number(target)
+            }
             outputs.append(try write(mono, "audio"))
             if ["add_cue", "remove_cue", "replace_text", "insert_text", "remove_text"].contains(kind), let transcript {
                 outputs.append(.data(["text": .string(transcript)], name: "transcript"))
             }
             effective[AudioProfile.Param.edit] = .object(edit)
+
+        case "audio.separate":
+            // §3.6: one output per stem, each the mixture's length. Masked stems filter the mixture (and the
+            // instrumental is the mixture minus the vocals); regenerated ones are made again, seeded, at its length.
+            let mixture = try input(AudioProfile.Input.audio)
+            let seconds = Double(mixture.count) / Double(outRate)
+            if let max = context.model.limits?.maxDurationSeconds, seconds > max + 0.5 / Double(outRate) {
+                throw MESError(.outOfLimits, String(format: "The mixture is %.2f s; %@ separates at most %g s.", seconds, context.model.title, max),
+                               param: AudioProfile.Input.audio)
+            }
+            let stems = context.stems
+            let masked = context.model.supports(AudioProfile.SupportsKey.stemMethod)?.stringValue != "regenerated"
+            let vocals = Tones.smooth(mixture, window: 8)
+            for (i, stem) in stems.enumerated() {
+                try Task.checkCancellation()
+                if stepDelay > .zero { try await Task.sleep(for: stepDelay) }
+                await context.reporter.progress(.running, phase: "separate", step: i + 1, steps: stems.count)
+                let mono: [Float]
+                if masked {
+                    mono = stem == "instrumental" ? zip(mixture, vocals).map { $0 - $1 } : vocals
+                } else {
+                    let pick = context.param(AudioProfile.Param.speaker).map { "\($0)" } ?? ""
+                    let pitch = stem == "singing" ? 330.0 : 150.0 + Double(Tones.hash(pick) % 120)
+                    mono = Tones.fit(Self.speech(String(repeating: "la ", count: max(1, Int(seconds * 3))), pitch: pitch, rate: outRate,
+                                                 seed: UInt64(seed) ^ Tones.hash(stem + pick)), count: mixture.count)
+                }
+                outputs.append(try write(mono, stem))
+            }
+            effective[AudioProfile.Param.stems] = .array(stems.map { .string($0) })
+            if let pick = context.param(AudioProfile.Param.speaker) { effective[AudioProfile.Param.speaker] = pick }
 
         case "audio.generate":
             try await step("denoise", 4)
@@ -508,7 +574,7 @@ public struct MockAudioEngine: MediaEngine {
     }
 }
 
-/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's five and the Video
+/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's six and the Video
 /// mock's five, one engine.
 public struct MockMediaEngine: MediaEngine {
     public var image: MockImageEngine

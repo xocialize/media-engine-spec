@@ -5,7 +5,7 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1 and Video profile 0.1 are **drafts** (Audio since `v0.7.0`, Video since `v0.9.0`). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1 and Video profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0`; Video since `v0.9.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
 > audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
@@ -34,7 +34,7 @@ client conformance role before Lite is deprecated.
 |---|---|
 | [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• model offers and their adapters (e.g. LoRA);<br/>• jobs, uploads, grants and events;<br/>• results, provenance (models, adapters, helpers) and licence policy;<br/>• retention guarantees, errors and the MCP binding. |
 | [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
-| [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs), one label set for emotions, styles, nonverbal cues and lyrics sections, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
+| [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs) and `separate` (a speaker, the singing, every voice, or a song's vocals and instrumental, one output per stem; [RFC 0006](rfcs/0006-audio-separate-and-auk-edits.md)), one label set for emotions, styles, nonverbal cues, lyrics sections and stems, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
 | [`spec/profiles/video.md`](spec/profiles/video.md) | **Video profile 0.1:** 5 operations (`generate` from text, a first and last frame, keyframes at times and a soundtrack; `extend`; `retake`; `upscale`; `interpolate`), seconds in requests and frames in results on each model's grid, one audio track inside a video, the `supports` keys each model offer states, AI-content disclosure, frame previews, warnings, conformance tests. Evaluation: [`docs/VIDEO-EVALUATION.md`](docs/VIDEO-EVALUATION.md) |
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's and Video's `supports` keys and job requests |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
@@ -127,6 +127,14 @@ swift run mes voices audio.speak mock-presets
 
 ```bash
 swift run mes run audio.speak -i text="Hello there." -i voice_ref=asset:clip.wav --stream
+```
+
+Separation (Audio §3.6, RFC 0006). The mock separates with a masked music separator (`vocals`, `instrumental`) and two
+regenerating voice separators (`speaker`, `singing`, `voices`), one speaker picked by order or by words. Each stem is
+an output named by it, the mixture's length; `JobResult.stems` and `downloadStems` read them by name:
+
+```bash
+swift run mes run audio.separate -i audio=take.wav -p stems='["speaker"]' -p speaker='{"saying":"pass the salt"}' -p quality=draft
 ```
 
 Video (Video 0.1, RFC 0005). The mock's offers are shaped like the fleet's: two LTX-like tiers (one stage and two

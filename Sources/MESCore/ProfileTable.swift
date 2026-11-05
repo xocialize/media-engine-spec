@@ -8,7 +8,9 @@ public struct ProfileOperationSpec: Codable, Sendable, Equatable {
         public var valueSchema: String?
         /// Audio: the output may stream (Base §6).
         public var streamable: Bool?
-        enum CodingKeys: String, CodingKey { case kind, required, streamable; case valueSchema = "value_schema" }
+        /// Audio: the output is a stem, named by it (§3.6): a descriptor lists the stems its offers make, each 0–1.
+        public var stem: Bool?
+        enum CodingKeys: String, CodingKey { case kind, required, streamable, stem; case valueSchema = "value_schema" }
     }
     public var inputs: [String: IO]
     public var outputs: [String: IO]

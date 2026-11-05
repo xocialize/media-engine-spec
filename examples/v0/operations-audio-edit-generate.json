@@ -58,6 +58,7 @@
                   "timbre",
                   "de_accent",
                   "denoise",
+                  "dereverb",
                   "trim_silence"
                 ]
               },
@@ -106,7 +107,8 @@
                   "hesitation",
                   "sob",
                   "sniff",
-                  "pause"
+                  "pause",
+                  "hum"
                 ]
               },
               "at": {
@@ -155,6 +157,16 @@
                 "minLength": 1,
                 "maxLength": 500
               }
+            }
+          },
+          "target_duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 90,
+            "x-mes-ui": {
+              "label": "Fit to (s)",
+              "advanced": true,
+              "help": "How long the edited take should be. Needs a model that fits edits to a length."
             }
           },
           "seed": {
@@ -312,9 +324,10 @@
           "license": {
             "spdx": "LicenseRef-Qwen-Research",
             "commercial_use": false,
-            "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-7B/blob/main/LICENSE",
-            "notice": "Research or evaluation use only.",
-            "accepted_required": true
+            "terms_url": "https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE",
+            "notice": "AuK needs the Qwen2.5-Omni-3B encoder, under the Qwen Research License: research or evaluation use only, not commercial use.",
+            "accepted_required": true,
+            "user_accept_required": true
           },
           "memory_class": "large",
           "speed_class": "standard",
@@ -322,11 +335,23 @@
             "standard"
           ],
           "named_only": true,
+          "notes": "Needs no transcript. Content and speed edits change the length: give target_duration_s to fit a cue. Sounds are added at the start or end only. Speed, pitch and volume snap to its trained steps.",
           "supports": {
             "edits": [
               "emotion",
               "style",
-              "denoise"
+              "add_cue",
+              "remove_cue",
+              "replace_text",
+              "insert_text",
+              "remove_text",
+              "speed",
+              "pitch",
+              "volume",
+              "timbre",
+              "de_accent",
+              "denoise",
+              "dereverb"
             ],
             "emotions": [
               "happy",
@@ -342,8 +367,19 @@
               "whisper",
               "normal"
             ],
+            "cues": [
+              "breath",
+              "laugh",
+              "cough",
+              "hum"
+            ],
+            "cue_placement": [
+              "edge"
+            ],
+            "remove_all_cues": false,
+            "target_duration": true,
             "transcript": "unused",
-            "keeps_length": true,
+            "keeps_length": false,
             "languages": [
               "en",
               "zh"

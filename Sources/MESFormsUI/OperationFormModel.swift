@@ -191,6 +191,8 @@ public final class OperationFormModel {
                   byField[field.name] == nil else { continue }
             byField[field.name] = "\(choices.model?.title ?? "This model") has no voice \(id)."
         }
+        // Audio: what the request's offers would refuse (RFC 0006).
+        for (key, message) in audioIssues where byField[key] == nil { byField[key] = message }
         // A model whose terms bind its users runs only once this user accepted them (Base §10.3).
         if let license = pendingAcceptance {
             byField["model"] = "Accept \(license.spdx)'s terms to use \(effectiveModel?.title ?? "this model")."

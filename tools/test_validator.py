@@ -120,6 +120,22 @@ CASES = [
     ("event-preview-frame.json", "base/event.schema.json", setp(["data", "at_s"], -1), "a preview at a negative time"),
     ("operations-video-upscale-interpolate.json", "base/operations-list.schema.json",
      setp(["operations", 0, "models", 0, "license", "user_accept_required"], "yes"), "user_accept_required that isn't a boolean"),
+    # RFC 0006 (v0.10.0): separation, and AuK's edits
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", setp(["params", "stems"], ["karaoke"]),
+     "an unregistered stem"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", setp(["params", "stems"], []), "an empty stems list"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json",
+     setp(["params", "speaker"], {"ordinal": 2, "saying": "hello"}), "a speaker picked two ways"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", setp(["params", "speaker"], {"ordinal": 0}),
+     "a speaker ordinal of 0 (the first is 1)"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", setp(["params", "speaker"], {}), "an empty speaker pick"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", setp(["inputs", "source"], {"upload": "upl_1"}),
+     "an input audio.separate doesn't define"),
+    ("job-request-separate.json", "profiles/audio/job-request.schema.json", delp(["inputs", "audio"]), "separate without its mixture"),
+    ("job-request-edit-speech-fit.json", "profiles/audio/job-request.schema.json", setp(["params", "target_duration_s"], 0),
+     "an edit fitted to zero seconds"),
+    ("job-request-edit-speech-fit.json", "profiles/audio/job-request.schema.json",
+     setp(["params", "edit"], {"kind": "add_cue", "cue": "humming"}), "a cue outside the registry (hum is the label)"),
 ]
 
 

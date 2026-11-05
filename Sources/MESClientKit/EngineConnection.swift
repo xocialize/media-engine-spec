@@ -138,6 +138,18 @@ extension EngineConnection {
         }
         return files
     }
+
+    /// Downloads an Audio `separate` job's stems (§3.6) into `directory`, each named `<job>-<stem>.<ext>`, by stem.
+    public func downloadStems(_ job: Job, to directory: URL) async throws -> [String: URL] {
+        guard let result = job.result else { return [:] }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var files: [String: URL] = [:]
+        for (stem, output) in result.stems {
+            let name = "\(job.id)-\(stem).\(MediaType.fileExtension(output.mediaType))"
+            files[stem] = try await download(job: job.id, output: output, to: directory.appendingPathComponent(name))
+        }
+        return files
+    }
 }
 
 /// Media types for files.

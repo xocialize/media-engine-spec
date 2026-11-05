@@ -6,11 +6,12 @@
 | **Version** | 0.1 (draft) |
 | **Requires** | [Base](../base.md) 0.1, with what each offer supports (§6.4), voices (§6.5), assets (§8.1) and streamed output (§11) |
 | **Schemas** | [`schemas/v0/profiles/audio/`](../../schemas/v0/profiles/audio/) |
-| **Sources** | [`docs/AUDIO-EVALUATION.md`](../../docs/AUDIO-EVALUATION.md) (its Direction of 2026-10-24); RFCs [0001](../../rfcs/0001-assets.md), [0002](../../rfcs/0002-streamed-output.md), [0003](../../rfcs/0003-offer-supports-and-voices.md) |
+| **Sources** | [`docs/AUDIO-EVALUATION.md`](../../docs/AUDIO-EVALUATION.md) (its Direction of 2026-10-24); RFCs [0001](../../rfcs/0001-assets.md), [0002](../../rfcs/0002-streamed-output.md), [0003](../../rfcs/0003-offer-supports-and-voices.md), [0006](../../rfcs/0006-audio-separate-and-auk-edits.md) (separation; AuK's edits) |
 
-The Audio profile defines five generative operations on sound: designing a voice, speaking, editing speech, generating
-a sound, and composing a song. It defines the parameter vocabulary they share, one label set for emotions, styles and
-nonverbal cues that every model understands through its engine, and the facts each model offer states about itself.
+The Audio profile defines five generative operations on sound (designing a voice, speaking, editing speech, generating
+a sound, and composing a song) and one tool, separating a recording into its sources. It defines the parameter
+vocabulary they share, one label set for emotions, styles and nonverbal cues that every model understands through its
+engine, and the facts each model offer states about itself.
 An engine implementing this profile MAY offer any subset of the operations. For each operation it offers, it MUST
 honour that operation's required inputs, outputs and behaviour.
 
@@ -19,7 +20,7 @@ the controls are the profile's: an app asks for `angry`, or a `[laugh]`, once, a
 understands. The engine translates the profile's labels into each model's own vocabulary and syntax.
 
 **Not in Audio 0.1.** Speech-to-text and other interpretive models stay client-side, and so do live sessions such as
-voice chat. Utility tools (separation, cleanup and loudness, codecs) come later (§7).
+voice chat. Separation is §3.6; the other utility tools (cleanup and loudness, codecs) come later (§7).
 
 ## 1. Conventions
 
@@ -37,8 +38,8 @@ voice chat. Utility tools (separation, cleanup and loudness, codecs) come later 
 6. **Long text.** An engine splits text a model can't take in one pass at sentence boundaries, and stitches the takes.
    `limits.max_text_chars` bounds the request (§4.2).
 7. **References.** A voice reference longer than the model takes is trimmed, with `voice_ref_trimmed`. A `reference`
-   or `source` song longer than the offer allows is refused with 422 `out_of_limits` instead: trimming a song changes
-   what it is (§3.5).
+   or `source` song, or a mixture to separate, longer than the offer allows is refused with 422 `out_of_limits`
+   instead: trimming a recording changes what it is (§3.5, §3.6).
 8. **Seeds.** `seed` is 0 – 2³²−1, narrower than Image's: several speech models break their stop token with larger
    seeds. A model whose result doesn't depend on a seed declares `supports.seed: false` (Base §6.4) and warns
    `seed_ignored` when given one. Operations whose results are seeded (`operations.json` `seeded`) report the seed
@@ -72,7 +73,7 @@ These names MUST be used in descriptors whenever the operation exposes the conce
 | `emotion` | `{label?, description?, intensity?}` | `speak`: how the line should feel (§2.1) |
 | `style` | label | `speak`: how it's delivered (§2.1) |
 | `speed` | number, 0.5 – 2 | `speak`: speaking rate; 1 is the model's natural pace |
-| `target_duration_s` | number, ≤ 600 | `speak`: how long the take should be, for dub timing |
+| `target_duration_s` | number, ≤ 600 | `speak`: how long the take should be, for dub timing. `edit_speech`: how long the edited take should be (§3.3) |
 | `edit` | object | `edit_speech`: one edit (§3.3). `compose`: a rework of `source` (§3.5) |
 | `negative_prompt` | string, ≤ 4000 characters | `generate`: what to steer away from |
 | `duration_s` | number, ≤ 600 | `generate`: each sound's exact length. `compose`: the song's target length |
@@ -80,6 +81,8 @@ These names MUST be used in descriptors whenever the operation exposes the conce
 | `anchors` | `{bpm?, key?, time_signature?}` | `compose`: musical anchors the plan should keep, e.g. `{bpm: 118, key: "F# minor", time_signature: "6/8"}` |
 | `timestamps` | boolean | `compose`: ask for line and word timestamps |
 | `prompt_enhance` | `auto` · `on` · `off` | `design_voice`: whether the engine may rewrite the description, as Image §1.9 |
+| `stems` | `[stem]`, unique, ≥ 1 | `separate`: the sources to make (§3.6) |
+| `speaker` | `{ordinal}` or `{saying}` | `separate`: which one speaker the `speaker` stem keeps (§3.6) |
 
 Model-specific knobs (steps, guidance, CFG, emotion weight vectors, an editor's 24 further styles) are never
 vocabulary. Engines expose them, if at all, as extensions (Base §6.2): `x-moss.steps`, `x-indextts.emotion_vector`,
@@ -133,6 +136,7 @@ is text.
 | `sigh` | | `hesitation` | an "uhm" |
 | `breath` | | `sob` | |
 | `pause` | `[pause <seconds>s]`; `[pause]` is half a second | `sniff` | |
+| `hum` | humming | | |
 
 - **The engine rewrites** each cue into the model's syntax, and **removes** a cue the model can't perform, with the
   warning `cue_unsupported`. It never speaks a cue as words.
@@ -150,9 +154,10 @@ against it.
 |---|---|---|---|---|
 | `audio.design_voice` | `description` (text, required); `text` (text, optional: what the samples say) | `language`, `seed`, `count`, `quality`, `output`, `prompt_enhance` | `samples` (audio, `count`) | Auditions of a voice from its description, each with its seed, and `effective.text` (§3.1) |
 | `audio.speak` | `text` (text, required, may carry cues); `voice_ref` (audio, 0–1); `voice_ref_text` (text, optional) | `voice`, `language`, `emotion`, `style`, `speed`, `target_duration_s`, `seed`, `quality`, `output` | `audio` (audio, 1; may stream) | The text spoken in one voice, three ways (§3.2) |
-| `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (required), `seed`, `quality`, `output` | `audio`; `transcript` (data `{text}`, 0–1) | One edit of a spoken take (§3.3) |
+| `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (required), `target_duration_s`, `seed`, `quality`, `output` | `audio`; `transcript` (data `{text}`, 0–1) | One edit of a spoken take (§3.3) |
 | `audio.generate` | `prompt` (text, required) | `negative_prompt`, `duration_s`, `seed`, `count`, `quality`, `output` | `sounds` (audio, `count`) | Non-verbal sounds, each exactly `duration_s` long (§3.4) |
 | `audio.compose` | `caption` (text, required); `lyrics` (text, 0–1); `score` (text, 0–1); `reference` (audio, 0–1); `source` (audio, 0–1) | `duration_s`, `language`, `planning`, `edit`, `anchors`, `timestamps`, `seed`, `quality`, `output` | `song` (audio, 1); `score` (text `text/vnd.abc`, 0–1); `timestamps` (data, 0–1) | A song, an instrumental, or a rework of a recording (§3.5) |
+| `audio.separate` | `audio` (required: the mixture) | `stems`, `speaker`, `seed`, `quality`, `output` | One audio output per stem, named by the stem (each 0–1) | The mixture's sources, each the mixture's length (§3.6) |
 
 ### 3.1 Designing a voice
 
@@ -204,8 +209,8 @@ lists the kinds an offer takes.
 |---|---|---|
 | `emotion` | `emotion` (§2.1 label) | Re-deliver with that feeling; `neutral` removes one |
 | `style` | `style` (§2.1 label) | Re-deliver in that style; `normal` removes one |
-| `add_cue` | `cue`, and `at`: `start` · `end`, or `text`: the transcript with the cue inline | Add a nonverbal sound |
-| `remove_cue` | `cue` (absent: every cue) | Remove nonverbal sounds |
+| `add_cue` | `cue`, and `at`: `start` · `end`, or `text`: the transcript with the cue inline | Add a nonverbal sound, at an edge or inline (`supports.cue_placement`) |
+| `remove_cue` | `cue` (absent: every cue, on an offer with `supports.remove_all_cues`) | Remove nonverbal sounds |
 | `replace_text` | `text`, `with` | Say `with` instead of `text`, in the same voice |
 | `insert_text` | `text`, `anchor`, `position`: `before` · `after` | Add words next to `anchor` |
 | `remove_text` | `text` | Remove words |
@@ -215,14 +220,24 @@ lists the kinds an offer takes.
 | `timbre` | `description` | Change the voice's colour, in words |
 | `de_accent` | — | Toward a standard accent |
 | `denoise` | — | Remove background noise |
+| `dereverb` | — | Remove reverberation |
 | `trim_silence` | — | Remove leading and trailing silence |
 
 - **Fields.** A kind's fields are required, and other fields are 400 `invalid_request`. A kind, emotion, style or cue
   the named offer doesn't list is 422 `unsupported_parameter`.
+- **Where a cue goes.** `supports.cue_placement` lists the placements an offer takes: `edge` (`at`) and `inline`
+  (`text`). An editor that adds sounds only at the start or end of a take (AuK) lists `[edge]`. An `add_cue` in a
+  placement the offer doesn't list is 422 `unsupported_parameter`.
+- **Removing every cue.** An offer that removes one kind of sound at a time says `supports.remove_all_cues: false`; a
+  `remove_cue` without a `cue` to it is 422 `unsupported_parameter`.
 - **Transcripts.** `supports.transcript` says whether the model `required`, `optional` or `unused` it. With
   speech-to-text outside MES, the client supplies it. A transcript uses the cue syntax of §2.2.
 - **Length.** `supports.keeps_length` says whether the take keeps its length (an editor that edits in place) or is made
   again (an editor whose length changes).
+- **A length to fit.** `target_duration_s` asks for an edited take of that length (an edit fitted to a cue), on an
+  offer with `supports.target_duration`, within `limits.max_duration_s`. Content and speed edits change a take's
+  length; this says what it should become. One that misses it beyond the offer's tolerance warns `duration_missed`.
+  With it, the take is the length asked for, whatever `keeps_length` says.
 - **The edited transcript.** When the edit changes the words or the cues, the engine returns the take's new
   transcript as the `transcript` output, `{text}`.
 
@@ -297,9 +312,53 @@ for a fixed step count changes what else runs at each tier (its planner) instead
 licences, with how each tier maps, are in the evaluation's §4.7.4 and §4.7.5, and in
 [`examples/v0/operations-audio-compose.json`](../../examples/v0/operations-audio-compose.json).
 
-**Variants and versions.** `edit_speech`, and `compose` with a `repaint` or `extend`, keep a recording's identity, so
-clients may store their results as versions of it. `design_voice`, `speak`, `generate`, and `compose` otherwise make
-new sounds. The profile describes this distinction; it doesn't impose it.
+**Variants and versions.** `edit_speech`, `separate`, and `compose` with a `repaint` or `extend`, keep a recording's
+identity, so clients may store their results as versions of it. `design_voice`, `speak`, `generate`, and `compose`
+otherwise make new sounds. The profile describes this distinction; it doesn't impose it.
+
+### 3.6 Separating sources
+
+`separate` splits one recording, the mixture, into its sources: one speaker of a conversation, the singing, every
+voice, or a song's vocals and its instrumental parts. G5 ships AuK's speech stems; the music stems are designed for
+the fleet's HTDemucs and Mel-Band-RoFormer ([RFC 0006](../../rfcs/0006-audio-separate-and-auk-edits.md)).
+
+**Stems** are a registered label set, like cues (§2.2). A stem is registered when one model produces it.
+
+| Stem | What it holds |
+|---|---|
+| `speaker` | One speaker of a conversation, the one `speaker` picks |
+| `singing` | The singing alone, every other sound removed |
+| `voices` | Every human voice, speech and singing, everything else removed |
+| `vocals` | A song's lead and backing vocals |
+| `instrumental` | A song without its vocals |
+| `drums`, `bass`, `other` | A four-stem split's other three |
+
+**The request.**
+- `stems` lists what to make. Absent: every stem the chosen offer lists in `supports.stems`, except `speaker`, which
+  needs a pick; with a `speaker` pick and no `stems`, just `[speaker]`.
+- `speaker` picks one speaker: `{ordinal: n}`, the n-th to start talking, from 1; or `{saying: "…"}`, the one who says
+  these words. Exactly one of the two, from the kinds the offer lists in `supports.speaker_selection`.
+- The `speaker` stem without a pick is 400 `invalid_request`, and so are a pick with a `stems` list that doesn't name
+  `speaker` and a stem listed twice.
+- A stem the named offer doesn't list, or that no offer the engine may choose lists, is 422 `unsupported_parameter`
+  with `param: "stems"`; a pick kind is the same with `param: "speaker"`.
+- A mixture longer than `limits.max_duration_s` is refused with `out_of_limits` (§1.7): 422 at submission, or as the
+  job's error when the engine reads the mixture's length only as the job starts (input lengths are the engine's to
+  check, §4.1).
+
+**Outputs.** One audio output per stem made, named by the stem, in the order the request listed them (else the
+offer's). Each reports `sample_rate`, `channels` and `duration_s`, and is the mixture's length to within a frame at
+its own rate. `effective.stems` lists the stems made, `effective.seed` the seed (§1.8), and `effective.speaker` the
+pick. The descriptor lists as outputs every stem its offers produce; each is 0–1.
+
+**How stems are made.** Every offer states `supports.stem_method`:
+- **`masked`:** each stem is the mixture filtered, sample-aligned with it. Stems may be mixed with the mixture or
+  subtracted from it, and an offer may make one stem as the mixture minus another (an instrumental).
+- **`regenerated`:** a generative model makes each stem again at the mixture's length. It isn't phase-aligned with the
+  mixture: a client MUST NOT derive anything from it by subtraction, and an engine MUST NOT offer a stem it could only
+  make that way. AuK is `regenerated`.
+
+**Progress.** A separator that makes each stem in its own pass reports `step` and `steps` across the stems it makes.
 
 ## 4. What each offer supports
 
@@ -322,8 +381,10 @@ them per operation.
 | `emotion_intensity` | `speak` | boolean | `false` | Warn: `emotion_intensity_ignored` |
 | `styles` | `speak`, `edit_speech` | `[label]` | `speak`: `[normal]`; `edit_speech`: `[]` | Gate: `style`, a `style` edit's label |
 | `cues` | `speak`, `edit_speech` | `[cue]` | `speak`: `[pause]`; `edit_speech`: `[]` | Warn in `speak`: `cue_unsupported`. Gate for `add_cue` and `remove_cue` |
+| `cue_placement` | `edit_speech` | `[edge · inline]` | `[edge, inline]` | Gate: an `add_cue` with `at` (`edge`) or `text` (`inline`) |
+| `remove_all_cues` | `edit_speech` | boolean | `true` | Gate: a `remove_cue` without a `cue` |
 | `speed` | `speak` | boolean | `false` | Gate: `speed` other than 1 |
-| `target_duration` | `speak` | boolean | `false` | Gate: `target_duration_s` |
+| `target_duration` | `speak`, `edit_speech` | boolean | `false` | Gate: `target_duration_s` |
 | `edits` | `edit_speech`, `compose` | `[kind]` | `[]` | Gate: `edit.kind` |
 | `transcript` | `edit_speech` | `required` · `optional` · `unused` | `optional` | Gate: `required` needs `transcript` |
 | `keeps_length` | `edit_speech` | boolean | `false` | Fact |
@@ -333,6 +394,9 @@ them per operation.
 | `sections` | `compose` | `[tag]` | the eight of §3.5.1 | Warn: `section_unsupported` |
 | `anchors` | `compose` | `[bpm · key · time_signature]` | `[]` | Warn: `anchors_ignored` |
 | `timestamps` | `compose` | boolean | `false` | Warn: `timestamps_unavailable` |
+| `stems` | `separate` | `[stem]` | REQUIRED | Gate: each stem asked (§3.6) |
+| `speaker_selection` | `separate` | `[ordinal · saying]` | `[]` | Gate: the `speaker` pick's kind |
+| `stem_method` | `separate` | `masked` · `regenerated` | REQUIRED | Fact: whether stems may be subtracted from the mixture (§3.6) |
 
 A request implies the offers whose gates admit it (Base §6.4 rule 2); a named offer that doesn't is 422
 `unsupported_parameter`, never a substitute (rule 3). Warn keys never narrow the choice. MESEngineKit applies every
@@ -348,7 +412,7 @@ A descriptor's `limits`, and an offer's narrower ones, take these fields beside 
 |---|---|---|
 | `max_text_chars` | `design_voice` (the description), `speak`, `edit_speech` | Characters of text |
 | `max_voice_ref_s` | `speak` | A reference longer is trimmed (§1.7) |
-| `max_duration_s` (Base) | `speak` (the take), `edit_speech` (the input), `generate`, `compose` | Seconds |
+| `max_duration_s` (Base) | `speak` (the take), `edit_speech` (the input, and `target_duration_s`), `generate`, `compose`, `separate` (the mixture) | Seconds |
 | `min_duration_s` | `generate`, `compose` | Seconds |
 | `max_lyrics_chars` | `compose` | Characters of lyrics |
 | `max_reference_s`, `max_source_s` | `compose` | Longer is 422, not trimmed |
@@ -393,8 +457,8 @@ An engine conforms to Audio 0.1 for the operations it offers when:
 
 | Test | Checks |
 |---|---|
-| AUDIO-001 | Descriptors match the operations table: required inputs and outputs of the right kinds, only vocabulary parameters, the required `edit` |
-| AUDIO-002 | Offers' `supports` keys have the profile's types and their limits are the profile's fields; a streaming offer states its `sample_rate` |
+| AUDIO-001 | Descriptors match the operations table: required inputs and outputs of the right kinds, only vocabulary parameters, the required `edit`; `separate`'s outputs are registered stems, at least one |
+| AUDIO-002 | Offers' `supports` keys have the profile's types and their limits are the profile's fields; a streaming offer states its `sample_rate`; a `separate` offer states `stems` and `stem_method` |
 | AUDIO-003 | Audio outputs report `sample_rate`, `channels` and `duration_s`, and a WAV file agrees to within a frame |
 | AUDIO-004 | Every MUST input format is accepted: WAV at 16 and 24 bits and in float, and FLAC |
 | AUDIO-005 | `speak`: `voice`, `voice_ref` and neither each route to an offer that supports them; provenance names a preset voice; `voice` with `voice_ref` is 400 |
@@ -407,6 +471,10 @@ An engine conforms to Audio 0.1 for the operations it offers when:
 | AUDIO-012 | `compose` `extend`: `before_s` + source + `after_s`, to the frame |
 | AUDIO-013 | `compose`: a `score`, `reference` or `edit` to an offer without the key is 422 `unsupported_parameter` |
 | AUDIO-014 | `output.sample_rate` is honoured; an un-offered media type is 422 `unsupported_parameter`; a seed of 2³² is 422 `out_of_limits` |
+| AUDIO-015 | `separate`: each stem an offer lists runs and returns one output named by the stem, with its facts and the mixture's length to within a frame; `effective.stems` lists them |
+| AUDIO-016 | `separate`: a stem the named offer doesn't list is 422 `unsupported_parameter`; the `speaker` stem without a pick is 400; a pick kind the offer doesn't list is 422 |
+| AUDIO-017 | `separate`: a mixture longer than the offer's `max_duration_s` is refused `out_of_limits`, at submission (422) or as the job's error |
+| AUDIO-018 | `edit_speech`: an `add_cue` placement the offer doesn't list, a `remove_cue` without a cue to an offer with `remove_all_cues: false`, and `target_duration_s` to an offer without `target_duration` are each 422; with `target_duration`, the take is that long or warns `duration_missed` |
 
 Base's tests of what each offer supports (BASE-014 to BASE-018), assets (BASE-032 to BASE-035) and streamed output
 (BASE-053 to BASE-057) run on the Audio operations an engine offers.
@@ -415,5 +483,5 @@ Base's tests of what each offer supports (BASE-014 to BASE-018), assets (BASE-03
 
 - **Later (generative):** `audio.speak_dialog`, two-speaker scenes (Dia2), with a structured script so clients never
   write `[S1]`; and speaking from a description in one pass (§3.1).
-- **Later (tools):** `audio.separate` (stems), `audio.enhance` (loudness and cleanup), codecs.
+- **Later (tools):** `audio.enhance` (loudness and cleanup), codecs.
 - **Outside MES:** speech-to-text, emotion recognition and voice chat. Apps link these directly through MLXEngine.
