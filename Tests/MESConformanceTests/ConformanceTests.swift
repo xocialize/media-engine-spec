@@ -69,6 +69,26 @@ struct MockConformanceTests {
         }
     }
 
+    @Test("Every job request carries users' acceptance: the named-model Base and Audio tests pass on offers that need it, BASE-019 still probes without (AB-A-0252)")
+    func acceptanceOnEveryRequest() async throws {
+        try await serve(mockConfig(), engine: UsersAcceptEngine()) { port in
+            let probe = try await Probe.connect(Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!))
+            let audio = probe.operations.filter { $0.profile == AudioProfile.id }
+            #expect(!audio.isEmpty && audio.allSatisfy { $0.models.allSatisfy(\.license.needsUserAcceptance) })
+            let ids = ["BASE-015", "BASE-016", "BASE-019", "BASE-056"] + Catalogue.all.map(\.id).filter { $0.hasPrefix("AUDIO-") }
+            let report = await ConformanceRunner.run(probe, only: Set(ids))
+            #expect(report.failed == 0, "\(failures(report))")
+            #expect(report.results.filter { $0.status == .skip }.isEmpty,
+                    "skipped: \(report.results.filter { $0.status == .skip }.map { "\($0.id): \($0.detail ?? "")" })")
+            #expect(report.results.first { $0.id == "BASE-019" }?.detail?.contains(UsersAcceptEngine.license.spdx) == true)
+            // Without the wire's default, the tests that build their own request are refused before their check.
+            probe.wire.jobDefaults = nil
+            let bare = await ConformanceRunner.run(probe, only: ["BASE-015", "BASE-016", "BASE-056", "AUDIO-009"])
+            #expect(bare.results.allSatisfy { $0.status == .fail && $0.detail?.contains("policy_unmet") == true },
+                    "\(bare.results.map { "\($0.id) \($0.status): \($0.detail ?? "")" })")
+        }
+    }
+
     @Test("decompose without a composite refuses one with 422 unsupported_parameter (IMAGE-015), and still passes IMAGE-014")
     func decomposeWithoutComposite() async throws {
         try await serve(mockConfig(), engine: NoCompositeEngine()) { port in
@@ -263,6 +283,27 @@ struct NoCompositeEngine: MediaEngine {
 
     func validate(_ request: JobRequest, descriptor: Descriptor) throws { try mock.validate(request, descriptor: descriptor) }
     func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
+}
+
+/// The mock with every Audio offer under a licence whose users must accept it (as AuK's are under Qwen Research).
+struct UsersAcceptEngine: MediaEngine {
+    static let license = License(spdx: "LicenseRef-Mock-Audio-Users", commercialUse: .no, termsURL: "https://example.com/terms",
+                                 userAcceptRequired: true)
+    let mock = MockMediaEngine()
+
+    func descriptors() async -> [Descriptor] {
+        await mock.descriptors().map { d in
+            guard d.profile == AudioProfile.id else { return d }
+            var d = d
+            d.models = d.models.map { m in var m = m; m.license = Self.license; return m }
+            return d
+        }
+    }
+
+    func validate(_ request: JobRequest, descriptor: Descriptor) throws { try mock.validate(request, descriptor: descriptor) }
+    func run(_ context: RunContext) async throws -> RunOutput { try await mock.run(context) }
+    func voices(operation: String, model: String) async -> [Voice] { await mock.voices(operation: operation, model: model) }
+    func assetRemoved(_ id: String) async { await mock.assetRemoved(id) }
 }
 
 /// The mock with a slow `image.decompose` that records the tier each decompose ran at.

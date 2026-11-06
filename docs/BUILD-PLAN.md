@@ -661,6 +661,18 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     descriptors gain one operation (26). `MockAudioEngine`'s `mock-editor-research` now refuses an inline cue and a
     `remove_cue` without a cue.
 
+- **`v0.10.1`** (2026-11-05; AB-A-0252, for Gaea's G5 exit): **every job request the conformance suite sends carries
+  users' acceptance.** The spec and MESKit are unchanged. Before, only `minimalRequest` added it, so a test that built
+  its own request naming a model got 422 `policy_unmet` (`terms_not_accepted`) from an offer whose licence has
+  `user_accept_required` before the check it meant to make: against Gaea with AuK enabled, BASE-015, BASE-016,
+  BASE-056, AUDIO-006, AUDIO-008, AUDIO-009 and AUDIO-015 to AUDIO-018 failed. Now `Probe.connect` sets
+  `Wire.jobDefaults`, which `Wire.json` applies to every `JobRequest` posted to `jobs`: `Probe.acceptance(d,
+  request.policy)` adds each licence of the operation's offers and adapters whose users must accept it to
+  `policy.accepted`, keeping what the request already says. BASE-019's request without acceptance passes
+  `defaults: false`, so it still probes the refusal. A mock test serves every Audio offer under a licence that needs
+  acceptance: BASE-015, -016, -019, -056 and every AUDIO test pass, and with the default removed, the named-model ones
+  fail on `policy_unmet`. 143 tests pass (142 before).
+
 ## Next: Video after 0.1
 
 - **The packages** (evaluation §8): typed time spans, keyframes and `content` in MLXToolKit; audio passthrough in

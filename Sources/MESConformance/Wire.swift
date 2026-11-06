@@ -26,7 +26,16 @@ public final class Wire: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let pinned: Data?
     private let lock = NSLock()
     private var _presented: Data?
+    private var _jobDefaults: (@Sendable (JobRequest) -> JobRequest)?
     private var session: URLSession!
+
+    /// Applied to every `JobRequest` posted to `jobs` through `json` (unless it passes `defaults: false`). `Probe.connect`
+    /// sets it to add users' acceptance (Base §10.2 rule 4): the suite is a client whose user accepted the terms, so a test
+    /// that builds its own request reaches the check it means to make instead of 422 `policy_unmet`.
+    public var jobDefaults: (@Sendable (JobRequest) -> JobRequest)? {
+        get { lock.withLock { _jobDefaults } }
+        set { lock.withLock { _jobDefaults = newValue } }
+    }
 
     /// - Parameters:
     ///   - pinned: the engine certificate's SHA-256 for TLS engines; nil trusts what's presented (pairing, or an
@@ -48,7 +57,11 @@ public final class Wire: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     /// The SHA-256 of the certificate the engine presented, after a TLS request.
     public var presentedFingerprint: Data? { lock.withLock { _presented } }
 
-    public func with(token: String?) -> Wire { Wire(baseURL: baseURL, token: token, pinned: pinned ?? presentedFingerprint) }
+    public func with(token: String?) -> Wire {
+        let wire = Wire(baseURL: baseURL, token: token, pinned: pinned ?? presentedFingerprint)
+        wire.jobDefaults = jobDefaults
+        return wire
+    }
 
     public func url(_ path: String) -> URL {
         URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/" + path)!
@@ -79,10 +92,19 @@ public final class Wire: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
         return Reply(status: http.statusCode, headers: headers, body: data)
     }
 
-    public func json<T: Encodable>(_ method: String, _ path: String, _ value: T, headers: [String: String] = [:]) async throws -> Reply {
+    /// Sends `value` as JSON. A `JobRequest` posted to `jobs` gets `jobDefaults` first, unless `defaults` is false (a test
+    /// that probes what the engine does without them, such as BASE-019's request without acceptance).
+    public func json<T: Encodable>(_ method: String, _ path: String, _ value: T, headers: [String: String] = [:],
+                                   defaults: Bool = true) async throws -> Reply {
         var h = headers
         h["Content-Type"] = "application/json"
-        return try await send(method, path, headers: h, body: try MESJSON.encoder.encode(value))
+        let body: Data
+        if defaults, method == "POST", path == "jobs", let request = value as? JobRequest, let fill = jobDefaults {
+            body = try MESJSON.encoder.encode(fill(request))
+        } else {
+            body = try MESJSON.encoder.encode(value)
+        }
+        return try await send(method, path, headers: h, body: body)
     }
 
     // MARK: - SSE

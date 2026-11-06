@@ -162,7 +162,7 @@ extension BaseTests {
             if let q = d.params["properties"]?["quality"], q != .null { r.params = (r.params ?? [:]).merging(["quality": .string(VideoTests.tier(m).rawValue)]) { $1 } }
             var without = r
             without.policy?.accepted = nil
-            let refused = try await p.wire.json("POST", "jobs", without)
+            let refused = try await p.wire.json("POST", "jobs", without, defaults: false)
             if refused.status == 201, let job = try? refused.decode(Job.self) { _ = try? await p.wire.send("DELETE", "jobs/\(job.id)") }
             try expect(refused, 422, code: "policy_unmet", "\(m.id) named without its users' acceptance", schemas: p.schemas)
             try check(refused.json?["error"]?["reason"]?.stringValue == Policy.termsNotAcceptedReason,

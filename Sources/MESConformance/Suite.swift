@@ -67,6 +67,13 @@ public final class Probe: @unchecked Sendable {
         }
         let probe = Probe(wire: wire, info: info, infoBody: reply.body, operations: try ops.decode(OperationsList.self).operations,
                           options: options)
+        let descriptors = probe.operations
+        wire.jobDefaults = { request in
+            guard let d = descriptors.first(where: { $0.operation == request.operation }) else { return request }
+            var request = request
+            request.policy = Probe.acceptance(d, request.policy)
+            return request
+        }
         if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .video } }) { probe.clip = try await Fixtures.mp4() }
         return probe
     }

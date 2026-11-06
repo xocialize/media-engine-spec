@@ -24,7 +24,8 @@ swift run mes-conformance engine https://192.168.1.20:17600/mes/v0 --pair
   9 frames at 24 fps, with a 128×96, 17-frame clip (H.264 and AAC) as the input. LTX 2.5 compact24 makes that clip in
   about 25 s, a minute with a cold load, inside the default timeout.
 - **Users' acceptance:** the suite is a client whose user accepts every licence whose terms bind users
-  (`user_accept_required`), and sends them in `policy.accepted`; BASE-019 checks the refusal without it.
+  (`user_accept_required`), and sends them in `policy.accepted` on every job request (since `v0.10.1`, also the
+  requests a test builds itself); BASE-019 checks the refusal without it.
 - **Assets:** asset expiry (BASE-034) takes 60 s, and runs when `--max-ttl-wait` is at least 75. A second client's
   assets (BASE-035) are tested in paired mode with `--pair`: the suite pairs a second client, which the operator
   approves too.
