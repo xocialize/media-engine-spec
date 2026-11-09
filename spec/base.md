@@ -475,7 +475,7 @@ In `holding`, `result` holds:
 |---|---|
 | `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps`, `frames`, `sample_rate`, `channels`, `bit_depth` as relevant. `frames` is a `video` output's frame count. On a `video` output, `sample_rate`, `channels` and `bit_depth` describe its audio track, and are present exactly when it has one. A `mesh` output reports `vertices` and `faces` (summed over its primitives), `bounds` (`{min, max}`, the axis-aligned box in scene space, in metres), `texture_size` (the largest texture's longest side, exactly when textured) and `joints` (exactly when skinned); the first three are REQUIRED ([RFC 0007](../rfcs/0007-mesh.md)). A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
 | `effective` | The normalized parameters actually used, e.g. the chosen `quality`, a snapped `size`, the `seed`. Model-specific detail MAY appear under `effective.model_params`. |
-| `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `adapters? [{id, title?, revision?, license, strength}]`, `helpers? [{id, title?, revision?, license, role}]`, `voice? {id, title?, license?}` (§6.5), `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}` |
+| `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `adapters? [{id, title?, revision?, license, strength}]`, `helpers? [{id, title?, revision?, license, role}]`, `voice? {id, title?, license?}` (§6.5), `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}`. `queue_ms` is receipt to start; `prepare_ms`, for a job that reported progress stage `preparing`, the time it spent there (downloading or loading its model); `run_ms` the rest of the run, so a first use's download never reads as run time |
 
 **Adapters and helpers.** `provenance.adapters` lists the adapters the job applied (§6.3), with the strength each
 ran at. `provenance.helpers` lists any other model that shaped the result without producing it, such as a text model
@@ -675,10 +675,15 @@ The conformance suite tests what is observable. For example, an output fetched a
 `GET {path}/health` returns ([`health.schema.json`](../schemas/v0/base/health.schema.json)):
 - `status`: `ok`, `degraded` or `unavailable`;
 - `queue_depth`, `running?`, `resident_models`;
-- `memory`: `{headroom_bytes?, class?}`;
-- `estimated_wait_s?`.
+- `memory`: `{headroom_bytes?, class?, idle_unload_s?}`. `idle_unload_s` is the engine's idle policy: a resident model
+  unused for that many seconds is unloaded (0: after every job). Absent, the engine doesn't say, or doesn't unload idle
+  models;
+- `estimated_wait_s?`;
+- `resident_until?`: when each resident model will be unloaded if it stays idle, by model id;
+- `x-<vendor>.<name>` members, for what an engine says about itself that Base doesn't define. Clients ignore the ones
+  they don't know.
 
-Dispatchers use it to choose between engines.
+Dispatchers use it to choose between engines, and clients to tell whether the next job will wait for a model to load.
 
 ## 15. MCP binding (`mcp` feature)
 

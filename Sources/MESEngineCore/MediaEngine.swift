@@ -34,6 +34,11 @@ public protocol MediaEngine: Sendable {
     /// An asset was deleted or expired, or its client unpaired (Base §8.1, §13 rule 6): drop anything cached from it,
     /// within 60 s.
     func assetRemoved(_ id: String) async
+
+    /// `GET {path}/health` (Base §14): the kit fills status, queue and resident models; return it with what the engine
+    /// knows besides, such as its memory, its idle-unload policy (`memory.idle_unload_s`), when each resident model will
+    /// be unloaded (`resident_until`) and `x-` members. The default returns it unchanged.
+    func health(_ kit: Health) async -> Health
 }
 
 extension MediaEngine {
@@ -46,6 +51,7 @@ extension MediaEngine {
     public func voices(operation: String, model: String) async -> [Voice] { [] }
     public func assetRemoved(_ id: String) async {}
     public func residentModels() async -> [String] { [] }
+    public func health(_ kit: Health) async -> Health { kit }
     public func defaultModel(for request: JobRequest, descriptor: Descriptor, kitChoice: ModelOffer,
                              candidates: [ModelOffer]) -> ModelOffer? { nil }
 }

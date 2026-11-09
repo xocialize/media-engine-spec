@@ -54,6 +54,11 @@ package actor JobRegistry {
         var confirmed = false
         var lastProgressAt: ContinuousClock.Instant?
         var lastPhase: String?
+        /// Time a running job spent in stage `preparing` (downloading, loading its model), for `prepare_ms` (§10.1):
+        /// the closed intervals, and the start of an open one.
+        var preparedSeconds: Double = 0
+        var preparingSince: Date?
+        var prepared = false
         var startedAt: Date?
         var finishedAt: Date?
     }
@@ -163,8 +168,21 @@ package actor JobRegistry {
     package func health() async -> Health {
         let active = records.values.filter { [.received, .fetching, .waiting].contains($0.job.state) }
         let running = records.values.first { $0.job.state == .running }?.job.id
-        return Health(status: .ok, queueDepth: active.count, running: running,
-                      residentModels: await engine.residentModels())
+        let health = Health(status: .ok, queueDepth: active.count, running: running,
+                            residentModels: await engine.residentModels())
+        return await engine.health(health)
+    }
+
+    /// A job's timings (§10.1): `queue_ms` from receipt to start; `prepare_ms`, for a job that reported stage
+    /// `preparing`, the time it spent there (a download, a model load); `run_ms` the rest of the run.
+    static func timings(_ record: Record, startedAt: Date, finishedAt: Date) -> Provenance.Timings {
+        var prepared = record.preparedSeconds
+        if let since = record.preparingSince { prepared += finishedAt.timeIntervalSince(since) }
+        let total = finishedAt.timeIntervalSince(startedAt)
+        let prepareMs = record.prepared ? Int((min(prepared, total) * 1000).rounded()) : nil
+        return .init(receivedAt: record.job.createdAt, startedAt: startedAt, finishedAt: finishedAt,
+                     queueMs: Int(startedAt.timeIntervalSince(record.job.createdAt) * 1000), prepareMs: prepareMs,
+                     runMs: Int((total * 1000).rounded()) - (prepareMs ?? 0))
     }
 
     // MARK: - Uploads (§8)
@@ -762,9 +780,7 @@ package actor JobRegistry {
                 },
                 helpers: output.helpers.isEmpty ? nil : output.helpers, voice: record.voice?.ref,
                 remoteProvider: record.model.remoteProvider, seed: output.seed,
-                timings: .init(receivedAt: record.job.createdAt, startedAt: startedAt, finishedAt: now,
-                               queueMs: Int(startedAt.timeIntervalSince(record.job.createdAt) * 1000),
-                               runMs: Int(now.timeIntervalSince(startedAt) * 1000))))
+                timings: Self.timings(record, startedAt: startedAt, finishedAt: now)))
         record.job.state = .holding
         record.job.outcome = .succeeded
         record.job.progress = JobProgress(stage: .finishing, fraction: 1)
@@ -1057,6 +1073,13 @@ package actor JobRegistry {
 
     private func reportProgress(_ id: String, _ progress: JobProgress) {
         guard let record = records[id], record.job.state == .running, !record.cancelled else { return }
+        // prepare_ms (§10.1, AB-A-0260): time in stage preparing, measured before throttling drops any report.
+        if progress.stage == .preparing {
+            if record.preparingSince == nil { records[id]?.preparingSince = Date(); records[id]?.prepared = true }
+        } else if let since = record.preparingSince {
+            records[id]?.preparedSeconds += Date().timeIntervalSince(since)
+            records[id]?.preparingSince = nil
+        }
         let now = ContinuousClock.now
         let final = progress.fraction == 1 || (progress.step != nil && progress.step == progress.steps)
         // A new phase always goes out: dropping it would leave a client showing the last one (AB-A-0156).

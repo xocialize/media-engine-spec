@@ -3,7 +3,13 @@
   "title": "MES Base 0.1 — GET {path}/health (§14)",
   "type": "object",
   "required": ["status", "queue_depth", "resident_models"],
-  "additionalProperties": false,
+  "description": "Base members, and x-<vendor>.<name> members an engine adds (§14).",
+  "propertyNames": {
+    "anyOf": [
+      { "enum": ["status", "queue_depth", "running", "resident_models", "memory", "estimated_wait_s", "resident_until"] },
+      { "pattern": "^x-[a-z0-9]+\\.[a-z0-9_]+$" }
+    ]
+  },
   "properties": {
     "status": { "enum": ["ok", "degraded", "unavailable"] },
     "queue_depth": { "type": "integer", "minimum": 0 },
@@ -14,9 +20,16 @@
       "additionalProperties": false,
       "properties": {
         "headroom_bytes": { "type": "integer", "minimum": 0 },
-        "class": { "enum": ["small", "medium", "large", "xlarge"] }
+        "class": { "enum": ["small", "medium", "large", "xlarge"] },
+        "idle_unload_s": { "type": "integer", "minimum": 0, "description": "The idle policy: a resident model unused this many seconds is unloaded (0: after every job). Absent: not stated, or never on idle." }
       }
     },
-    "estimated_wait_s": { "type": "number", "minimum": 0 }
+    "estimated_wait_s": { "type": "number", "minimum": 0 },
+    "resident_until": {
+      "type": "object",
+      "description": "When each resident model will be unloaded if it stays idle, by model id.",
+      "propertyNames": { "$ref": "common.schema.json#/$defs/Id" },
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/Timestamp" }
+    }
   }
 }

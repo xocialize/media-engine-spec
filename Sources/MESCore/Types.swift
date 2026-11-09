@@ -957,9 +957,14 @@ public struct Health: Codable, Sendable, Equatable {
     public struct Memory: Codable, Sendable, Equatable {
         public var headroomBytes: Int?
         public var memoryClass: ModelOffer.MemoryClass?
-        enum CodingKeys: String, CodingKey { case headroomBytes = "headroom_bytes", memoryClass = "class" }
-        public init(headroomBytes: Int? = nil, memoryClass: ModelOffer.MemoryClass? = nil) {
-            self.headroomBytes = headroomBytes; self.memoryClass = memoryClass
+        /// The engine's idle policy: a resident model unused this many seconds is unloaded (0: after every job). Nil: the
+        /// engine doesn't say, or doesn't unload idle models (§14, AB-A-0260).
+        public var idleUnloadSeconds: Int?
+        enum CodingKeys: String, CodingKey {
+            case headroomBytes = "headroom_bytes", memoryClass = "class", idleUnloadSeconds = "idle_unload_s"
+        }
+        public init(headroomBytes: Int? = nil, memoryClass: ModelOffer.MemoryClass? = nil, idleUnloadSeconds: Int? = nil) {
+            self.headroomBytes = headroomBytes; self.memoryClass = memoryClass; self.idleUnloadSeconds = idleUnloadSeconds
         }
     }
     public var status: Status
@@ -968,14 +973,55 @@ public struct Health: Codable, Sendable, Equatable {
     public var residentModels: [String]
     public var memory: Memory?
     public var estimatedWaitSeconds: Double?
-    enum CodingKeys: String, CodingKey {
+    /// When each resident model will be unloaded if it stays idle, by model id (§14).
+    public var residentUntil: [String: Date]?
+    /// `x-<vendor>.<name>` members: what an engine says about itself that Base doesn't define (§14).
+    public var extensions: [String: JSONValue]
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case status, running, memory
         case queueDepth = "queue_depth", residentModels = "resident_models", estimatedWaitSeconds = "estimated_wait_s"
+        case residentUntil = "resident_until"
     }
     public init(status: Status, queueDepth: Int, running: String? = nil, residentModels: [String], memory: Memory? = nil,
-                estimatedWaitSeconds: Double? = nil) {
+                estimatedWaitSeconds: Double? = nil, residentUntil: [String: Date]? = nil, extensions: [String: JSONValue] = [:]) {
         self.status = status; self.queueDepth = queueDepth; self.running = running; self.residentModels = residentModels
-        self.memory = memory; self.estimatedWaitSeconds = estimatedWaitSeconds
+        self.memory = memory; self.estimatedWaitSeconds = estimatedWaitSeconds; self.residentUntil = residentUntil
+        self.extensions = extensions
+    }
+
+    struct AnyKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(Status.self, forKey: .status)
+        queueDepth = try c.decode(Int.self, forKey: .queueDepth)
+        running = try c.decodeIfPresent(String.self, forKey: .running)
+        residentModels = try c.decode([String].self, forKey: .residentModels)
+        memory = try c.decodeIfPresent(Memory.self, forKey: .memory)
+        estimatedWaitSeconds = try c.decodeIfPresent(Double.self, forKey: .estimatedWaitSeconds)
+        residentUntil = try c.decodeIfPresent([String: Date].self, forKey: .residentUntil)
+        let all = try decoder.container(keyedBy: AnyKey.self)
+        var ext: [String: JSONValue] = [:]
+        for key in all.allKeys where key.stringValue.hasPrefix("x-") { ext[key.stringValue] = try all.decode(JSONValue.self, forKey: key) }
+        extensions = ext
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(status, forKey: .status)
+        try c.encode(queueDepth, forKey: .queueDepth)
+        try c.encodeIfPresent(running, forKey: .running)
+        try c.encode(residentModels, forKey: .residentModels)
+        try c.encodeIfPresent(memory, forKey: .memory)
+        try c.encodeIfPresent(estimatedWaitSeconds, forKey: .estimatedWaitSeconds)
+        try c.encodeIfPresent(residentUntil, forKey: .residentUntil)
+        var all = encoder.container(keyedBy: AnyKey.self)
+        for (key, value) in extensions where key.hasPrefix("x-") { try all.encode(value, forKey: AnyKey(stringValue: key)) }
     }
 }
 

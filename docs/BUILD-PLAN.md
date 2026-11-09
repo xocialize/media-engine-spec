@@ -709,6 +709,20 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   - **Source changes for consumers:** `Kind` gains `.mesh`, so exhaustive `switch`es over it need a case.
     `MockMediaEngine`'s descriptors gain two operations.
 
+- **`v0.12.0`** (2026-11-09; AB-A-0260, from Craft Anything, Gaea's first real client): **`prepare_ms`, and the idle
+  policy on `/health`.** Base stays a 0.1 draft; both are additive.
+  - **`prepare_ms`** (Base §10.1): the registry measures the time a running job spends in progress stage `preparing`
+    (Gaea 1.3 reports downloads and loads there; the normalizer maps ModelProgress `downloading`/`loading` to it) and
+    reports it as `prepare_ms`, with `run_ms` the rest. The client had seen 531 s of `run_ms` that was a 19 GB download.
+    It is measured before progress throttling, so a short preparation still counts. No engine API change.
+  - **`GET /health`** (Base §14): `memory.idle_unload_s` (the engine's idle policy), `resident_until` (when each resident
+    model unloads if it stays idle) and `x-<vendor>.<name>` members. `MediaEngine.health(_:)` (default: unchanged) lets an
+    engine fill them, and its memory, over the kit's status, queue and resident models.
+  - **Source changes for consumers:** `Health` encodes and decodes its `extensions` itself; its memberwise init gains
+    defaulted parameters.
+  - 163 tests pass (160 before); `tools/test_validator.py` 92/92. The other part of AB-A-0260, RGB PNGs for opaque
+    pictures, is pixel-agency-normalizer v0.3.1.
+
 ## Next: Mesh after 0.1
 
 - **Gaea's plugins** (AB-T-0467): TRELLIS.2 as a `mesh.generate` offer (Y-up export, placement, the attribution, the

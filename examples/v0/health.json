@@ -5,9 +5,14 @@
   "resident_models": [
     "z-image-turbo"
   ],
+  "resident_until": {
+    "z-image-turbo": "2026-10-09T17:15:07Z"
+  },
+  "x-pixelagency.workers": 1,
   "memory": {
     "headroom_bytes": 21474836480,
-    "class": "large"
+    "class": "large",
+    "idle_unload_s": 900
   },
   "estimated_wait_s": 18
 }
