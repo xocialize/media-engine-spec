@@ -708,6 +708,11 @@ package actor JobRegistry {
                 produced.append(streamed)
             }
         }
+        if record.descriptor.profile == MeshProfile.id {
+            let (meshes, warnings) = try MeshProfileRules.finish(produced, request: record.request, model: record.model)
+            produced = meshes
+            for w in warnings where !(output.warnings + record.job.warnings).contains(where: { $0.code == w.code }) { record.job.warnings.append(w) }
+        }
         for (index, produced) in produced.enumerated() {
             guard names.contains(produced.name) else {
                 throw MESError(.engineError, "The engine produced an undeclared output '\(produced.name)'.")
@@ -730,7 +735,9 @@ package actor JobRegistry {
                                   bytes: bytes, sha256: sha, href: "\(config.basePath)/jobs/\(id)/outputs/\(index)",
                                   width: produced.width, height: produced.height, durationSeconds: produced.durationSeconds,
                                   fps: produced.fps, frames: produced.frames, sampleRate: produced.sampleRate, channels: produced.channels,
-                                  bitDepth: produced.bitDepth, value: bytes <= 65_536 ? produced.value : nil))
+                                  bitDepth: produced.bitDepth, value: bytes <= 65_536 ? produced.value : nil,
+                                  vertices: produced.vertices, faces: produced.faces, bounds: produced.bounds,
+                                  textureSize: produced.textureSize, joints: produced.joints))
         }
         guard !outputs.isEmpty else { throw MESError(.engineError, "The engine produced no outputs.") }
         var effective = record.initialEffective

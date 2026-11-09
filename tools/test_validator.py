@@ -118,6 +118,29 @@ CASES = [
     ("job-holding-video-generate.json", "base/job.schema.json", setp(["result", "outputs", 0, "frames"], 0),
      "a video output with zero frames"),
     ("event-preview-frame.json", "base/event.schema.json", setp(["data", "at_s"], -1), "a preview at a negative time"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", setp(["params", "steps"], 12),
+     "a model knob (steps) on mesh.generate"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", setp(["params", "texture"], "vertex_colors"),
+     "texture_size with vertex_colors"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", setp(["params", "texture_size"], 3000),
+     "a texture size that isn't a registered power of two"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", setp(["params", "placement"], "floating"),
+     "an unregistered placement"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", delp(["inputs", "image"]), "generate without its image"),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", setp(["params", "size_m"], 0), "size_m of 0"),
+    ("job-request-mesh-rig.json", "profiles/mesh/job-request.schema.json", setp(["inputs", "image"], {"upload": "upl_1"}),
+     "an input mesh.rig doesn't define"),
+    ("job-request-mesh-rig.json", "profiles/mesh/job-request.schema.json", setp(["params", "skeleton"], "Mixamo Rig"),
+     "a skeleton name that isn't a template id"),
+    ("job-request-mesh-rig.json", "profiles/mesh/job-request.schema.json", setp(["params", "max_faces"], 1000),
+     "a generate parameter on rig"),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", delp(["result", "outputs", 0, "bounds"]), "a mesh output without bounds"),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", setp(["result", "outputs", 0, "bounds", "max"], [1, 2]),
+     "bounds with two coordinates"),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", delp(["result", "outputs", 0, "faces"]), "a mesh output without faces"),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", setp(["result", "provenance", "model", "license", "attribution"], ""),
+     "an empty attribution"),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", setp(["result", "outputs", 0, "kind"], "model"), "an unregistered kind"),
     ("operations-video-upscale-interpolate.json", "base/operations-list.schema.json",
      setp(["operations", 0, "models", 0, "license", "user_accept_required"], "yes"), "user_accept_required that isn't a boolean"),
     # RFC 0006 (v0.10.0): separation, and AuK's edits
@@ -155,8 +178,46 @@ def profile_case():
     return ("model-specific param outside the vocabulary", any("guidance" in e for e in errs), errs[:1])
 
 
+def example_case(example, mutate, needle, why):
+    """A mutated example must fail the profile checks (validate.profile_checks), with an error mentioning `needle`."""
+    ex = v.EXAMPLES / example
+    original = ex.read_text()
+    doc = json.loads(original)
+    mutate(doc)
+    try:
+        ex.write_text(json.dumps(doc))
+        v._cache.clear()
+        errs = v.profile_checks()
+    finally:
+        ex.write_text(original)
+        v._cache.clear()
+    hits = [e for e in errs if needle in e]
+    return (why, bool(hits), hits[:1])
+
+
+def flat(doc):
+    doc["result"]["outputs"][0]["bounds"] = {"min": [-0.5, 0, -0.0001], "max": [0.5, 1.8, 0.0001]}
+
+
 def main():
-    results = [check(*c) for c in CASES] + [profile_case()]
+    results = [check(*c) for c in CASES] + [profile_case()] + [
+        example_case("job-holding-mesh-generate.json", flat, "flat_result", "a flat mesh result without flat_result"),
+        example_case("job-holding-mesh-generate.json", lambda d: d["result"]["outputs"].pop(1), "preview", "a mesh result without its preview"),
+        example_case("job-holding-mesh-generate.json", setp(["result", "effective", "size_m"], 1.0), "size_m", "a mesh whose longest extent isn't size_m"),
+        example_case("job-holding-mesh-generate.json", setp(["result", "outputs", 0, "bounds", "min", 1], -0.9), "grounded", "a grounded mesh below y = 0"),
+        example_case("job-holding-mesh-rig.json", delp(["result", "outputs", 0, "joints"]), "joints", "a rigged mesh without joints"),
+        example_case("job-holding-mesh-generate.json", setp(["result", "outputs", 1, "width"], 256), "preview", "a preview smaller than 512 px"),
+        example_case("operations-mesh.json", lambda d: d["operations"][0]["outputs"].pop(1), "preview PNG", "a mesh descriptor without a preview output"),
+        example_case("operations-mesh.json", setp(["operations", 0, "models", 0, "supports", "textures"], ["vertex_colors"]), "atlas",
+                     "texture_sizes on an offer that makes no atlas"),
+        example_case("operations-mesh.json", setp(["operations", 0, "models", 0, "supports", "resolutions"], [512, 2048]), "resolution",
+                     "an offer resolution the descriptor doesn't take"),
+        example_case("operations-mesh.json", setp(["operations", 1, "models", 0, "supports", "max_influences"], 9), "supports",
+                     "max_influences above 8"),
+        example_case("operations-mesh.json", setp(["operations", 0, "models", 0, "limits", "max_joints"], 12), "limits",
+                     "a rig limit on a generate offer"),
+        example_case("job-failed-mesh-flat.json", setp(["error", "code"], "engine_error"), "reason", "degenerate_result on the wrong code"),
+    ]
     failed = [r for r in results if not r[1]]
     for why, rejected, errs in results:
         print(f"{'ok  ' if rejected else 'MISS'} {why}" + (f"  — {errs[0]}" if errs else ""))

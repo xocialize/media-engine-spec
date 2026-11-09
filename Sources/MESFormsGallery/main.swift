@@ -26,10 +26,12 @@ let descriptors: [Descriptor] = {
 /// The mock's voice lists, as an engine connection would serve them.
 let mockVoices = VoiceSource(voices: { operation, model in await MockMediaEngine().voices(operation: operation, model: model) })
 
-/// A media slot: the audio well for audio inputs, the video well for video, the placeholder for the rest.
+/// A media slot: the audio well for audio inputs, the video well for video, the mesh well for meshes, the placeholder
+/// for the rest.
 @MainActor @ViewBuilder func slot(_ spec: InputSpec) -> some View {
     if spec.kind == .audio { AudioInputWell(spec: spec, file: .constant(nil)) }
-    else if spec.kind == .video { VideoInputWell(spec: spec, file: .constant(nil)) } else { MediaSlotPlaceholder(spec: spec) }
+    else if spec.kind == .video { VideoInputWell(spec: spec, file: .constant(nil)) }
+    else if spec.kind == .mesh { MeshInputWell(spec: spec, file: .constant(nil)) } else { MediaSlotPlaceholder(spec: spec) }
 }
 
 /// A form with everything showing: advanced open, extensions on, a prompt typed, a voice chosen.

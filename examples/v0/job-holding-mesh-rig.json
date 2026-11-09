@@ -1,0 +1,115 @@
+{
+  "id": "job_01JD09",
+  "operation": "mesh.rig",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "skintokens",
+      "title": "SkinTokens",
+      "license": {
+        "spdx": "MIT",
+        "commercial_use": true,
+        "terms_url": "https://github.com/VAST-AI-Research/SkinTokens"
+      }
+    },
+    "effective": {
+      "skeleton": "vrm_humanoid",
+      "quality": "standard",
+      "seed": 9
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "phase": "render",
+    "step": 1,
+    "steps": 1
+  },
+  "warnings": [
+    {
+      "code": "joints_dropped",
+      "message": "The mesh has no fingers to bind: the 30 finger joints of vrm_humanoid were left out.",
+      "param": "skeleton"
+    }
+  ],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "mesh",
+        "kind": "mesh",
+        "media_type": "model/gltf-binary",
+        "bytes": 10220416,
+        "sha256": "df38b2ee35db2a3df8445ebeb8ee29704fe40affc2c861dcea320cc67ff7d12c",
+        "href": "/mes/v0/jobs/job_01JD09/outputs/0",
+        "vertices": 118204,
+        "faces": 199870,
+        "bounds": {
+          "min": [
+            -0.412,
+            0.0,
+            -0.287
+          ],
+          "max": [
+            0.412,
+            1.8,
+            0.301
+          ]
+        },
+        "texture_size": 2048,
+        "joints": 22
+      },
+      {
+        "index": 1,
+        "name": "preview",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 298114,
+        "sha256": "5538fda6e48c49c18768e9a1dd451251c3da08756b29d0ad03abfc87c404497c",
+        "href": "/mes/v0/jobs/job_01JD09/outputs/1",
+        "width": 768,
+        "height": 768
+      }
+    ],
+    "effective": {
+      "skeleton": "vrm_humanoid",
+      "quality": "standard",
+      "seed": 9,
+      "model_params": {
+        "num_beams": 10,
+        "points": 54000
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "1.4.0"
+      },
+      "operation": "mesh.rig",
+      "profile_version": "0.1",
+      "model": {
+        "id": "skintokens",
+        "title": "SkinTokens",
+        "license": {
+          "spdx": "MIT",
+          "commercial_use": true,
+          "terms_url": "https://github.com/VAST-AI-Research/SkinTokens"
+        }
+      },
+      "seed": 9,
+      "timings": {
+        "received_at": "2026-11-09T18:10:00Z",
+        "queue_ms": 2,
+        "run_ms": 291000
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-11-09T19:14:51Z",
+    "record_expires_at": "2026-11-10T18:14:51Z"
+  },
+  "created_at": "2026-11-09T18:10:00Z",
+  "updated_at": "2026-11-09T18:14:51Z"
+}

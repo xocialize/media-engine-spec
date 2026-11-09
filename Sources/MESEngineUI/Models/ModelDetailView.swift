@@ -166,6 +166,10 @@ struct ModelDetailView: View {
             if let accepted = model.acceptedAt {
                 InfoRow("Terms accepted", value: accepted.formatted(date: .abbreviated, time: .shortened))
             }
+            if let attribution = model.license.attribution {
+                // Required words, shown exactly as given (Base §10.2 rule 1, RFC 0007).
+                InfoRow("Attribution", value: attribution)
+            }
             if let notice = model.license.notice {
                 Callout(symbol: "exclamationmark.shield", tint: model.optIn ? Tokens.Color.working : Tokens.Color.secondaryLabel,
                         text: notice)

@@ -42,14 +42,15 @@ func failures(_ report: ConformanceReport) -> String {
 
 @Suite("Conformance suite against the mock engine", .serialized)
 struct MockConformanceTests {
-    @Test("Open mode: every applicable BASE, IMAGE, AUDIO and VIDEO test passes")
+    @Test("Open mode: every applicable BASE, IMAGE, AUDIO, VIDEO and MESH test passes")
     func openMode() async throws {
         try await serve(mockConfig()) { port in
             let probe = try await Probe.connect(Wire(baseURL: URL(string: "http://127.0.0.1:\(port)/mes/v0")!))
             let report = await ConformanceRunner.run(probe)
             #expect(report.failed == 0, "\(failures(report))")
-            #expect(report.conformsToBase && report.conformsToImage == true && report.conformsToAudio == true && report.conformsToVideo == true)
-            #expect(report.summary == "Base 0.1: conforms, Image 0.1: conforms, Audio 0.1: conforms, Video 0.1: conforms")
+            #expect(report.conformsToBase && report.conformsToImage == true && report.conformsToAudio == true && report.conformsToVideo == true
+                    && report.conformsToMesh == true)
+            #expect(report.summary == "Base 0.1: conforms, Image 0.1: conforms, Audio 0.1: conforms, Video 0.1: conforms, Mesh 0.1: conforms")
             let skipped = Set(report.results.filter { $0.status == .skip }.map(\.id))
             // IMAGE-010 runs on decompose, whose `output` leaves out JPEG (no alpha, Image §3.2). Asset expiry (BASE-034)
             // waits 60 s; a second pairing (BASE-035) needs paired mode.
@@ -66,6 +67,10 @@ struct MockConformanceTests {
             #expect(notes["VIDEO-009"]?.contains("source frames kept") == true, "\(notes["VIDEO-009"] ?? "")")
             #expect(notes["VIDEO-010"]?.contains("frames outside the span kept") == true, "\(notes["VIDEO-010"] ?? "")")
             #expect(notes["VIDEO-014"]?.contains("1 preview") == true, "\(notes["VIDEO-014"] ?? "")")
+            #expect(notes["MESH-006"]?.contains("mock-mesh-open min_faces 422") == true, "\(notes["MESH-006"] ?? "")")
+            #expect(notes["MESH-007"]?.contains("mock-mesh-open refused background removal") == true, "\(notes["MESH-007"] ?? "")")
+            #expect(notes["MESH-009"]?.contains("Built with Mock DINOv3") == true, "\(notes["MESH-009"] ?? "")")
+            #expect(notes["MESH-011"]?.contains("mock-template-rigger refused a request without a skeleton") == true, "\(notes["MESH-011"] ?? "")")
         }
     }
 

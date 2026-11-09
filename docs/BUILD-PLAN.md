@@ -673,6 +673,50 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   acceptance: BASE-015, -016, -019, -056 and every AUDIO test pass, and with the default removed, the named-model ones
   fail on `policy_unmet`. 143 tests pass (142 before).
 
+- **`v0.11.0`** (2026-11-09; AB-A-0261, Gaea's fourth profile): **Mesh 0.1, and what Base needs for 3D**
+  ([RFC 0007](../rfcs/0007-mesh.md), accepted). Base stays a 0.1 draft; every change is additive.
+  - **Base:** the `mesh` kind (`model/gltf-binary`); a mesh output's facts (`vertices`, `faces`, `bounds` REQUIRED;
+    `texture_size` exactly when textured, `joints` exactly when skinned); `license.attribution`, words a client shows
+    verbatim wherever it shows a notice and an engine writes into the file (TRELLIS.2: `LicenseRef-DINOv3`, "Built with
+    DINOv3"; a model built from parts states the governing part's licence and every part's attribution); GLB's row in
+    §10.2 rule 2's table; profiles may register error reasons; MCP model lines and result summaries carry attributions.
+  - **Mesh 0.1** ([`spec/profiles/mesh.md`](../spec/profiles/mesh.md)): `mesh.generate` (one image → a GLB and a
+    `preview` PNG; `seed`, `quality`, `resolution`, `max_faces`, `texture` atlas or vertex colours, `texture_size`,
+    `background`, `placement` centred or grounded, `size_m`, `on_flat`) and `mesh.rig` (a GLB → the same geometry,
+    vertex for vertex, with one skin; `skeleton` a registered template, `vrm_humanoid` first, or the model's own).
+    Conventions: everything in the file, no required extensions, triangles with normals, +Y up, metres, the front facing
+    +Z, fitted to `size_m`. A result whose thinnest extent is under 0.08 of its longest (AB-R-0059's card) warns
+    `flat_result`, or fails 422 `input_invalid`, reason `degenerate_result`, with `on_flat: fail`. `supports`:
+    `background_removal`, `resolutions`, `textures`, `texture_sizes`, `maps`, `skeletons`, `auto_skeleton`,
+    `max_influences`, `deterministic`; limits `min_faces`, `max_faces`, `max_texture_size`, `max_input_faces`,
+    `max_joints`. MESH-001 to MESH-012.
+  - **Schemas, examples, validator:** `schemas/v0/profiles/mesh/`; six examples (TRELLIS.2- and SkinTokens-shaped
+    offers, a generate and a rig job, a flat result refused); `tools/validate.py` checks a preview per mesh, placement
+    against `size_m`, a flat result warned, joints on rig results, offers' gate lists within the descriptor, and
+    registered reasons on their codes. 54 examples; 89/89 mutations rejected (63 before).
+  - **MESKit:** `Kind.mesh`, the facts on `Output`, `MeshBounds`, `License.attribution`, `MeshProfile` and `GLB` (read,
+    write, facts, the conventions' problems) in MESCore; `MeshProfileRules` (400s, gates, limits) and, for every engine,
+    the kit reads a mesh output's facts from its GLB and applies the flatness check (`ProducedOutput.mesh(url)` is all
+    an engine returns); `MockMeshEngine` (an icosphere coloured from the image, a preview rendered in software, a
+    two-offer rig with `vrm_humanoid`); `JobResult.meshes`, `preview(for:)`, `EngineConnection.downloadMesh`;
+    MESFormsUI `MeshView`, `MeshScene`, `MeshFacts`, `MeshInputWell`, and the attribution on `LicenseLine`;
+    MESEngineUI shows an offer's attribution on its model card; `mes` prints mesh facts and saves `.glb`.
+  - **Why SceneKit:** macOS has no GLB loader (ModelIO's `canImportFileExtension("glb")` is false, `SCNScene(url:)`
+    refuses it, Quick Look has no glTF generator), and RealityKit's materials can't show per-vertex colour, which
+    TRELLIS.2 writes. `MeshScene` builds SceneKit geometry from MESCore's reader; the preview PNG covers what it can't
+    read (Draco, meshopt). Output viewers live in MESFormsUI next to the audio and video players: MESEngineUI is the
+    operator's console and shows jobs, not their media.
+  - **Source changes for consumers:** `Kind` gains `.mesh`, so exhaustive `switch`es over it need a case.
+    `MockMediaEngine`'s descriptors gain two operations.
+
+## Next: Mesh after 0.1
+
+- **Gaea's plugins** (AB-T-0467): TRELLIS.2 as a `mesh.generate` offer (Y-up export, placement, the attribution, the
+  preview render), SkinTokens as `mesh.rig` when its port lands (its `vroid` class as `vrm_humanoid`; check the joint
+  list against `configs/skeleton/vroid.yaml`).
+- **Later** (Mesh §7): several views, a turntable video, Draco and meshopt or USDZ as `output` options, text → 3D,
+  `mesh.edit` when TRELLIS.2's mesh encoder runs off CUDA (AB-B-0027), animation.
+
 ## Next: Video after 0.1
 
 - **The packages** (evaluation §8): typed time spans, keyframes and `content` in MLXToolKit; audio passthrough in

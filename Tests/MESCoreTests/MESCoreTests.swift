@@ -48,6 +48,12 @@ let manifest: [(String, String, any (Codable & Sendable).Type)] = [
     ("event-output-chunk.json", "base/event.schema.json", Event.self),
     ("job-holding-speak.json", "base/job.schema.json", Job.self),
     ("job-holding-compose.json", "base/job.schema.json", Job.self),
+    ("operations-mesh.json", "base/operations-list.schema.json", OperationsList.self),
+    ("job-request-mesh-generate.json", "profiles/mesh/job-request.schema.json", JobRequest.self),
+    ("job-request-mesh-rig.json", "profiles/mesh/job-request.schema.json", JobRequest.self),
+    ("job-holding-mesh-generate.json", "base/job.schema.json", Job.self),
+    ("job-holding-mesh-rig.json", "base/job.schema.json", Job.self),
+    ("job-failed-mesh-flat.json", "base/job.schema.json", Job.self),
 ]
 
 func schema(_ target: String, loader: SchemaLoader) throws -> (JSONValue, URL, JSONValue) {

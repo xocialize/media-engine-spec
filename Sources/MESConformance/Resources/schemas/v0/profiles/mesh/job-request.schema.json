@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Mesh 0.1 — POST {path}/jobs for a mesh operation",
+  "description": "A Base JobRequest whose operation is a Mesh 0.1 operation: the operation's inputs by name, its required inputs, and only vocabulary parameters (spec/profiles/mesh.md §2, §3). texture_size goes only with texture: atlas. An engine's own descriptor narrows these further.",
+  "allOf": [
+    {
+      "$ref": "../../base/job-request.schema.json"
+    },
+    {
+      "properties": {
+        "operation": {
+          "enum": [
+            "mesh.generate",
+            "mesh.rig"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "mesh.generate"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "image"
+            ],
+            "propertyNames": {
+              "enum": [
+                "image"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              },
+              "resolution": {
+                "$ref": "vocabulary.schema.json#/$defs/resolution"
+              },
+              "max_faces": {
+                "$ref": "vocabulary.schema.json#/$defs/max_faces"
+              },
+              "texture": {
+                "$ref": "vocabulary.schema.json#/$defs/texture"
+              },
+              "texture_size": {
+                "$ref": "vocabulary.schema.json#/$defs/texture_size"
+              },
+              "background": {
+                "$ref": "vocabulary.schema.json#/$defs/background"
+              },
+              "placement": {
+                "$ref": "vocabulary.schema.json#/$defs/placement"
+              },
+              "size_m": {
+                "$ref": "vocabulary.schema.json#/$defs/size_m"
+              },
+              "on_flat": {
+                "$ref": "vocabulary.schema.json#/$defs/on_flat"
+              }
+            },
+            "if": {
+              "properties": {
+                "texture": {
+                  "const": "vertex_colors"
+                }
+              },
+              "required": [
+                "texture"
+              ]
+            },
+            "then": {
+              "properties": {
+                "texture_size": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "mesh.rig"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "mesh"
+            ],
+            "propertyNames": {
+              "enum": [
+                "mesh"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "skeleton": {
+                "$ref": "vocabulary.schema.json#/$defs/skeleton"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

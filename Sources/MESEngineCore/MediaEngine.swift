@@ -41,6 +41,7 @@ extension MediaEngine {
         if descriptor.profile == ImageProfile.id { try ImageProfileRules.validate(request, descriptor: descriptor) }
         if descriptor.profile == AudioProfile.id { try AudioProfileRules.validate(request, descriptor: descriptor) }
         if descriptor.profile == VideoProfile.id { try VideoProfileRules.validate(request, descriptor: descriptor) }
+        if descriptor.profile == MeshProfile.id { try MeshProfileRules.validate(request, descriptor: descriptor) }
     }
     public func voices(operation: String, model: String) async -> [Voice] { [] }
     public func assetRemoved(_ id: String) async {}
@@ -177,6 +178,18 @@ public struct ProducedOutput: Sendable {
     public var sampleRate: Int?
     public var channels: Int?
     public var bitDepth: Int?
+    /// Mesh facts (Base §10.1, RFC 0007). Left nil, the kit reads them from the GLB.
+    public var vertices: Int?
+    public var faces: Int?
+    public var bounds: MeshBounds?
+    public var textureSize: Int?
+    public var joints: Int?
+
+    /// A GLB (Mesh §1.1). The kit reads its facts (vertices, faces, bounds, texture size, joints) from the file, checks a
+    /// `mesh.generate` result for flatness (Mesh §1.8), and serves it as `model/gltf-binary`.
+    public static func mesh(_ url: URL, name: String = MeshProfile.Output.mesh) -> ProducedOutput {
+        ProducedOutput(name: name, kind: .mesh, mediaType: MeshProfile.mediaType, file: url, value: nil)
+    }
 
     /// An audio file, with its facts.
     public static func audio(_ url: URL, name: String, mediaType: String = "audio/wav", durationSeconds: Double, sampleRate: Int,

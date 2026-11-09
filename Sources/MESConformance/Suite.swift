@@ -32,6 +32,8 @@ public final class Probe: @unchecked Sendable {
     let infoBody: Data
     /// The video fixture (`Fixtures.mp4()`), made at connect when an operation takes video.
     public internal(set) var clip: Data?
+    /// The mesh fixture (`Fixtures.glb()`, a 1,280-face textured sphere), made at connect when an operation takes a mesh.
+    public internal(set) var meshFixture: Data?
 
     public struct Options: Sendable {
         /// Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.
@@ -75,6 +77,7 @@ public final class Probe: @unchecked Sendable {
             return request
         }
         if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .video } }) { probe.clip = try await Fixtures.mp4() }
+        if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .mesh } }) { probe.meshFixture = try Fixtures.glb() }
         return probe
     }
 
@@ -101,6 +104,9 @@ public final class Probe: @unchecked Sendable {
             case .video where spec.required:
                 guard let clip else { return nil }
                 inputs[spec.name] = .one(.inline(mediaType: "video/mp4", data: clip))
+            case .mesh where spec.required:
+                guard let meshFixture else { return nil }
+                inputs[spec.name] = .one(.inline(mediaType: MeshProfile.mediaType, data: meshFixture))
             default: if spec.required { return nil }
             }
         }
@@ -215,6 +221,8 @@ public struct ConformanceReport: Codable, Sendable {
     public var conformsToAudio: Bool? { conforms("AUDIO") }
     /// Video 0.1 conformance for the operations offered.
     public var conformsToVideo: Bool? { conforms("VIDEO") }
+    /// Mesh 0.1 conformance for the operations offered.
+    public var conformsToMesh: Bool? { conforms("MESH") }
 
     func conforms(_ prefix: String) -> Bool? {
         let tests = results.filter { $0.id.hasPrefix(prefix) }
@@ -228,6 +236,7 @@ public struct ConformanceReport: Codable, Sendable {
             + (conformsToImage.map { ", Image 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
             + (conformsToAudio.map { ", Audio 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
             + (conformsToVideo.map { ", Video 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
+            + (conformsToMesh.map { ", Mesh 0.1: \($0 ? "conforms" : "does not conform")" } ?? "")
     }
 }
 
@@ -281,6 +290,7 @@ extension ConformanceReport {
         if let image = conformsToImage { lines.append("| **Image 0.1** | \(image ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         if let audio = conformsToAudio { lines.append("| **Audio 0.1** | \(audio ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         if let video = conformsToVideo { lines.append("| **Video 0.1** | \(video ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
+        if let mesh = conformsToMesh { lines.append("| **Mesh 0.1** | \(mesh ? "✅ conforms for the operations offered" : "❌ does not conform") |") }
         lines += ["", "| Test | Checks | Spec | Result |", "|---|---|---|---|"]
         for r in results {
             let mark = switch r.status { case .pass: "✅ pass"; case .fail: "❌ **fail**"; case .skip: "➖ skip" }

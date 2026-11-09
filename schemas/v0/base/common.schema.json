@@ -8,7 +8,7 @@
     "Version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
     "Sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "MediaType": { "type": "string", "pattern": "^[a-z]+/[a-z0-9.+-]+$" },
-    "Kind": { "enum": ["text", "image", "mask", "video", "audio", "data"] },
+    "Kind": { "enum": ["text", "image", "mask", "video", "audio", "data", "mesh"] },
     "QualityTier": { "enum": ["draft", "standard", "best"] },
     "State": { "enum": ["received", "fetching", "waiting", "running", "holding", "purged"] },
     "Outcome": { "enum": ["succeeded", "failed", "cancelled", "expired"] },
@@ -26,7 +26,8 @@
         "terms_url": { "type": "string" },
         "notice": { "type": "string" },
         "accepted_required": { "type": "boolean" },
-        "user_accept_required": { "type": "boolean" }
+        "user_accept_required": { "type": "boolean" },
+        "attribution": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Words the terms require shown with the model and what it makes, verbatim (§10.2 rule 1, RFC 0007)." }
       }
     },
     "RemoteProvider": {

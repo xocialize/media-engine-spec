@@ -64,8 +64,24 @@
         "value": {},
         "sample_rate": { "type": "integer", "minimum": 1 },
         "channels": { "type": "integer", "minimum": 1 },
-        "bit_depth": { "type": "integer", "minimum": 1 }
-      }
+        "bit_depth": { "type": "integer", "minimum": 1 },
+        "vertices": { "type": "integer", "minimum": 0, "description": "A mesh output's vertices, summed over its primitives (§10.1, RFC 0007)." },
+        "faces": { "type": "integer", "minimum": 0, "description": "A mesh output's triangles, summed over its primitives." },
+        "bounds": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "description": "A mesh output's axis-aligned bounding box in scene space, in metres.",
+          "properties": {
+            "min": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } },
+            "max": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } }
+          }
+        },
+        "texture_size": { "type": "integer", "minimum": 1, "description": "The longest side of a mesh's largest texture, in pixels; present exactly when it has one." },
+        "joints": { "type": "integer", "minimum": 1, "description": "A skinned mesh's joint count; present exactly when it is skinned." }
+      },
+      "if": { "properties": { "kind": { "const": "mesh" } }, "required": ["kind"] },
+      "then": { "required": ["vertices", "faces", "bounds"] }
     },
     "Result": {
       "type": "object",

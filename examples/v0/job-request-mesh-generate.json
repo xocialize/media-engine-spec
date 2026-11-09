@@ -1,0 +1,17 @@
+{
+  "operation": "mesh.generate",
+  "inputs": {
+    "image": {
+      "upload": "upl_m3sh"
+    }
+  },
+  "params": {
+    "quality": "standard",
+    "max_faces": 200000,
+    "texture": "atlas",
+    "texture_size": 2048,
+    "placement": "grounded",
+    "size_m": 1.8,
+    "seed": 42
+  }
+}

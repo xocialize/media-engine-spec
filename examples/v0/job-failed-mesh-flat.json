@@ -1,0 +1,38 @@
+{
+  "id": "job_01JD0B",
+  "operation": "mesh.generate",
+  "state": "holding",
+  "outcome": "failed",
+  "plan": {
+    "model": {
+      "id": "trellis2",
+      "title": "TRELLIS.2",
+      "license": {
+        "spdx": "LicenseRef-DINOv3",
+        "commercial_use": true,
+        "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+        "attribution": "Built with DINOv3",
+        "notice": "Built with DINOv3. TRELLIS.2 is MIT; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+      }
+    },
+    "effective": {
+      "quality": "draft",
+      "resolution": 512,
+      "on_flat": "fail",
+      "seed": 7
+    }
+  },
+  "warnings": [],
+  "error": {
+    "code": "input_invalid",
+    "reason": "degenerate_result",
+    "param": "image",
+    "job": "job_01JD0B",
+    "message": "The result is flat: its thinnest extent is 0.0001 of its longest (under 0.08). Try another seed, or a picture showing the object's depth."
+  },
+  "retention": {
+    "record_expires_at": "2026-11-10T18:20:40Z"
+  },
+  "created_at": "2026-11-09T18:20:00Z",
+  "updated_at": "2026-11-09T18:20:40Z"
+}

@@ -47,6 +47,20 @@ public enum Fixtures {
         }
     }
 
+    /// A red ball on white (Mesh §6), 256×256, as PNG; with `transparent`, the ball cut out on a transparent background.
+    public static func ball(size: Int = 256, transparent: Bool = false) -> Data {
+        draw(width: size, height: size, space: CGColorSpace(name: CGColorSpace.sRGB)!) { x, y in
+            let dx = Double(x - size / 2), dy = Double(y - size / 2), r = Double(size) * 0.35
+            let d = (dx * dx + dy * dy).squareRoot()
+            guard d <= r else { return transparent ? (0, 0, 0, 0) : (255, 255, 255, 255) }
+            let shade = 1 - 0.5 * (d / r)
+            return (UInt8(220 * shade + 30), UInt8(40 * shade), UInt8(40 * shade), 255)
+        }
+    }
+
+    /// A 1,280-face textured sphere, 1 m across, as GLB (Mesh §6): the mesh input.
+    public static func glb() throws -> Data { try MockMeshEngine.sphereGLB(faces: 1280) }
+
     /// The same picture in Display P3, with its profile embedded (IMAGE-006).
     public static func displayP3PNG(width: Int = 64, height: Int = 48) -> Data {
         draw(width: width, height: height, space: CGColorSpace(name: CGColorSpace.displayP3)!) { x, y in

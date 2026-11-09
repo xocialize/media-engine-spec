@@ -83,6 +83,7 @@ package enum MediaTypes {
         case "text/plain": "txt"
         case "text/vnd.abc": "abc"
         case "application/json": "json"
+        case "model/gltf-binary": "glb"
         default: "bin"
         }
     }

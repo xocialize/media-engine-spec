@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MES Mesh 0.1 — vocabulary (spec/profiles/mesh.md §2)",
+  "description": "The parameter names and shapes Mesh descriptors MUST use for these concepts. A descriptor MAY narrow them (a smaller enum, a tighter range).",
+  "$defs": {
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Repeatability (§1.14). Absent: the engine picks one and reports it."
+    },
+    "quality": {
+      "enum": [
+        "draft",
+        "standard",
+        "best"
+      ],
+      "default": "standard"
+    },
+    "resolution": {
+      "type": "integer",
+      "minimum": 64,
+      "maximum": 4096,
+      "description": "generate: the model's working resolution, overriding what quality picks within the offer (§3.1). Gate: supports.resolutions."
+    },
+    "max_faces": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 50000000,
+      "description": "generate: the most triangles the result may have (§1.9). Absent: the offer's default."
+    },
+    "texture": {
+      "enum": [
+        "atlas",
+        "vertex_colors"
+      ],
+      "description": "generate: a texture atlas, or colour per vertex (§1.5). Gate: supports.textures."
+    },
+    "texture_size": {
+      "enum": [
+        256,
+        512,
+        1024,
+        2048,
+        4096,
+        8192
+      ],
+      "description": "generate: the atlas's side in pixels. Gate: supports.texture_sizes. Only with texture: atlas."
+    },
+    "background": {
+      "enum": [
+        "remove",
+        "keep"
+      ],
+      "description": "generate: cut the object out of an opaque image first, or use the whole image (§3.1). remove gates supports.background_removal."
+    },
+    "placement": {
+      "enum": [
+        "centered",
+        "grounded"
+      ],
+      "default": "centered",
+      "description": "Where the object sits (§1.4)."
+    },
+    "size_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 10000,
+      "default": 1,
+      "description": "The object's longest extent in metres (§1.4)."
+    },
+    "on_flat": {
+      "enum": [
+        "warn",
+        "fail"
+      ],
+      "default": "warn",
+      "description": "What a flat result does (§1.8)."
+    },
+    "skeleton": {
+      "type": "string",
+      "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$",
+      "description": "rig: a registered skeleton template (§3.2), or an x-<vendor>.<name> one. Absent: the model's own. Gate: supports.skeletons."
+    },
+    "skeleton_template": {
+      "enum": [
+        "vrm_humanoid"
+      ],
+      "description": "The registered skeleton templates (§3.2)."
+    },
+    "vrm_humanoid_joints": {
+      "const": [
+        "J_Bip_C_Hips",
+        "J_Bip_C_Spine",
+        "J_Bip_C_Chest",
+        "J_Bip_C_UpperChest",
+        "J_Bip_C_Neck",
+        "J_Bip_C_Head",
+        "J_Bip_L_Shoulder",
+        "J_Bip_L_UpperArm",
+        "J_Bip_L_LowerArm",
+        "J_Bip_L_Hand",
+        "J_Bip_L_Thumb1",
+        "J_Bip_L_Thumb2",
+        "J_Bip_L_Thumb3",
+        "J_Bip_L_Index1",
+        "J_Bip_L_Index2",
+        "J_Bip_L_Index3",
+        "J_Bip_L_Middle1",
+        "J_Bip_L_Middle2",
+        "J_Bip_L_Middle3",
+        "J_Bip_L_Ring1",
+        "J_Bip_L_Ring2",
+        "J_Bip_L_Ring3",
+        "J_Bip_L_Little1",
+        "J_Bip_L_Little2",
+        "J_Bip_L_Little3",
+        "J_Bip_L_UpperLeg",
+        "J_Bip_L_LowerLeg",
+        "J_Bip_L_Foot",
+        "J_Bip_L_ToeBase",
+        "J_Bip_R_Shoulder",
+        "J_Bip_R_UpperArm",
+        "J_Bip_R_LowerArm",
+        "J_Bip_R_Hand",
+        "J_Bip_R_Thumb1",
+        "J_Bip_R_Thumb2",
+        "J_Bip_R_Thumb3",
+        "J_Bip_R_Index1",
+        "J_Bip_R_Index2",
+        "J_Bip_R_Index3",
+        "J_Bip_R_Middle1",
+        "J_Bip_R_Middle2",
+        "J_Bip_R_Middle3",
+        "J_Bip_R_Ring1",
+        "J_Bip_R_Ring2",
+        "J_Bip_R_Ring3",
+        "J_Bip_R_Little1",
+        "J_Bip_R_Little2",
+        "J_Bip_R_Little3",
+        "J_Bip_R_UpperLeg",
+        "J_Bip_R_LowerLeg",
+        "J_Bip_R_Foot",
+        "J_Bip_R_ToeBase"
+      ],
+      "description": "vrm_humanoid: VRM's humanoid bones as VRoid names them, rooted at J_Bip_C_Hips (§3.2)."
+    }
+  }
+}

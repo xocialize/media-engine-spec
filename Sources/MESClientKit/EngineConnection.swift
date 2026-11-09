@@ -139,6 +139,20 @@ extension EngineConnection {
         return files
     }
 
+    /// Downloads a Mesh job's GLB and its preview still (Mesh §1.7) into `directory`, named `<job>.glb` and
+    /// `<job>-preview.png`. Nil when the job has no mesh output.
+    public func downloadMesh(_ job: Job, to directory: URL) async throws -> (mesh: URL, preview: URL?)? {
+        guard let result = job.result, let mesh = result.meshes.first else { return nil }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let meshFile = try await download(job: job.id, output: mesh, to: directory.appendingPathComponent("\(job.id).glb"))
+        var previewFile: URL?
+        if let preview = result.preview(for: mesh) {
+            previewFile = try await download(job: job.id, output: preview,
+                                             to: directory.appendingPathComponent("\(job.id)-preview.\(MediaType.fileExtension(preview.mediaType))"))
+        }
+        return (meshFile, previewFile)
+    }
+
     /// Downloads an Audio `separate` job's stems (§3.6) into `directory`, each named `<job>-<stem>.<ext>`, by stem.
     public func downloadStems(_ job: Job, to directory: URL) async throws -> [String: URL] {
         guard let result = job.result else { return [:] }

@@ -52,6 +52,7 @@ public enum ProfileRules {
         case AudioProfile.id: AudioProfileRules.requirements(request, descriptor: descriptor)
         case ImageProfile.id: ImageProfileRules.requirements(request, descriptor: descriptor)
         case VideoProfile.id: VideoProfileRules.requirements(request, descriptor: descriptor)
+        case MeshProfile.id: MeshProfileRules.requirements(request, descriptor: descriptor)
         default: []
         }
     }
@@ -624,5 +625,93 @@ public enum VideoProfileRules {
                                message: "\(model.title) can't use a negative prompt.", param: P.negativePrompt))
         }
         return out
+    }
+}
+
+/// The Mesh profile's rules (spec/profiles/mesh.md): request structure (400s), gates and limits per offer (§4), and what the
+/// kit does to every result: facts read from the GLB (§1.6) and the flatness check (§1.8).
+public enum MeshProfileRules {
+    typealias P = MeshProfile.Param
+    typealias K = MeshProfile.SupportsKey
+    typealias L = MeshProfile.LimitField
+
+    /// Structural rules beyond the params schema: 400 `invalid_request`.
+    public static func validate(_ request: JobRequest, descriptor: Descriptor) throws {
+        let params = request.params ?? [:]
+        if params[P.texture]?.stringValue == "vertex_colors", params[P.textureSize] != nil {
+            throw MESError(.invalidRequest, "texture_size is an atlas's size; a vertex-coloured mesh has none.", param: P.textureSize)
+        }
+    }
+
+    static func listedNumber(_ key: String, _ value: Double, param: String, what: String) -> OfferRequirement {
+        OfferRequirement(param: param, what: what) { offer in
+            (offer.supports(key)?.arrayValue?.compactMap(\.numberValue) ?? []).contains { abs($0 - value) < 0.001 }
+        }
+    }
+
+    public static func requirements(_ request: JobRequest, descriptor: Descriptor) -> [OfferRequirement] {
+        let params = request.params ?? [:]
+        var out: [OfferRequirement] = []
+        switch descriptor.operation {
+        case "mesh.generate":
+            if params[P.background]?.stringValue == "remove" {
+                out.append(.flag(K.backgroundRemoval, param: P.background, what: "background removal"))
+            }
+            if let r = params[P.resolution]?.numberValue {
+                out.append(listedNumber(K.resolutions, r, param: P.resolution, what: "a resolution of \(Int(r))"))
+            }
+            if let t = params[P.texture]?.stringValue {
+                out.append(.listed(K.textures, t, absent: ["atlas"], param: P.texture, what: t == "atlas" ? "a texture atlas" : "vertex colours"))
+            }
+            if let size = params[P.textureSize]?.numberValue {
+                out.append(listedNumber(K.textureSizes, size, param: P.textureSize, what: "a \(Int(size)) px texture"))
+                out.append(.limit(L.maxTextureSize, size, param: P.textureSize, what: "a \(Int(size)) px texture"))
+            }
+            if let faces = params[P.maxFaces]?.numberValue {
+                out.append(.limit(L.maxFaces, faces, param: P.maxFaces, what: "\(Int(faces)) faces"))
+                out.append(.limit(L.minFaces, faces, atMost: false, param: P.maxFaces, what: "at most \(Int(faces)) faces"))
+            }
+        case "mesh.rig":
+            if let skeleton = params[P.skeleton]?.stringValue {
+                out.append(.listed(K.skeletons, skeleton, absent: [], param: P.skeleton, what: "the \(skeleton) skeleton"))
+            } else {
+                out.append(.flag(K.autoSkeleton, absent: true, param: P.skeleton, what: "a skeleton of the model's own (no skeleton named)"))
+            }
+        default: break
+        }
+        return out
+    }
+
+    /// What the kit does to a Mesh job's outputs before serving them: reads each mesh's facts from its GLB where the
+    /// engine left them out (§1.6), and checks a `generate` result for flatness (§1.8): a `flat_result` warning, or with
+    /// `on_flat: fail` a 422 `input_invalid`, reason `degenerate_result`.
+    public static func finish(_ outputs: [ProducedOutput], request: JobRequest, model: ModelOffer) throws -> ([ProducedOutput], [Warning]) {
+        var out = outputs, warnings: [Warning] = []
+        for i in out.indices where out[i].kind == .mesh {
+            guard let file = out[i].file else { continue }
+            if out[i].vertices == nil || out[i].faces == nil || out[i].bounds == nil {
+                let facts: GLB.Facts
+                do { facts = try GLB(data: Data(contentsOf: file)).facts() } catch {
+                    throw MESError(.engineError, "The engine's mesh output '\(out[i].name)' isn't a readable GLB: \(error).")
+                }
+                out[i].vertices = facts.vertices
+                out[i].faces = facts.faces
+                out[i].bounds = facts.bounds
+                out[i].textureSize = facts.textureSize
+                out[i].joints = facts.joints
+            }
+            guard request.operation == "mesh.generate", let bounds = out[i].bounds, bounds.thinness < MeshProfile.flatRatio else { continue }
+            let ratio = String(format: bounds.thinness < 0.001 ? "%.4f" : "%.3f", bounds.thinness)
+            if request.params?[P.onFlat]?.stringValue == "fail" {
+                throw MESError(.inputInvalid, "The result is flat: its thinnest extent is \(ratio) of its longest (under \(MeshProfile.flatRatio)). "
+                               + "Try another seed, or a picture that shows the object's depth.",
+                               reason: MeshProfile.Reason.degenerateResult, param: MeshProfile.Input.image)
+            }
+            warnings.append(Warning(code: MeshProfile.WarningCode.flatResult,
+                                    message: "\(model.title) made a flat result: its thinnest extent is \(ratio) of its longest (under "
+                                        + "\(MeshProfile.flatRatio)). Fine for a flat object; otherwise try another seed or picture.",
+                                    param: MeshProfile.Input.image))
+        }
+        return (out, warnings)
     }
 }

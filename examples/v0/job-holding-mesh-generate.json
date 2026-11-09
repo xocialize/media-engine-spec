@@ -1,0 +1,125 @@
+{
+  "id": "job_01JD07",
+  "operation": "mesh.generate",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "trellis2",
+      "title": "TRELLIS.2",
+      "license": {
+        "spdx": "LicenseRef-DINOv3",
+        "commercial_use": true,
+        "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+        "attribution": "Built with DINOv3",
+        "notice": "Built with DINOv3. TRELLIS.2 is MIT; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+      }
+    },
+    "effective": {
+      "quality": "standard",
+      "resolution": 1024,
+      "max_faces": 200000,
+      "texture": "atlas",
+      "texture_size": 2048,
+      "placement": "grounded",
+      "size_m": 1.8,
+      "seed": 42
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "phase": "render",
+    "step": 1,
+    "steps": 1
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "mesh",
+        "kind": "mesh",
+        "media_type": "model/gltf-binary",
+        "bytes": 9412032,
+        "sha256": "74e25164ea93e0816926dece9cf61e955a7b14a96ed946d76f73eae6069f1ac1",
+        "href": "/mes/v0/jobs/job_01JD07/outputs/0",
+        "vertices": 118204,
+        "faces": 199870,
+        "bounds": {
+          "min": [
+            -0.412,
+            0.0,
+            -0.287
+          ],
+          "max": [
+            0.412,
+            1.8,
+            0.301
+          ]
+        },
+        "texture_size": 2048
+      },
+      {
+        "index": 1,
+        "name": "preview",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 301877,
+        "sha256": "83ad7cf65f3e6c830b6db74d7a59d7b828fed736b082339532796507c937a8e6",
+        "href": "/mes/v0/jobs/job_01JD07/outputs/1",
+        "width": 768,
+        "height": 768
+      }
+    ],
+    "effective": {
+      "quality": "standard",
+      "resolution": 1024,
+      "max_faces": 200000,
+      "texture": "atlas",
+      "texture_size": 2048,
+      "background": "remove",
+      "placement": "grounded",
+      "size_m": 1.8,
+      "seed": 42,
+      "model_params": {
+        "steps": 12,
+        "decimation": 200000
+      }
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "1.4.0"
+      },
+      "operation": "mesh.generate",
+      "profile_version": "0.1",
+      "model": {
+        "id": "trellis2",
+        "title": "TRELLIS.2",
+        "revision": "v0.10.0",
+        "license": {
+          "spdx": "LicenseRef-DINOv3",
+          "commercial_use": true,
+          "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+          "attribution": "Built with DINOv3",
+          "notice": "Built with DINOv3. TRELLIS.2 is MIT; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+        }
+      },
+      "seed": 42,
+      "timings": {
+        "received_at": "2026-11-09T18:00:00Z",
+        "queue_ms": 4,
+        "prepare_ms": 2100,
+        "run_ms": 61800
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-11-09T19:01:04Z",
+    "record_expires_at": "2026-11-10T18:01:04Z"
+  },
+  "created_at": "2026-11-09T18:00:00Z",
+  "updated_at": "2026-11-09T18:01:04Z"
+}

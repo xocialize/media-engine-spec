@@ -1,6 +1,6 @@
 import Foundation
 
-/// One operation's normative requirements, from a profile's operations.json (Image, Audio, Video).
+/// One operation's normative requirements, from a profile's operations.json (Image, Audio, Video, Mesh).
 public struct ProfileOperationSpec: Codable, Sendable, Equatable {
     public struct IO: Codable, Sendable, Equatable {
         public var kind: Kind
@@ -32,8 +32,13 @@ public struct ProfileOperationSpec: Codable, Sendable, Equatable {
     public var exclusiveParams: [[String]]?
     /// Video: the input an `ic` adapter's slots of each kind fill from (Video §1.12), by slot kind.
     public var adapterInputs: [String: String]?
+    /// Mesh: the result is placed and sized by `placement` and `size_m` (Mesh §1.4).
+    public var places: Bool?
+    /// Mesh: the output's vertices, faces and bounds equal the input's (Mesh §3.2).
+    public var keepsGeometry: Bool?
     enum CodingKeys: String, CodingKey {
-        case inputs, outputs, vocabulary, seeded
+        case inputs, outputs, vocabulary, seeded, places
+        case keepsGeometry = "keeps_geometry"
         case vocabularyDefs = "vocabulary_defs", keepsInputSize = "keeps_input_size"
         case preservesUnmasked = "preserves_unmasked", exactScale = "exact_scale", requiresOneOf = "requires_one_of"
         case adapterInput = "adapter_input", requiredParams = "required_params", exactDuration = "exact_duration"

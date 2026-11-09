@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shape of the Mesh profile's operations.json",
+  "type": "object",
+  "required": [
+    "profile",
+    "version",
+    "operations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "operations": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*\\.[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "inputs",
+          "outputs",
+          "vocabulary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "kind",
+                "required"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "mask",
+                    "video",
+                    "audio",
+                    "data",
+                    "mesh"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "mask",
+                    "video",
+                    "audio",
+                    "data",
+                    "mesh"
+                  ]
+                },
+                "value_schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "vocabulary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vocabulary_defs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "required_params": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Vocabulary parameters a request MUST carry; a request without one is 400 invalid_request."
+          },
+          "exclusive_params": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Groups of parameters a request may carry at most one of; more is 400 invalid_request."
+          },
+          "seeded": {
+            "type": "boolean",
+            "description": "Results report the seed used, and an unseeded request gets one the engine picks."
+          },
+          "places": {
+            "type": "boolean",
+            "description": "The result is placed and sized by placement and size_m (§1.4)."
+          },
+          "keeps_geometry": {
+            "type": "boolean",
+            "description": "The output's vertices, faces and bounds equal the input's (§3.2)."
+          }
+        }
+      }
+    }
+  }
+}

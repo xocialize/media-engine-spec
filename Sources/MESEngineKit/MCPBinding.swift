@@ -402,15 +402,15 @@ struct MCPToolbox: Sendable {
         var lines = ["\(job.operation) · \(job.id) · \(job.state.rawValue)\(job.outcome.map { " (\($0.rawValue))" } ?? "")"]
         if let model = job.plan?.model ?? job.result?.provenance.model {
             lines.append("Model: \(model.id) · \(model.license.spdx) · commercial use \(Self.commercial(model.license.commercialUse))"
-                + (model.license.notice.map { " · \($0)" } ?? ""))
+                + Self.attributionSuffix(model.license) + (model.license.notice.map { " · \($0)" } ?? ""))
         }
         for a in job.result?.provenance.adapters ?? [] {
             lines.append("Adapter: \(a.id) at \(Self.number(a.strength)) · \(a.license.spdx) · commercial use \(Self.commercial(a.license.commercialUse))"
-                + (a.license.notice.map { " · \($0)" } ?? ""))
+                + Self.attributionSuffix(a.license) + (a.license.notice.map { " · \($0)" } ?? ""))
         }
         for h in job.result?.provenance.helpers ?? [] {
             lines.append("Helper (\(h.role)): \(h.id) · \(h.license.spdx) · commercial use \(Self.commercial(h.license.commercialUse))"
-                + (h.license.notice.map { " · \($0)" } ?? ""))
+                + Self.attributionSuffix(h.license) + (h.license.notice.map { " · \($0)" } ?? ""))
         }
         if let v = job.result?.provenance.voice {
             lines.append("Voice: \(v.id)\(v.title.map { " (\($0))" } ?? "")"
@@ -496,6 +496,11 @@ struct MCPToolbox: Sendable {
         return s
     }
 
+    /// A licence's required attribution, shown verbatim (Base §10.2 rule 1, RFC 0007).
+    static func attributionSuffix(_ license: License) -> String {
+        license.attribution.map { " · attribution: \($0)" } ?? ""
+    }
+
     /// One model offer on one line (Base §15): id, title, licence, default, tiers; with `notes`, its `license.notice` and
     /// `notes` too, and a line for each adapter it takes. The tool description carries those; the `model` parameter
     /// keeps the short line, so each appears once.
@@ -503,6 +508,7 @@ struct MCPToolbox: Sendable {
         var line = "\(m.id): \(m.title) · \(m.license.spdx) · commercial use \(commercial(m.license.commercialUse))"
             + (m.isDefault == true ? " · default" : "") + " · tiers \(m.qualityTiers.map(\.rawValue).joined(separator: "/"))"
         guard notes else { return line }
+        if let attribution = oneLine(m.license.attribution) { line += " · attribution: \(attribution)" }
         if let notice = oneLine(m.license.notice) { line += " · Licence: \(notice)" }
         if m.license.needsUserAcceptance { line += " · " + acceptanceLine(m.license) }
         if let text = oneLine(m.notes) { line += " · Notes: \(text)" }
@@ -542,6 +548,7 @@ struct MCPToolbox: Sendable {
         var line = "adapter \(a.id): \(a.title) · \(a.kind.rawValue)" + (slots.isEmpty ? "" : " [\(slots.joined(separator: ", "))]")
             + " · \(a.license.spdx) · commercial use \(commercial(a.license.commercialUse))"
             + " · strength \(number(a.strength.min))–\(number(a.strength.max)), default \(number(a.strength.defaultValue))"
+        if let attribution = oneLine(a.license.attribution) { line += " · attribution: \(attribution)" }
         if let notice = oneLine(a.license.notice) { line += " · Licence: \(notice)" }
         if a.license.needsUserAcceptance { line += " · " + acceptanceLine(a.license) }
         if let text = oneLine(a.notes) { line += " · Notes: \(text)" }

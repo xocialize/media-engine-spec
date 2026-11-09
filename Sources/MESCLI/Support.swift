@@ -179,7 +179,7 @@ enum Arguments {
 enum Format {
     static func license(_ l: License) -> String {
         let commercial: String = switch l.commercialUse { case .yes: "yes"; case .no: "no"; case .unknown: "unknown" }
-        return "\(l.spdx), commercial use \(commercial)"
+        return "\(l.spdx), commercial use \(commercial)" + (l.attribution.map { " · \($0)" } ?? "")
     }
 
     static func job(_ job: Job) -> String {
@@ -195,6 +195,12 @@ enum Format {
                 if let fps = o.fps { facts += " · \(fps.rounded() == fps ? String(Int(fps)) : String(fps)) fps" }
                 if let frames = o.frames { facts += " · \(frames) frames" }
                 facts += o.sampleRate.map { " · sound \($0) Hz × \(o.channels ?? 1)" } ?? " · silent"
+            }
+            if o.kind == .mesh {
+                facts += " \(o.vertices ?? 0) vertices · \(o.faces ?? 0) faces"
+                if let e = o.bounds?.extents { facts += " · " + e.map { String(format: "%.3g", $0) }.joined(separator: " × ") + " m" }
+                if let t = o.textureSize { facts += " · \(t) px texture" }
+                if let j = o.joints { facts += " · \(j) joints" }
             }
             lines.append("  output \(o.index) \(o.name): \(o.mediaType)\(facts)")
             if let v = o.value { lines.append("    \(json(v))") }

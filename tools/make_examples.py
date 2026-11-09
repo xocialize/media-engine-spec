@@ -912,6 +912,142 @@ examples.update({
     },
 })
 
+# The Mesh profile (spec/profiles/mesh.md) and RFC 0007 (the mesh kind, mesh facts, licence attribution), v0.11.0. The
+# offers follow mlxengine-3d/APP-VALIDATION.md (TRELLIS.2: res512/1024/1536, DINOv3 governs and needs its attribution) and
+# CANDIDATES.md (SkinTokens: the vroid class conditions on a template skeleton; num_beams=10).
+MESH_ENGINE = {"id": "eng_gaea01", "name": "Studio Gaea", "implementation": "gaea", "version": "1.4.0"}
+DINOV3 = {"spdx": "LicenseRef-DINOv3", "commercial_use": True, "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+          "attribution": "Built with DINOv3",
+          "notice": "Built with DINOv3. TRELLIS.2 is MIT; its DINOv3 conditioner is under the DINOv3 License, whose trade-control "
+                    "and prohibited-use terms apply."}
+SKINTOKENS = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://github.com/VAST-AI-Research/SkinTokens"}
+MSEED = {"type": "integer", "minimum": 0, "maximum": 9007199254740991, "x-mes-ui": {"label": "Seed", "widget": "seed", "advanced": True}}
+MQUALITY = {"enum": ["draft", "standard", "best"], "default": "standard", "x-mes-ui": {"label": "Quality", "widget": "picker"}}
+GLB = ["model/gltf-binary"]
+PREVIEW_OUT = {"name": "preview", "kind": "image", "media_types": ["image/png"], "min": 1, "max": 1}
+
+examples.update({
+    "operations-mesh.json": {
+        "etag": "\"ops-" + H("mesh-ops")[:12] + "\"",
+        "operations": [
+            {"operation": "mesh.generate", "profile": "mesh", "profile_version": "0.1", "title": "Image to 3D",
+             "summary": "A textured GLB of the object in a picture, with a preview still.",
+             "inputs": [{"name": "image", "kind": "image", "required": True, "max": 1, "media_types": ["image/png", "image/jpeg", "image/webp"],
+                         "notes": "One object, ideally whole and well lit. A cut-out PNG is used as it is."}],
+             "params": {"type": "object", "additionalProperties": False, "properties": {
+                 "seed": MSEED, "quality": MQUALITY,
+                 "resolution": {"enum": [512, 1024, 1536], "x-mes-ui": {"label": "Resolution", "widget": "picker", "advanced": True}},
+                 "max_faces": {"type": "integer", "minimum": 10000, "maximum": 2000000, "default": 300000,
+                               "x-mes-ui": {"label": "Most faces", "widget": "stepper"}},
+                 "texture": {"enum": ["atlas", "vertex_colors"], "x-mes-ui": {"label": "Surface", "widget": "picker"}},
+                 "texture_size": {"enum": [1024, 2048, 4096], "default": 2048, "x-mes-ui": {"label": "Texture size", "widget": "picker"}},
+                 "background": {"enum": ["remove", "keep"], "x-mes-ui": {"label": "Background", "widget": "picker"}},
+                 "placement": {"enum": ["centered", "grounded"], "default": "centered", "x-mes-ui": {"label": "Placement", "widget": "picker"}},
+                 "size_m": {"type": "number", "exclusiveMinimum": 0, "maximum": 10000, "default": 1, "x-mes-ui": {"label": "Size (m)", "widget": "stepper"}},
+                 "on_flat": {"enum": ["warn", "fail"], "default": "warn", "x-mes-ui": {"label": "If the result is flat", "widget": "picker", "advanced": True}}}},
+             "outputs": [{"name": "mesh", "kind": "mesh", "media_types": GLB, "min": 1, "max": 1}, PREVIEW_OUT],
+             "limits": {"min_faces": 10000, "max_faces": 2000000, "max_texture_size": 4096},
+             "quality_tiers": ["draft", "standard", "best"],
+             "models": [
+                 {"id": "trellis2", "title": "TRELLIS.2", "license": DINOV3, "memory_class": "xlarge", "speed_class": "slow",
+                  "quality_tiers": ["draft", "standard", "best"], "default": True,
+                  "notes": "Draft runs at 512 (about 12 GB), standard at 1024 (about 24 GB), best at 1536 (about 30 GB).",
+                  "supports": {"background_removal": True, "resolutions": [512, 1024, 1536], "textures": ["atlas", "vertex_colors"],
+                               "texture_sizes": [1024, 2048, 4096], "maps": ["base_color", "metallic_roughness"]},
+                  "limits": {"min_faces": 10000, "max_faces": 2000000, "max_texture_size": 4096}},
+             ],
+             "remote": {"possible": False}},
+            {"operation": "mesh.rig", "profile": "mesh", "profile_version": "0.1", "title": "Rig a mesh",
+             "summary": "A skeleton and skin weights for a GLB, its geometry untouched.",
+             "inputs": [{"name": "mesh", "kind": "mesh", "required": True, "max": 1, "media_types": GLB}],
+             "params": {"type": "object", "additionalProperties": False, "properties": {
+                 "skeleton": {"type": "string", "enum": ["vrm_humanoid"], "x-mes-ui": {"label": "Skeleton", "widget": "picker"}},
+                 "seed": MSEED, "quality": MQUALITY}},
+             "outputs": [{"name": "mesh", "kind": "mesh", "media_types": GLB, "min": 1, "max": 1}, PREVIEW_OUT],
+             "limits": {"max_input_faces": 2000000, "max_joints": 128},
+             "quality_tiers": ["standard"],
+             "models": [
+                 {"id": "skintokens", "title": "SkinTokens", "license": SKINTOKENS, "memory_class": "large", "speed_class": "slow",
+                  "quality_tiers": ["standard"], "default": True,
+                  "notes": "Characters on VRM's humanoid skeleton, or a skeleton of its own for anything else. Time grows with the joints, not the vertices.",
+                  "supports": {"skeletons": ["vrm_humanoid"], "auto_skeleton": True, "max_influences": 4, "deterministic": False},
+                  "limits": {"max_input_faces": 2000000, "max_joints": 128}},
+             ],
+             "remote": {"possible": False}},
+        ],
+    },
+    "job-request-mesh-generate.json": {
+        "operation": "mesh.generate",
+        "inputs": {"image": {"upload": "upl_m3sh"}},
+        "params": {"quality": "standard", "max_faces": 200000, "texture": "atlas", "texture_size": 2048, "placement": "grounded",
+                   "size_m": 1.8, "seed": 42},
+    },
+    "job-request-mesh-rig.json": {
+        "operation": "mesh.rig",
+        "inputs": {"mesh": {"asset": "ast_k9glb2"}},
+        "params": {"skeleton": "vrm_humanoid"},
+    },
+    "job-holding-mesh-generate.json": {
+        "id": "job_01JD07", "operation": "mesh.generate", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "trellis2", "title": "TRELLIS.2", "license": DINOV3},
+                 "effective": {"quality": "standard", "resolution": 1024, "max_faces": 200000, "texture": "atlas", "texture_size": 2048,
+                               "placement": "grounded", "size_m": 1.8, "seed": 42}},
+        "progress": {"stage": "finishing", "phase": "render", "step": 1, "steps": 1},
+        "warnings": [],
+        "result": {
+            "outputs": [
+                {"index": 0, "name": "mesh", "kind": "mesh", "media_type": "model/gltf-binary", "bytes": 9412032, "sha256": H("knight-glb"),
+                 "href": "/mes/v0/jobs/job_01JD07/outputs/0", "vertices": 118204, "faces": 199870,
+                 "bounds": {"min": [-0.412, 0.0, -0.287], "max": [0.412, 1.8, 0.301]}, "texture_size": 2048},
+                {"index": 1, "name": "preview", "kind": "image", "media_type": "image/png", "bytes": 301877, "sha256": H("knight-preview"),
+                 "href": "/mes/v0/jobs/job_01JD07/outputs/1", "width": 768, "height": 768},
+            ],
+            "effective": {"quality": "standard", "resolution": 1024, "max_faces": 200000, "texture": "atlas", "texture_size": 2048,
+                          "background": "remove", "placement": "grounded", "size_m": 1.8, "seed": 42,
+                          "model_params": {"steps": 12, "decimation": 200000}},
+            "provenance": {"engine": MESH_ENGINE, "operation": "mesh.generate", "profile_version": "0.1",
+                           "model": {"id": "trellis2", "title": "TRELLIS.2", "revision": "v0.10.0", "license": DINOV3}, "seed": 42,
+                           "timings": {"received_at": "2026-11-09T18:00:00Z", "queue_ms": 4, "prepare_ms": 2100, "run_ms": 61800}},
+        },
+        "retention": {"outputs_expire_at": "2026-11-09T19:01:04Z", "record_expires_at": "2026-11-10T18:01:04Z"},
+        "created_at": "2026-11-09T18:00:00Z", "updated_at": "2026-11-09T18:01:04Z",
+    },
+    "job-holding-mesh-rig.json": {
+        "id": "job_01JD09", "operation": "mesh.rig", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "skintokens", "title": "SkinTokens", "license": SKINTOKENS},
+                 "effective": {"skeleton": "vrm_humanoid", "quality": "standard", "seed": 9}},
+        "progress": {"stage": "finishing", "phase": "render", "step": 1, "steps": 1},
+        "warnings": [{"code": "joints_dropped", "message": "The mesh has no fingers to bind: the 30 finger joints of vrm_humanoid were left out.",
+                      "param": "skeleton"}],
+        "result": {
+            "outputs": [
+                {"index": 0, "name": "mesh", "kind": "mesh", "media_type": "model/gltf-binary", "bytes": 10220416, "sha256": H("knight-rigged"),
+                 "href": "/mes/v0/jobs/job_01JD09/outputs/0", "vertices": 118204, "faces": 199870,
+                 "bounds": {"min": [-0.412, 0.0, -0.287], "max": [0.412, 1.8, 0.301]}, "texture_size": 2048, "joints": 22},
+                {"index": 1, "name": "preview", "kind": "image", "media_type": "image/png", "bytes": 298114, "sha256": H("knight-rigged-preview"),
+                 "href": "/mes/v0/jobs/job_01JD09/outputs/1", "width": 768, "height": 768},
+            ],
+            "effective": {"skeleton": "vrm_humanoid", "quality": "standard", "seed": 9, "model_params": {"num_beams": 10, "points": 54000}},
+            "provenance": {"engine": MESH_ENGINE, "operation": "mesh.rig", "profile_version": "0.1",
+                           "model": {"id": "skintokens", "title": "SkinTokens", "license": SKINTOKENS}, "seed": 9,
+                           "timings": {"received_at": "2026-11-09T18:10:00Z", "queue_ms": 2, "run_ms": 291000}},
+        },
+        "retention": {"outputs_expire_at": "2026-11-09T19:14:51Z", "record_expires_at": "2026-11-10T18:14:51Z"},
+        "created_at": "2026-11-09T18:10:00Z", "updated_at": "2026-11-09T18:14:51Z",
+    },
+    "job-failed-mesh-flat.json": {
+        "id": "job_01JD0B", "operation": "mesh.generate", "state": "holding", "outcome": "failed",
+        "plan": {"model": {"id": "trellis2", "title": "TRELLIS.2", "license": DINOV3},
+                 "effective": {"quality": "draft", "resolution": 512, "on_flat": "fail", "seed": 7}},
+        "warnings": [],
+        "error": {"code": "input_invalid", "reason": "degenerate_result", "param": "image", "job": "job_01JD0B",
+                  "message": "The result is flat: its thinnest extent is 0.0001 of its longest (under 0.08). Try another seed, or a "
+                             "picture showing the object's depth."},
+        "retention": {"record_expires_at": "2026-11-10T18:20:40Z"},
+        "created_at": "2026-11-09T18:20:00Z", "updated_at": "2026-11-09T18:20:40Z",
+    },
+})
+
 OUT.mkdir(parents=True, exist_ok=True)
 for name, value in examples.items():
     (OUT / name).write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")

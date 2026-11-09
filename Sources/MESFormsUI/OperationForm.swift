@@ -146,7 +146,7 @@ public struct MediaSlotPlaceholder: View {
     public var body: some View {
         HStack(spacing: Tokens.Space.s) {
             Image(systemName: spec.kind == .mask ? "circle.lefthalf.filled" : spec.kind == .data ? "curlybraces"
-                : spec.kind == .audio ? "waveform" : spec.kind == .video ? "film" : "photo")
+                : spec.kind == .audio ? "waveform" : spec.kind == .video ? "film" : spec.kind == .mesh ? "cube" : "photo")
                 .foregroundStyle(Tokens.Color.secondaryLabel)
             VStack(alignment: .leading, spacing: 2) {
                 Text(FormSchema.label(spec.name))
@@ -264,6 +264,10 @@ public struct LicenseLine: View {
             Text(commercial).font(Tokens.Font.caption).foregroundStyle(Tokens.Color.secondaryLabel)
             if let url = license.termsURL.flatMap(URL.init(string:)) {
                 Link("Terms", destination: url).font(Tokens.Font.caption).buttonStyle(.link)
+            }
+            if let attribution = license.attribution {
+                // Required words, shown verbatim (Base §10.2 rule 1, RFC 0007).
+                Text(attribution).font(Tokens.Font.caption)
             }
         }
         .help(license.notice ?? "")

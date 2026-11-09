@@ -4,7 +4,7 @@
 # with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted, the take
 # separated into stems; then Video
 # 0.1 — a clip generated under a licence its users accept, refused without that acceptance, then interpolated; then
-# unpair. Everything runs in a temporary directory.
+# Mesh 0.1 — a GLB generated from the picture, then rigged; then unpair. Everything runs in a temporary directory.
 #
 #   tools/smoke-cli.sh            # builds, then runs
 set -euo pipefail
@@ -117,7 +117,14 @@ step "mes run video.interpolate on the generated clip"
 mes run video.interpolate -i video="$clip" -p factor=2 -o "$work/tween" | tee "$work/tween.txt"
 grep -q '(succeeded)' "$work/tween.txt"
 
+step "mes run mesh.generate on the generated picture · mes run mesh.rig on the mesh"
+mes run mesh.generate -i image="$generated" -p max_faces=1280 -p placement=grounded -p size_m=1.8 -o "$work/mesh" | tee "$work/mesh.txt"
+grep -q "Built with Mock DINOv3" "$work/mesh.txt" && grep -q "output 0 mesh: model/gltf-binary 642 vertices · 1280 faces" "$work/mesh.txt"
+glb=$(grep '^saved .*\.glb$' "$work/mesh.txt" | head -1 | cut -c7-)
+mes run mesh.rig -i mesh="$glb" -p skeleton=vrm_humanoid -o "$work/rig" | tee "$work/rig.txt"
+grep -q "642 vertices · 1280 faces .* · 22 joints" "$work/rig.txt"
+
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → video generate (accepted) → interpolate → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → video generate (accepted) → interpolate → mesh generate → rig → unpair"

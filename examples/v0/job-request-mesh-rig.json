@@ -1,0 +1,11 @@
+{
+  "operation": "mesh.rig",
+  "inputs": {
+    "mesh": {
+      "asset": "ast_k9glb2"
+    }
+  },
+  "params": {
+    "skeleton": "vrm_humanoid"
+  }
+}

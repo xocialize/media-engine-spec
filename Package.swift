@@ -4,8 +4,8 @@ import PackageDescription
 // MESKit — the Swift SDKs for the Media Engine Specification (docs/BUILD-PLAN.md).
 //
 //   MESCore        wire types for every schema, the JSON value type, a JSON Schema (subset) validator, the
-//                  Image, Audio and Video profiles' operations tables, Audio's cue syntax, Video's frame and size
-//                  grids, WAV, the pairing code.
+//                  Image, Audio, Video and Mesh profiles' operations tables, Audio's cue syntax, Video's frame and size
+//                  grids, WAV, GLB (read, write, facts), the pairing code.
 //                  Foundation (+ CryptoKit) only.
 //   MESEngineCore  the engine core with no networking stack: `MediaEngine` (what engine authors implement), the job
 //                  registry, spool and retention, grant fetching, configuration.
@@ -18,16 +18,17 @@ import PackageDescription
 //   MESFormsUI     SwiftUI forms rendered from descriptors: parameters by UI hint, model offers with licences,
 //                  extensions (DesignScaffold tokens); the voice picker, an audio input well, a player for audio
 //                  outputs and one for streamed PCM; a video input well, a video player, frame previews, and the
-//                  acceptance a licence asks of each user. `mes-forms-gallery` previews every mock descriptor.
+//                  acceptance a licence asks of each user; a 3D viewer for mesh outputs (SceneKit) and a mesh well. `mes-forms-gallery` previews every mock descriptor.
 //   MESEngineUI    an engine app's own console (Engines-PRD ENG-9): the queue, the enabled set of models with a card
 //                  per model, a System monitor and the menu-bar item. Every Pixel Agency engine shares it. The
 //                  `SystemSensors` trait (default on) adds temperatures, fans and power, read through private
 //                  interfaces; an App Store build turns it off. A Plugins page for engines whose models come as plugins,
 //                  and engine memory summed over a host and its worker processes (Gaea). `mes-console-gallery` previews
 //                  it over the mock engine.
-//   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn, AUDIO-nnn, VIDEO-nnn) and `mes-conformance`, its CLI.
-//   MockEngineCore the 15 Image-profile, 5 Audio-profile and 5 Video-profile operations with synthetic, rule-abiding
-//                  results (CoreGraphics, AVFoundation), and `Clips`, which writes and reads MP4.
+//   MESConformance the conformance suite (BASE-nnn, IMAGE-nnn, AUDIO-nnn, VIDEO-nnn, MESH-nnn) and `mes-conformance`,
+//                  its CLI.
+//   MockEngineCore the Image, Audio, Video and Mesh profiles' operations with synthetic, rule-abiding results
+//                  (CoreGraphics, AVFoundation), and `Clips`, which writes and reads MP4.
 //   MockEngine     `mes-mock-engine`, the executable.
 //   MESCLI         `mes`, the command-line client on MESClientKit.
 let package = Package(
@@ -74,7 +75,8 @@ let package = Package(
             name: "MESCore",
             resources: [.copy("Resources/image-operations.json"), .copy("Resources/image-vocabulary.json"),
                         .copy("Resources/audio-operations.json"), .copy("Resources/audio-vocabulary.json"),
-                        .copy("Resources/video-operations.json"), .copy("Resources/video-vocabulary.json")]
+                        .copy("Resources/video-operations.json"), .copy("Resources/video-vocabulary.json"),
+                        .copy("Resources/mesh-operations.json"), .copy("Resources/mesh-vocabulary.json")]
         ),
         .target(name: "MESEngineCore", dependencies: ["MESCore"]),
         .target(

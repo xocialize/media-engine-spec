@@ -574,25 +574,28 @@ public struct MockAudioEngine: MediaEngine {
     }
 }
 
-/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's six and the Video
-/// mock's five, one engine.
+/// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's six, the Video mock's
+/// five and the Mesh mock's two, one engine.
 public struct MockMediaEngine: MediaEngine {
     public var image: MockImageEngine
     public var audio: MockAudioEngine
     public var video: MockVideoEngine
+    public var mesh: MockMeshEngine
 
     public init(stepDelay: Duration = .zero, steps: Int = 4, chunkDelay: Duration = .milliseconds(20)) {
         image = MockImageEngine(stepDelay: stepDelay, steps: steps)
         audio = MockAudioEngine(stepDelay: stepDelay, chunkDelay: chunkDelay)
         video = MockVideoEngine(stepDelay: stepDelay)
+        mesh = MockMeshEngine(stepDelay: stepDelay)
     }
 
-    public func descriptors() async -> [Descriptor] { await image.descriptors() + audio.descriptors() + video.descriptors() }
+    public func descriptors() async -> [Descriptor] { await image.descriptors() + audio.descriptors() + video.descriptors() + mesh.descriptors() }
 
     public func validate(_ request: JobRequest, descriptor: Descriptor) throws {
         switch descriptor.profile {
         case AudioProfile.id: try audio.validate(request, descriptor: descriptor)
         case VideoProfile.id: try video.validate(request, descriptor: descriptor)
+        case MeshProfile.id: try mesh.validate(request, descriptor: descriptor)
         default: try image.validate(request, descriptor: descriptor)
         }
     }
@@ -601,6 +604,7 @@ public struct MockMediaEngine: MediaEngine {
         switch context.descriptor.profile {
         case AudioProfile.id: try await audio.run(context)
         case VideoProfile.id: try await video.run(context)
+        case MeshProfile.id: try await mesh.run(context)
         default: try await image.run(context)
         }
     }

@@ -5,16 +5,16 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1 and Video profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0`; Video since `v0.9.0`). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1, Video profile 0.1 and Mesh profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0`; Video since `v0.9.0`; Mesh since `v0.11.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
 > audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
-> voice pickers and audio players, video wells, players and frame previews); the conformance suite for engines and clients; and a mock engine for all three profiles. The mock and `mes` both
+> voice pickers and audio players, video wells, players and frame previews, a 3D viewer); the conformance suite for engines and clients; and a mock engine for every profile. The mock and `mes` both
 > conform. **R0 is complete** ([build plan](docs/BUILD-PLAN.md)).
 
 ## Reference implementations
 
-- **Gaea** is the reference engine: the production MES media server, one engine for the Image, Audio and Video profiles,
+- **Gaea** is the reference engine: the production MES media server, one engine for the Image, Audio, Video and Mesh profiles,
   whose models are signed plugins that each run in a process of their own. It is built on MESKit: MESEngineKit for the
   front end, and MESEngineUI and MESFormsUI for its menu bar and console, including the Plugins page and the System
   page's memory summed across its worker processes.
@@ -36,12 +36,13 @@ client conformance role before Lite is deprecated.
 | [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
 | [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs) and `separate` (a speaker, the singing, every voice, or a song's vocals and instrumental, one output per stem; [RFC 0006](rfcs/0006-audio-separate-and-auk-edits.md)), one label set for emotions, styles, nonverbal cues, lyrics sections and stems, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
 | [`spec/profiles/video.md`](spec/profiles/video.md) | **Video profile 0.1:** 5 operations (`generate` from text, a first and last frame, keyframes at times and a soundtrack; `extend`; `retake`; `upscale`; `interpolate`), seconds in requests and frames in results on each model's grid, one audio track inside a video, the `supports` keys each model offer states, AI-content disclosure, frame previews, warnings, conformance tests. Evaluation: [`docs/VIDEO-EVALUATION.md`](docs/VIDEO-EVALUATION.md) |
-| [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's and Video's `supports` keys and job requests |
+| [`spec/profiles/mesh.md`](spec/profiles/mesh.md) | **Mesh profile 0.1** ([RFC 0007](rfcs/0007-mesh.md)): `mesh.generate` (an image to a textured GLB) and `mesh.rig` (a skeleton and skin weights, the geometry kept), glTF 2.0 binary with fixed axes, placement and scale, the facts every mesh reports, a preview still with every result, a warning (or refusal) for a flat "card", skeleton templates, the `supports` keys each model offer states, and an offer's required attribution ("Built with DINOv3") |
+| [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's, Video's and Mesh's `supports` keys and job requests |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
-| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image, Audio and Video tables, cue, WAV and frame-grid helpers, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESEngineUI:** an engine app's own console (queue, enabled set of models, System monitor, menu-bar item), and `mes-console-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
+| [`Package.swift`](Package.swift), `Sources/`, `Tests/` | **MESKit:**<br/>• **MESCore:** types, a schema validator, the Image, Audio, Video and Mesh tables, cue, WAV, frame-grid and GLB helpers, the pairing code.<br/>• **MESEngineCore:** the engine core (jobs, spool, retention), no networking.<br/>• **MESEngineKit:** the engine side of Base on Hummingbird 2.<br/>• **MESClientKit:** the client side (discovery, pairing, jobs, events, grants).<br/>• **MESInProcess:** an in-process engine behind the client API.<br/>• **MESFormsUI:** SwiftUI forms rendered from descriptors, and `mes-forms-gallery`.<br/>• **MESEngineUI:** an engine app's own console (queue, enabled set of models, System monitor, menu-bar item), and `mes-console-gallery`.<br/>• **MESConformance:** the conformance suite and `mes-conformance`.<br/>• **`mes`:** the command-line client.<br/>• **MockEngineCore** and **`mes-mock-engine`.** |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | R0: the Swift SDKs, mock engine, conformance suite and `mes` CLI |
-| [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE, IMAGE, AUDIO and VIDEO test, and how to run them |
+| [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) | The conformance catalogue: every BASE, IMAGE, AUDIO, VIDEO and MESH test, and how to run them |
 | [`rfcs/`](rfcs/) | How changes are proposed |
 
 ## Checking the documents
@@ -149,6 +150,25 @@ curl -s http://127.0.0.1:17600/mes/v0/jobs -H 'Content-Type: application/json' -
 ```bash
 swift run mes run video.interpolate -i video=clip.mp4 -p factor=2
 ```
+
+Meshes (Mesh 0.1, RFC 0007). The mock's offers are shaped like TRELLIS.2 and SkinTokens: `mock-trellis` (every tier,
+background removal, an atlas or vertex colours, under a licence whose attribution clients must show) and an open
+vertex-colour offer generate an icosphere coloured from the picture, with a preview still; `mock-skintokens` and a
+template rigger add a `vrm_humanoid` (or their own) skeleton and skin weights without moving a vertex. The extension
+`x-mock.flat` makes a flat card, to see `flat_result` and `on_flat: fail`:
+
+```bash
+swift run mes run mesh.generate -i image=object.png -p max_faces=5120 -p placement=grounded -p size_m=1.8
+```
+
+```bash
+swift run mes run mesh.rig -i mesh=object.glb -p skeleton=vrm_humanoid
+```
+
+MESCore's `GLB` reads and writes the files and computes their facts, and the kit fills an output's facts from its GLB
+and applies the flatness check for every engine. MESFormsUI's `MeshView` shows a mesh output to orbit, with its facts,
+its attribution and the preview as fallback (SceneKit, from MESCore's reader: macOS has no GLB loader of its own), and
+`MeshInputWell` takes a GLB; MESClientKit's `downloadMesh` fetches a result's GLB and preview together.
 
 MESFormsUI has a `VideoInputWell` (choose or drop a clip, play it, see its frames), a `VideoPlayerView` with the clip's
 facts, a `FramePreviewStrip` for a file's thumbnails or a running job's stills (`FramePreviews`), and

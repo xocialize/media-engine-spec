@@ -74,6 +74,12 @@ MANIFEST = {
     "operations-audio-separate.json": "base/operations-list.schema.json",
     "job-request-separate.json": "profiles/audio/job-request.schema.json",
     "job-holding-separate.json": "base/job.schema.json",
+    "operations-mesh.json": "base/operations-list.schema.json",
+    "job-request-mesh-generate.json": "profiles/mesh/job-request.schema.json",
+    "job-request-mesh-rig.json": "profiles/mesh/job-request.schema.json",
+    "job-holding-mesh-generate.json": "base/job.schema.json",
+    "job-holding-mesh-rig.json": "base/job.schema.json",
+    "job-failed-mesh-flat.json": "base/job.schema.json",
 }
 
 _cache = {}
@@ -215,7 +221,7 @@ def profile_checks():
     shapes; Audio and Video offers' supports and limits must have the profile's types (supports.schema.json)."""
     errs = []
     tables = {}
-    for profile in ("image", "audio", "video"):
+    for profile in ("image", "audio", "video", "mesh"):
         ops_file = SCHEMAS / "profiles" / profile / "operations.json"
         ops = load(ops_file)
         errs += validate(ops, load(SCHEMAS / "profiles" / profile / "operations.schema.json"),
@@ -227,7 +233,8 @@ def profile_checks():
                 if def_name not in vocab:
                     errs.append(f"{profile}/operations.json {op}: vocabulary '{name}' has no definition '{def_name}'")
         tables[profile] = (ops_file, ops, vocab)
-    supports_files = {pr: SCHEMAS / "profiles" / pr / "supports.schema.json" for pr in ("audio", "video")}
+    supports_files = {pr: SCHEMAS / "profiles" / pr / "supports.schema.json" for pr in ("audio", "video", "mesh")}
+    full_limits = ("video", "mesh")  # profiles whose limits schemas list Base's fields too
     for ex in sorted(EXAMPLES.glob("operations-*.json")):
         for d in load(ex)["operations"]:
             if d["profile"] not in tables:
@@ -270,13 +277,13 @@ def profile_checks():
                 supports_file = supports_files[d["profile"]]
                 supports = load(supports_file)
                 short = d["operation"].split(".")[1]
-                if d["profile"] == "video":
+                if d["profile"] in full_limits:
                     errs += [f"{ex.name} {d['operation']} limits: {e}" for e in
                              validate(d.get("limits", {}), supports["$defs"][f"{short}_limits"], supports_file)]
                 for m in d["models"]:
                     errs += [f"{ex.name} {m['id']} supports: {e}" for e in
                              validate(m.get("supports", {}), supports["$defs"][f"{short}_supports"], supports_file)]
-                    lim = m.get("limits", {}) if d["profile"] == "video" else {
+                    lim = m.get("limits", {}) if d["profile"] in full_limits else {
                         k: v for k, v in m.get("limits", {}).items()
                         if k not in ("max_width", "max_height", "max_megapixels", "max_duration_s", "max_inputs")}
                     errs += [f"{ex.name} {m['id']} limits: {e}" for e in
@@ -285,6 +292,17 @@ def profile_checks():
                         bound = d.get("limits", {}).get(k)
                         if bound is not None and (v < bound if k.startswith("min_") else v > bound):
                             errs.append(f"{ex.name} {m['id']}: limits.{k} {v} is outside the operation's {bound}")
+            if d["profile"] == "mesh":
+                errs += [f"{ex.name} {e}" for e in mesh_descriptor_checks(d)]
+    for ex in sorted(EXAMPLES.glob("job-*.json")):
+        doc = load(ex)
+        if doc.get("operation", "").startswith("mesh.") and "state" in doc:
+            errs += [f"{ex.name}: {e}" for e in mesh_job_checks(doc)]
+    for ex in sorted(EXAMPLES.glob("*.json")):
+        doc = load(ex)
+        err = doc.get("error") if isinstance(doc, dict) else None
+        if isinstance(err, dict) and err.get("reason") in REASONS and REASONS[err["reason"]] != err.get("code"):
+            errs.append(f"{ex.name}: reason '{err['reason']}' isn't registered for code '{err.get('code')}' (Base §12, §18; Mesh §5)")
     for ex in sorted(EXAMPLES.glob("job-holding-*.json")):
         job = load(ex)
         profile = job["operation"].split(".")[0]
@@ -297,6 +315,77 @@ def profile_checks():
             if vs and "value" in out:
                 target, tfile = resolve(vs, ops_file)
                 errs += [f"{ex.name}: {e}" for e in validate(out["value"], target, tfile, "$.value")]
+    return errs
+
+
+# Error reasons and the codes they refine (Base §10.3, §18; Mesh §5).
+REASONS = {"terms_not_accepted": "policy_unmet", "degenerate_result": "input_invalid"}
+FLAT_RATIO = 0.08  # Mesh §1.8
+
+
+def mesh_descriptor_checks(d):
+    """Mesh §1.7: every operation that outputs a mesh outputs a preview PNG. §2: texture_size goes with an atlas, so an
+    offer listing texture_sizes must be able to make one. §4.1: offers' gate lists stay within the descriptor's params."""
+    errs = []
+    outs = {o["name"]: o for o in d["outputs"]}
+    if "mesh" in outs:
+        prev = outs.get("preview")
+        if not prev or prev["kind"] != "image" or prev.get("min", 0) < 1 or "image/png" not in prev.get("media_types", ["image/png"]):
+            errs.append(f"{d['operation']}: a mesh output needs a preview PNG output, min 1 (Mesh §1.7)")
+        if outs["mesh"].get("media_types") and "model/gltf-binary" not in outs["mesh"]["media_types"]:
+            errs.append(f"{d['operation']}: the mesh output must offer model/gltf-binary (Mesh §1.1)")
+    props = d["params"]["properties"]
+    for m in d["models"]:
+        sup = m.get("supports", {})
+        if sup.get("texture_sizes") and "atlas" not in sup.get("textures", ["atlas"]):
+            errs.append(f"{m['id']}: texture_sizes without an atlas texture (Mesh §2)")
+        for key, param in (("resolutions", "resolution"), ("texture_sizes", "texture_size"), ("textures", "texture"),
+                           ("skeletons", "skeleton")):
+            enum = props.get(param, {}).get("enum")
+            if key in sup and enum is not None and not set(sup[key]) <= set(enum):
+                errs.append(f"{m['id']}: supports.{key} lists values the descriptor's '{param}' doesn't take")
+    return errs
+
+
+def mesh_job_checks(job):
+    """Mesh results: a preview per mesh (§1.7), bounds ordered, joints exactly on rig outputs (§3.2), a flat result warned
+    (§1.8) and the placement honoured (§1.4)."""
+    errs = []
+    result = job.get("result")
+    if not result:
+        return errs
+    outs = result["outputs"]
+    meshes = [o for o in outs if o["kind"] == "mesh"]
+    if meshes and not any(o["name"] == "preview" and o["media_type"] == "image/png" for o in outs):
+        errs.append("a mesh result without its preview PNG (Mesh §1.7)")
+    for o in outs:
+        if o["name"] == "preview" and o["kind"] == "image" and (o.get("width") != o.get("height") or (o.get("width") or 0) < 512):
+            errs.append("the preview isn't square and at least 512 px (Mesh §1.7)")
+    eff = result.get("effective", {})
+    for o in meshes:
+        lo, hi = o["bounds"]["min"], o["bounds"]["max"]
+        if any(a > b for a, b in zip(lo, hi)):
+            errs.append(f"output {o['index']}: bounds min above max")
+            continue
+        ext = [b - a for a, b in zip(lo, hi)]
+        if job["operation"] == "mesh.rig" and "joints" not in o:
+            errs.append(f"output {o['index']}: a rigged mesh without joints (Mesh §3.2)")
+        if job["operation"] == "mesh.generate":
+            if "joints" in o:
+                errs.append(f"output {o['index']}: joints on an unskinned generate result")
+            if max(ext) > 0 and min(ext) / max(ext) < FLAT_RATIO and not any(w["code"] == "flat_result" for w in job.get("warnings", [])):
+                errs.append(f"output {o['index']}: thinnest/longest {min(ext) / max(ext):.3f} < {FLAT_RATIO} without flat_result (Mesh §1.8)")
+            size = eff.get("size_m", 1)
+            if abs(max(ext) - size) > 0.01 * size:
+                errs.append(f"output {o['index']}: longest extent {max(ext)} isn't size_m {size} (Mesh §1.4)")
+            if eff.get("placement", "centered") == "grounded":
+                if abs(lo[1]) > 0.01 * size:
+                    errs.append(f"output {o['index']}: grounded, but the lowest point is at y={lo[1]} (Mesh §1.4)")
+            else:
+                if any(abs((a + b) / 2) > 0.01 * size for a, b in zip(lo, hi)):
+                    errs.append(f"output {o['index']}: centered, but the box's centre isn't the origin (Mesh §1.4)")
+        if "texture_size" in o and eff.get("texture") == "vertex_colors":
+            errs.append(f"output {o['index']}: texture_size on a vertex-coloured result")
     return errs
 
 

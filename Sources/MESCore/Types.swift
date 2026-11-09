@@ -5,7 +5,11 @@ import Foundation
 
 // MARK: - Registries (§18)
 
-public enum Kind: String, Codable, Sendable, CaseIterable { case text, image, mask, video, audio, data }
+public enum Kind: String, Codable, Sendable, CaseIterable {
+    case text, image, mask, video, audio, data
+    /// A 3D asset: glTF 2.0 binary (`model/gltf-binary`) in 0.1 (RFC 0007, Mesh §1.1).
+    case mesh
+}
 public enum QualityTier: String, Codable, Sendable, CaseIterable { case draft, standard, best }
 public enum JobState: String, Codable, Sendable, CaseIterable { case received, fetching, waiting, running, holding, purged }
 public enum Outcome: String, Codable, Sendable, CaseIterable { case succeeded, failed, cancelled, expired }
@@ -68,15 +72,19 @@ public struct License: Codable, Sendable, Equatable {
     /// The terms bind each person who uses the model through a client: a client's user accepts them, and requests list
     /// the `spdx` in `policy.accepted` (§10.2 rule 4, §10.3).
     public var userAcceptRequired: Bool?
+    /// Words the terms require shown with the model and what it makes, exactly as given ("Built with DINOv3"): a client
+    /// shows them verbatim wherever it shows a notice (§10.2 rule 1, RFC 0007), and engines write them into files.
+    public var attribution: String?
 
     public init(spdx: String, commercialUse: CommercialUse, termsURL: String? = nil, notice: String? = nil,
-                acceptedRequired: Bool? = nil, userAcceptRequired: Bool? = nil) {
+                acceptedRequired: Bool? = nil, userAcceptRequired: Bool? = nil, attribution: String? = nil) {
         self.spdx = spdx; self.commercialUse = commercialUse; self.termsURL = termsURL
         self.notice = notice; self.acceptedRequired = acceptedRequired; self.userAcceptRequired = userAcceptRequired
+        self.attribution = attribution
     }
 
     enum CodingKeys: String, CodingKey {
-        case spdx, notice
+        case spdx, notice, attribution
         case commercialUse = "commercial_use"
         case termsURL = "terms_url"
         case acceptedRequired = "accepted_required"
@@ -765,21 +773,51 @@ public struct Output: Codable, Sendable, Equatable {
     public var channels: Int?
     public var bitDepth: Int?
     public var value: JSONValue?
+    /// Mesh facts (§10.1, RFC 0007): vertices and triangles summed over every primitive, the axis-aligned box in metres,
+    /// the largest texture's longest side (exactly when textured) and the skin's joints (exactly when skinned).
+    public var vertices: Int?
+    public var faces: Int?
+    public var bounds: MeshBounds?
+    public var textureSize: Int?
+    public var joints: Int?
     enum CodingKeys: String, CodingKey {
         case index, name, kind, bytes, sha256, href, width, height, fps, frames, channels, value
         case mediaType = "media_type", durationSeconds = "duration_s", sampleRate = "sample_rate", bitDepth = "bit_depth"
+        case vertices, faces, bounds, joints, textureSize = "texture_size"
     }
     public init(index: Int, name: String, kind: Kind, mediaType: String, bytes: Int, sha256: String, href: String,
                 width: Int? = nil, height: Int? = nil, durationSeconds: Double? = nil, fps: Double? = nil, frames: Int? = nil,
-                sampleRate: Int? = nil, channels: Int? = nil, bitDepth: Int? = nil, value: JSONValue? = nil) {
+                sampleRate: Int? = nil, channels: Int? = nil, bitDepth: Int? = nil, value: JSONValue? = nil,
+                vertices: Int? = nil, faces: Int? = nil, bounds: MeshBounds? = nil, textureSize: Int? = nil, joints: Int? = nil) {
         self.index = index; self.name = name; self.kind = kind; self.mediaType = mediaType; self.bytes = bytes
         self.sha256 = sha256; self.href = href; self.width = width; self.height = height
         self.durationSeconds = durationSeconds; self.fps = fps; self.frames = frames; self.sampleRate = sampleRate
         self.channels = channels; self.bitDepth = bitDepth; self.value = value
+        self.vertices = vertices; self.faces = faces; self.bounds = bounds; self.textureSize = textureSize; self.joints = joints
     }
 
     /// Whether a video output carries an audio track (§10.1).
     public var hasAudioTrack: Bool { kind == .video && sampleRate != nil }
+    /// Whether this is a 3D asset (RFC 0007).
+    public var isMesh: Bool { kind == .mesh }
+}
+
+/// A mesh's axis-aligned bounding box in scene space, in metres (§10.1, RFC 0007).
+public struct MeshBounds: Codable, Sendable, Equatable {
+    public var min: [Double]
+    public var max: [Double]
+    public init(min: [Double], max: [Double]) { self.min = min; self.max = max }
+
+    /// The box's size along X, Y and Z.
+    public var extents: [Double] { zip(min, max).map { $1 - $0 } }
+    /// The box's centre.
+    public var center: [Double] { zip(min, max).map { ($0 + $1) / 2 } }
+    /// The thinnest extent over the longest (0 for an empty box): under `MeshProfile.flatRatio` a result is flat (Mesh §1.8).
+    public var thinness: Double {
+        let e = extents
+        guard let hi = e.max(), hi > 0, let lo = e.min() else { return 0 }
+        return lo / hi
+    }
 }
 
 public struct Plan: Codable, Sendable, Equatable {

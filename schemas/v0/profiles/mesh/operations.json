@@ -1,0 +1,59 @@
+{
+  "profile": "mesh",
+  "version": "0.1",
+  "operations": {
+    "mesh.generate": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        }
+      },
+      "outputs": {
+        "mesh": {
+          "kind": "mesh"
+        },
+        "preview": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "seed",
+        "quality",
+        "resolution",
+        "max_faces",
+        "texture",
+        "texture_size",
+        "background",
+        "placement",
+        "size_m",
+        "on_flat"
+      ],
+      "seeded": true,
+      "places": true
+    },
+    "mesh.rig": {
+      "inputs": {
+        "mesh": {
+          "kind": "mesh",
+          "required": true
+        }
+      },
+      "outputs": {
+        "mesh": {
+          "kind": "mesh"
+        },
+        "preview": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "skeleton",
+        "seed",
+        "quality"
+      ],
+      "seeded": true,
+      "keeps_geometry": true
+    }
+  }
+}

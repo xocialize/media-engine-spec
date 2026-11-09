@@ -5,7 +5,7 @@
 | **Version** | 0.1 (draft) |
 | **Status** | Draft for review. While the major version is 0, a minor version may make breaking changes. |
 | **Date** | 2026-10-31 |
-| **Profiles** | [Image 0.1](profiles/image.md), [Audio 0.1](profiles/audio.md), [Video 0.1](profiles/video.md) |
+| **Profiles** | [Image 0.1](profiles/image.md), [Audio 0.1](profiles/audio.md), [Video 0.1](profiles/video.md), [Mesh 0.1](profiles/mesh.md) |
 | **Schemas** | [`schemas/v0/base/`](../schemas/v0/base/) |
 
 ## Abstract
@@ -186,7 +186,7 @@ A descriptor states:
 |---|---|
 | `operation`, `profile`, `profile_version` | What this is, e.g. `image.fill`, `image`, `0.1` |
 | `title`, `summary` | Human text for UIs |
-| `inputs` | Each named input: `kind` (`text`, `image`, `mask`, `video`, `audio`, `data`), `required`, `min`/`max` count, accepted `media_types` |
+| `inputs` | Each named input: `kind` (`text`, `image`, `mask`, `video`, `audio`, `data`, `mesh`), `required`, `min`/`max` count, accepted `media_types`. A client treats a kind it doesn't know as `data`: a file to send or download |
 | `params` | A JSON Schema (draft 2020-12) object for the parameters, with `x-mes-ui` hints on each property (§6.1) |
 | `outputs` | Each named output: `kind`, `media_types`, count range, and `stream?: {encodings}` for an output that can stream (§11) |
 | `limits` | E.g. `max_width`, `max_height`, `max_megapixels`, `max_duration_s`, and the limit fields the profile defines (`max_…`, `min_…`). The operation's limits are the most any offer allows (§6.4) |
@@ -473,7 +473,7 @@ In `holding`, `result` holds:
 
 | Field | Meaning |
 |---|---|
-| `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps`, `frames`, `sample_rate`, `channels`, `bit_depth` as relevant. `frames` is a `video` output's frame count. On a `video` output, `sample_rate`, `channels` and `bit_depth` describe its audio track, and are present exactly when it has one. A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
+| `outputs` | Each output: `index`, `name` (from the descriptor), `kind`, `media_type`, `bytes`, `sha256`, `href`, plus media facts: `width`, `height`, `duration_s`, `fps`, `frames`, `sample_rate`, `channels`, `bit_depth` as relevant. `frames` is a `video` output's frame count. On a `video` output, `sample_rate`, `channels` and `bit_depth` describe its audio track, and are present exactly when it has one. A `mesh` output reports `vertices` and `faces` (summed over its primitives), `bounds` (`{min, max}`, the axis-aligned box in scene space, in metres), `texture_size` (the largest texture's longest side, exactly when textured) and `joints` (exactly when skinned); the first three are REQUIRED ([RFC 0007](../rfcs/0007-mesh.md)). A `data` output MAY carry its JSON as `value` (≤ 64 KiB). |
 | `effective` | The normalized parameters actually used, e.g. the chosen `quality`, a snapped `size`, the `seed`. Model-specific detail MAY appear under `effective.model_params`. |
 | `provenance` | `engine {id, name, implementation, version}`, `operation`, `profile_version`, `model {id, title, revision?, license}`, `adapters? [{id, title?, revision?, license, strength}]`, `helpers? [{id, title?, revision?, license, role}]`, `voice? {id, title?, license?}` (§6.5), `remote_provider? {id, name, billed}`, `seed?`, `timings {received_at, started_at?, finished_at?, queue_ms?, prepare_ms?, run_ms?}` |
 
@@ -504,12 +504,15 @@ The `license` object on a model offer and on provenance:
 | `notice` | OPTIONAL. Short text the client MUST show (rule 1), e.g. an attribution requirement |
 | `accepted_required` | OPTIONAL. `true` when the engine requires its operator to accept the terms before first use |
 | `user_accept_required` | OPTIONAL. `true` when the terms bind each person who uses the model through a client, so a client's user must accept them (rule 4) |
+| `attribution` | OPTIONAL. Words the terms require shown with the model and what it makes, exactly as given (≤ 200 characters), e.g. `Built with DINOv3` ([RFC 0007](../rfcs/0007-mesh.md)). A model built from parts under different terms states the governing (most restrictive) part's `spdx`, and every part's required words here, separated by "; " |
 
 Rules ([RFC 0005](../rfcs/0005-video-in-base.md); rules 1 and 2 were Audio's A-8 and A-9):
 1. **Notices are shown.** A client MUST show a `notice`: with the offer, wherever it presents a result whose
    provenance names that model, adapter, helper or voice, and in the MCP text summary, whatever `commercial_use` says.
    A licence has a `notice` only when its terms require something shown; advisory text belongs in the offer's `notes`.
    When `commercial_use` isn't `true` and there is no notice, the client shows the `spdx` and `terms_url` instead.
+   An `attribution` is shown wherever a notice would be, verbatim: styled as the client likes, never reworded or
+   translated.
 2. **Licences go into the file.** An engine SHOULD write the `spdx` id and `notice` into an output's own metadata,
    where its format has a place, whenever the job's licences carry a notice or aren't all `commercial_use: true`, and
    MAY for every output. The output's `sha256` covers the file as written.
@@ -522,6 +525,9 @@ Rules ([RFC 0005](../rfcs/0005-video-in-base.md); rules 1 and 2 were Audio's A-8
    | MP4, QuickTime | the copyright item (`cprt`; `com.apple.quicktime.copyright`) and the comment item (`©cmt`; `com.apple.quicktime.comment`) |
    | PNG | `iTXt` `Copyright` and `Comment` |
    | JPEG | EXIF `Copyright` and `UserComment` |
+   | GLB | `asset.copyright` (the attribution, then the `spdx`) and `asset.extras.mes` (`license`, `notice`, `attribution`) |
+
+   The `attribution` goes into the file with them.
 3. **AI-content markings travel.** An engine SHOULD mark what a generative operation makes as AI-generated in the file
    (the comment item, and the IPTC digital source type `trainedAlgorithmicMedia` where it writes XMP). It MUST NOT
    remove an AI-content marking, a watermark or a provenance manifest (such as C2PA) that an input carries, and when it
@@ -639,7 +645,8 @@ Every error body is `{"error": {code, message, reason?, param?, job?, request_id
 | 503 | `no_capacity` (with `Retry-After`) |
 
 A failed job carries the same object in `error`. Clients MUST treat unknown codes by their HTTP class. `reason` refines a
-code; Base registers `terms_not_accepted` for `policy_unmet` (§10.3).
+code; Base registers `terms_not_accepted` for `policy_unmet` (§10.3), and profiles register their own (Mesh:
+`degenerate_result` for `input_invalid`).
 
 ## 13. Retention guarantees
 
@@ -683,14 +690,14 @@ Dispatchers use it to choose between engines.
   - `model`, `quality`, `wait_s` (default 50) and `policy` (with `accepted`, §10.3);
   - `adapters` (§6.3), when an offer lists any.
 - **Model lines.** The tool's description lists each model offer on one line: its id, title, licence and
-  commercial-use flag. An offer's `license.notice` and `notes` (§6 rule 5), when present, follow on that model's line,
+  commercial-use flag. An offer's `license.attribution`, `license.notice` and `notes` (§6 rule 5), when present, follow on that model's line,
   so an agent sees the terms and the usage guidance before it names the model. A licence with `user_accept_required` says
   so on that line ("users must accept these terms: pass policy.accepted"). The offer's adapters follow on lines of
   their own, each with its id, title, kind, licence and commercial-use flag. An offer's `supports` and `limits` follow
   in short form (`supports: stream, languages=en/zh, max_text_chars=2000`), and a model with voices says how many
   (`10 voices (mes_list_voices)`).
 - **Results** contain:
-  - a text summary: model, licence (with its `notice`, §10.2 rule 1), adapters, helpers, warnings;
+  - a text summary: model, licence (with its `attribution` and `notice`, §10.2 rule 1), adapters, helpers, warnings;
   - an image preview, for image outputs of at most 1 MB; an `audio` block, for audio outputs of at most 1 MB;
   - a `resource_link` to each output's `href`;
   - `structuredContent`: the Job snapshot.
@@ -739,7 +746,7 @@ Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is 
 | Registry | Values in 0.1 |
 |---|---|
 | Features | `uploads`, `grants`, `sse`, `websocket`, `mcp`, `previews`, `pairing`, `assets`, `streaming` |
-| Input / output kinds | `text`, `image`, `mask`, `video`, `audio`, `data` |
+| Input / output kinds | `text`, `image`, `mask`, `video`, `audio`, `data`, `mesh` ([RFC 0007](../rfcs/0007-mesh.md)) |
 | Quality tiers | `draft`, `standard`, `best` |
 | States | `received`, `fetching`, `waiting`, `running`, `holding`, `purged` |
 | Outcomes | `succeeded`, `failed`, `cancelled`, `expired` |
@@ -753,4 +760,5 @@ Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is 
 | Stream encodings | `pcm_s16le`, `pcm_f32le` (§11) |
 | UI widgets | §6.1 |
 
-Profiles add their own operations, vocabulary, warning codes, helper roles, `supports` keys and limit fields.
+Profiles add their own operations, vocabulary, warning codes, error reasons, helper roles, `supports` keys and limit
+fields.
