@@ -27,6 +27,9 @@ public indirect enum FieldWidget: Equatable, Sendable {
     case number(ClosedRange<Double>?)
     /// An array of numbers, typed comma-separated (Video's `keyframe_times`).
     case numberList
+    /// Stretches of a recording, each `{start_s, end_s, present}` (Audio's `spans`, RFC 0008): rows of start, end
+    /// and heard or not heard.
+    case spans
     /// A nested object, edited field by field.
     case object([FormField])
     /// `oneOf`: pick a variant, then edit it.
@@ -112,6 +115,9 @@ public enum FormSchema {
         }
         if type == "array", let items = schema["items"]?["enum"]?.arrayValue { return .multiPicker(items) }
         if type == "array", ["number", "integer"].contains(schema["items"]?["type"]?.stringValue) { return .numberList }
+        if type == "array", Set(schema["items"]?["properties"]?.objectValue?.keys.map { $0 } ?? []) == ["start_s", "end_s", "present"] {
+            return .spans
+        }
         if let options { return .picker(options) }
 
         switch hint {

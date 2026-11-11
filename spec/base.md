@@ -305,6 +305,12 @@ Rules:
 | `stream` | boolean | `false` | Gate: a request's `stream` (§7.1) | The model can stream its output. The profile's Facts give the stream's format before the run (Audio: `sample_rate`, `channels`) |
 | `seed` | boolean | `true` | Warn: `seed_ignored` | `false`: the result doesn't depend on a seed, e.g. greedy decoding |
 | `voices` | integer | `0` | Fact (§6.5) | How many preset voices the model offers |
+| `watermark` | string | none stated | Fact | Every output the model makes carries an imperceptible watermark, made by the named scheme: a lowercase id such as `audioseal` or `synthid` ([RFC 0008](../rfcs/0008-separate-described-target.md)) |
+
+**Watermarks.** `watermark` is a Fact: no request turns the mark on or off, and an engine that lets its operator turn
+it off states the key only while it is on. Absent means the offer states none, not that there is none. A client
+SHOULD show it with the offer, next to the licence; it is not a licence `notice` and needs no acceptance. A scheme's
+id is its own name in lowercase (`^[a-z0-9][a-z0-9._-]*$`), and a client shows one it doesn't know as written.
 
 ### 6.5 Voices
 
@@ -532,7 +538,7 @@ Rules ([RFC 0005](../rfcs/0005-video-in-base.md); rules 1 and 2 were Audio's A-8
    (the comment item, and the IPTC digital source type `trainedAlgorithmicMedia` where it writes XMP). It MUST NOT
    remove an AI-content marking, a watermark or a provenance manifest (such as C2PA) that an input carries, and when it
    transforms that input it carries them into the output where the format allows. A profile MAY make the marking a
-   MUST (Video §1.9).
+   MUST (Video §1.9). An offer whose model adds a watermark of its own says so with `supports.watermark` (§6.4).
 4. **Users' acceptance.** For a licence with `user_accept_required`, a client MUST show its user the `notice` and
    `terms_url`, and have the user accept the terms, before that user's first job that may run on it; it then sends the
    licence's `spdx` in `policy.accepted` (§10.3). Acceptance is the person's: a client keeps it per user, and an agent
@@ -761,7 +767,7 @@ Test IDs are `BASE-nnn` (Base) and `<PROFILE>-nnn` (profiles). The catalogue is 
 | Base warning codes | `seed_ignored`, `param_adjusted`, `remote_provider_used`, `model_substituted_by_policy`, `helper_skipped_by_policy` |
 | Error reasons | `terms_not_accepted` (with `policy_unmet`, §10.3) |
 | Adapter kinds | `plain`, `ic` (§6.3) |
-| Base `supports` keys | `stream`, `seed`, `voices` (§6.4) |
+| Base `supports` keys | `stream`, `seed`, `voices`, `watermark` (§6.4) |
 | Stream encodings | `pcm_s16le`, `pcm_f32le` (§11) |
 | UI widgets | §6.1 |
 

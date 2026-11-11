@@ -2,7 +2,7 @@
 # R0c exit check: `mes` against the mock engine end to end — discovery, pairing, generate → matte → fill (each
 # output feeding the next), download and confirm; then Audio 0.1 — a designed voice kept as an asset, speech streamed
 # with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted, the take
-# separated into stems; then Video
+# separated into stems, and into a described sound and the rest; then Video
 # 0.1 — a clip generated under a licence its users accept, refused without that acceptance, then interpolated; then
 # Mesh 0.1 — a GLB generated from the picture, then rigged; then unpair. Everything runs in a temporary directory.
 #
@@ -103,6 +103,11 @@ mes run audio.separate -i audio="$take" -p stems='["speaker"]' -p speaker='{"say
   -o "$work/speaker" | tee "$work/speaker.txt"
 grep -q "output 0 speaker" "$work/speaker.txt"
 
+step "mes run audio.separate by description (RFC 0008): the target and the residual, with a span"
+mes run audio.separate -i audio="$take" -p describe="speech" -p spans='[{"start_s":0.1,"end_s":0.4,"present":true}]' \
+  -o "$work/described" | tee "$work/described.txt"
+grep -q "output 0 target" "$work/described.txt" && grep -q "output 1 residual" "$work/described.txt"
+
 step "mes describe video.generate · mes run video.generate --accept · refused without it"
 mes describe video.generate | grep "users accept its terms"
 mes run video.generate -i prompt="a kite over green hills" -p size=128x96 -p duration_s=0.375 -p quality=draft \
@@ -127,4 +132,4 @@ grep -q "642 vertices · 1280 faces .* · 22 joints" "$work/rig.txt"
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → video generate (accepted) → interpolate → mesh generate → rig → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → separate by description → video generate (accepted) → interpolate → mesh generate → rig → unpair"

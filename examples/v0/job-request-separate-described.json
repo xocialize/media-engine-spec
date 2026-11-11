@@ -1,0 +1,28 @@
+{
+  "operation": "audio.separate",
+  "inputs": {
+    "audio": {
+      "upload": "upl_e7"
+    }
+  },
+  "params": {
+    "describe": "dog barking",
+    "spans": [
+      {
+        "start_s": 1.2,
+        "end_s": 2.0,
+        "present": true
+      },
+      {
+        "start_s": 6.0,
+        "end_s": 9.5,
+        "present": false
+      }
+    ]
+  },
+  "policy": {
+    "accepted": [
+      "LicenseRef-SAM"
+    ]
+  }
+}

@@ -1,10 +1,11 @@
 import Foundation
 import MESCore
 
-/// Audio forms that follow the offers (Audio §3.3, §3.6, §4.1; RFC 0006): `separate`'s stems and speaker picks, and
-/// `edit_speech`'s edit, show only what the request's offers take, and the form says what an engine would refuse
-/// before it is sent: the speaker stem without a pick, a stem or edit the chosen model doesn't make, an edit fitted to a
-/// length on a model that can't, every cue removed by a model that removes one kind at a time.
+/// Audio forms that follow the offers (Audio §3.3, §3.6, §4.1; RFCs 0006 and 0008): `separate`'s stems, speaker picks,
+/// description and spans, and `edit_speech`'s edit, show only what the request's offers take, and the form says what an
+/// engine would refuse before it is sent: the speaker stem without a pick, a stem or edit the chosen model doesn't make,
+/// a description or spans on a model that takes none, an edit fitted to a length on a model that can't, every cue
+/// removed by a model that removes one kind at a time.
 extension OperationFormModel {
     typealias AP = AudioProfile.Param
     typealias AK = AudioProfile.SupportsKey
@@ -22,13 +23,33 @@ extension OperationFormModel {
         Set(candidateOffers.flatMap { $0.supports(key)?.arrayValue?.compactMap(\.stringValue) ?? absent })
     }
 
+    /// Whether a candidate offer states a boolean key.
+    func anyOffer(_ key: String) -> Bool { candidateOffers.contains { $0.supports(key)?.boolValue == true } }
+
+    /// Whether the form has a description of the sound to separate (RFC 0008).
+    var describes: Bool { values[AP.describe] != nil }
+
+    /// Whether a top-level field belongs on the form for the request's offers (RFC 0008). `separate`'s description
+    /// shows only where an offer separates a described sound, and its spans only where one takes spans and a
+    /// description is given. A field that holds a value always shows, so what an engine would refuse can be seen and
+    /// cleared. Every other field shows.
+    public func shows(_ field: FormField) -> Bool {
+        guard descriptor.operation == "audio.separate", values[field.name] == nil else { return true }
+        switch field.name {
+        case AP.describe: return anyOffer(AK.describedTarget)
+        case AP.spans: return describes && anyOffer(AK.spans)
+        default: return true
+        }
+    }
+
     /// A top-level field as the request's offers take it. Fields of other profiles, and other fields, are unchanged.
     public func narrowed(_ field: FormField) -> FormField {
         guard descriptor.profile == AudioProfile.id else { return field }
         var f = field
         switch (descriptor.operation, field.name, field.widget) {
         case ("audio.separate", AP.stems, .multiPicker(let options)):
-            let made = offered(AK.stems, absent: [])
+            // The target and the residual are a description's stems, and a description takes no other (RFC 0008).
+            let made = offered(AK.stems, absent: []).filter { AudioProfile.describedStems.contains($0) == describes }
             f.widget = .multiPicker(options.filter { $0.stringValue.map(made.contains) ?? false })
         case ("audio.separate", AP.speaker, .choice(let variants)):
             let kinds = offered(AK.speakerSelection, absent: [])
@@ -96,6 +117,33 @@ extension OperationFormModel {
             if let m = chosen, let kind = pick?.objectValue?.keys.first(where: AudioProfile.speakerSelections.contains),
                !list(m, AK.speakerSelection).contains(kind), out[AP.speaker] == nil {
                 out[AP.speaker] = "\(m.title) can't pick a speaker \(kind == "ordinal" ? "by order" : "by words")."
+            }
+            // RFC 0008: a described sound, its two stems and its spans.
+            let described = AudioProfile.describedStems
+            if describes {
+                if let other = stems?.first(where: { !described.contains($0) }) {
+                    out[AP.stems] = "A description separates the target and the residual: clear \(other), or clear the description."
+                }
+                if pick != nil { out[AP.speaker] = "A speaker pick is for the speaker stem, not for a described sound." }
+                if let m = chosen, m.supports(AK.describedTarget)?.boolValue != true {
+                    out[AP.describe] = "\(m.title) doesn't separate a described sound."
+                }
+            } else {
+                if stems?.contains(where: described.contains) == true {
+                    out[AP.describe] = "Say what sound to separate: the target and the residual need a description."
+                } else if let m = chosen, stems == nil, pick == nil,
+                          !list(m, AK.stems).contains(where: { $0 != "speaker" && !described.contains($0) }),
+                          m.supports(AK.describedTarget)?.boolValue == true {
+                    out[AP.describe] = "\(m.title) separates a sound you describe: say which."
+                }
+                if values[AP.spans] != nil { out[AP.spans] = "Spans say where a described sound is: describe the sound too." }
+            }
+            if let spans = SeparationSpan.list(values[AP.spans]), out[AP.spans] == nil {
+                if let problem = SeparationSpan.problem(spans) {
+                    out[AP.spans] = problem
+                } else if let m = chosen, m.supports(AK.spans)?.boolValue != true {
+                    out[AP.spans] = "\(m.title) doesn't take spans."
+                }
             }
         case "audio.edit_speech":
             guard let m = chosen else { break }

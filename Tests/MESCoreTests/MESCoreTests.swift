@@ -145,6 +145,33 @@ struct MESCoreTests {
         #expect(AudioProfile.vocabulary["$defs"]?["section"]?["enum"] == .array(AudioProfile.sections.map { .string($0) }))
     }
 
+    @Test("RFC 0008: the described stems are registered, spans parse in time order, and their problems are named")
+    func describedTarget() throws {
+        #expect(AudioProfile.stems.suffix(2) == AudioProfile.describedStems && AudioProfile.describedStems == ["target", "residual"])
+        let separate = try #require(AudioProfile.operations.operations["audio.separate"])
+        #expect(separate.vocabulary.contains("describe") && separate.vocabulary.contains("spans"))
+        #expect(AudioProfile.vocabularySchema("spans", operation: "audio.separate")?["items"]?["required"] == ["start_s", "end_s", "present"])
+        let validator = SchemaValidator()
+        let describe = try #require(AudioProfile.vocabularySchema("describe", operation: "audio.separate"))
+        #expect(validator.validate("dog barking", against: describe).isEmpty)
+        #expect(!validator.validate("   ", against: describe).isEmpty && !validator.validate("", against: describe).isEmpty)
+
+        let spans = try #require(SeparationSpan.list([["start_s": 6, "end_s": 9.5, "present": false], ["start_s": 1.2, "end_s": 2, "present": true]]))
+        #expect(spans == [SeparationSpan(start: 1.2, end: 2, present: true), SeparationSpan(start: 6, end: 9.5, present: false)])
+        #expect(SeparationSpan.list(.array(spans.map(\.json))) == spans)
+        #expect(try MESJSON.decoder.decode([SeparationSpan].self, from: MESJSON.encoder.encode(spans)) == spans)
+        #expect(SeparationSpan.list([["start_s": 1, "end_s": 2]]) == nil && SeparationSpan.list(nil) == nil)
+        #expect(SeparationSpan.problem(spans) == nil)
+        #expect(SeparationSpan.problem([SeparationSpan(start: 0, end: 1, present: true), SeparationSpan(start: 1, end: 2, present: false)]) == nil)
+        #expect(SeparationSpan.problem([SeparationSpan(start: 2, end: 2, present: true)])?.contains("ends after it starts") == true)
+        #expect(SeparationSpan.problem([SeparationSpan(start: 1, end: 3, present: true), SeparationSpan(start: 0, end: 1.5, present: false)])?
+            .contains("overlap") == true)
+        // Past the mixture's end by more than a frame.
+        #expect(SeparationSpan.firstPastEnd(spans, mixtureSeconds: 9.5, sampleRate: 48000) == nil)
+        #expect(SeparationSpan.firstPastEnd(spans, mixtureSeconds: 9.49999, sampleRate: 48000) == nil)
+        #expect(SeparationSpan.firstPastEnd(spans, mixtureSeconds: 9, sampleRate: 48000) == spans[1])
+    }
+
     @Test("JobResult.stems reads a separation's outputs by stem, in effective.stems order")
     func stems() {
         func out(_ i: Int, _ name: String) -> Output {

@@ -64,8 +64,10 @@ enum AudioTests {
         case "audio.separate":
             inputs[I.audio] = clip
             let stems = list(m, K.stems)
-            if let stem = stems.first(where: { $0 != "speaker" }) {
+            if let stem = labelled(stems).first(where: { $0 != "speaker" }) {
                 params[P.stems] = [.string(stem)]
+            } else if flag(m, K.describedTarget) {
+                params[P.describe] = "speech"                       // RFC 0008: the stems are the target and the residual
             } else if let pick = pick(m) {
                 params[P.stems] = ["speaker"]
                 params[P.speaker] = pick
@@ -111,6 +113,9 @@ enum AudioTests {
         }
         return .object(e)
     }
+
+    /// The stems of a list that a label asks for: not `target` and `residual`, which a description makes (RFC 0008).
+    static func labelled(_ stems: [String]) -> [String] { stems.filter { !AudioProfile.describedStems.contains($0) } }
 
     /// A speaker pick an offer takes (§3.6): by order where it can, else by words.
     static func pick(_ m: ModelOffer) -> JSONValue? {
@@ -221,6 +226,14 @@ enum AudioTests {
                     }
                     if m.streams {
                         try check(m.supports(K.sampleRate)?.intValue != nil, "\(d.operation) / \(m.id) streams but doesn't declare sample_rate (Audio §4.1)")
+                    }
+                    if d.operation == "audio.separate" {
+                        // RFC 0008: a description makes the target; the residual comes with it; spans need a description.
+                        let stems = list(m, K.stems)
+                        try check(stems.contains("target") == flag(m, K.describedTarget),
+                                  "\(m.id): described_target must be true exactly when stems lists target (Audio §4.1)")
+                        try check(!stems.contains("residual") || stems.contains("target"), "\(m.id) lists the residual stem without target (Audio §4.1)")
+                        try check(!flag(m, K.spans) || flag(m, K.describedTarget), "\(m.id) states spans without described_target (Audio §4.1)")
                     }
                 }
             }
@@ -517,11 +530,13 @@ enum AudioTests {
             let d = p.descriptor("audio.separate")!
             var made: [String] = []
             for m in d.models {
-                let stems = list(m, K.stems)
-                try check(!stems.isEmpty, "\(m.id) lists no stems (supports.stems is required)")
+                try check(!list(m, K.stems).isEmpty, "\(m.id) lists no stems (supports.stems is required)")
                 try check(AudioProfile.stemMethods.contains(m.supports(K.stemMethod)?.stringValue ?? ""),
                           "\(m.id) doesn't say how it makes stems (supports.stem_method is required)")
+                let stems = labelled(list(m, K.stems))              // target and residual are AUDIO-019's
+                if stems.isEmpty { continue }
                 var r = try await request(p, d, m)
+                r.params?[P.describe] = nil
                 let seconds = min(2, m.limits?.maxDurationSeconds ?? 2, d.limits?.maxDurationSeconds ?? 2)
                 r.inputs?[I.audio] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav(seconds: seconds)))
                 r.params?[P.stems] = .array(stems.map { .string($0) })
@@ -544,16 +559,17 @@ enum AudioTests {
                 made.append("\(m.id) \(stems.joined(separator: "+")) (\(m.supports(K.stemMethod)?.stringValue ?? "?"))")
                 await p.confirm(job)
             }
-            return Note(made.joined(separator: "; "))
+            return Note(made.isEmpty ? "no offer makes a labelled stem" : made.joined(separator: "; "))
         },
         ConformanceTest("AUDIO-016", "separate: an unlisted stem and an unlisted pick kind are 422; the speaker stem without a pick, or a pick without it, is 400",
                         spec: "Audio §3.6, Base §6.4 rule 3", applies: offers("audio.separate")) { p in
             let d = p.descriptor("audio.separate")!
             var checked: [String] = []
-            let offered = Set(d.models.flatMap { list($0, K.stems) })
+            let offered = Set(d.models.flatMap { labelled(list($0, K.stems)) })
             if let m = d.models.first(where: { !offered.subtracting(list($0, K.stems)).isEmpty }),
                let missing = offered.subtracting(list(m, K.stems)).sorted().first {
                 var r = try await request(p, d, m)
+                r.params?[P.describe] = nil
                 r.params?[P.stems] = [.string(missing)]
                 r.params?[P.speaker] = missing == "speaker" ? ["saying": "hello"] : nil
                 try await refuse(p, r, 422, "unsupported_parameter", "the stem '\(missing)' to \(m.id), which doesn't list it")
@@ -561,6 +577,7 @@ enum AudioTests {
             }
             if let m = d.models.first, offered.contains("speaker") {
                 var r = try await request(p, d, m)
+                r.params?[P.describe] = nil
                 r.params?[P.stems] = ["speaker"]
                 r.params?[P.speaker] = nil
                 try await refuse(p, r, 400, "invalid_request", "the speaker stem without a pick")
@@ -568,6 +585,7 @@ enum AudioTests {
             }
             if let m = d.models.first, let other = offered.sorted().first(where: { $0 != "speaker" }) {
                 var r = try await request(p, d, m)
+                r.params?[P.describe] = nil
                 r.params?[P.stems] = [.string(other)]
                 r.params?[P.speaker] = ["ordinal": 1]
                 try await refuse(p, r, 400, "invalid_request", "a speaker pick with stems that don't name speaker")
@@ -646,6 +664,143 @@ enum AudioTests {
                 await p.confirm(job)
                 checked.append("fitted \(m.id) to \(target) s")
             }
+            return Note(checked.joined(separator: ", "))
+        },
+        ConformanceTest("AUDIO-019", "separate by description: a described sound returns the target and the residual, each the mixture's length; effective.describe says what ran",
+                        spec: "Audio §3.6", applies: offers("audio.separate")) { p in
+            let d = p.descriptor("audio.separate")!
+            let described = d.models.filter { flag($0, K.describedTarget) }
+            guard !described.isEmpty else { return Note("no separate offer has described_target") }
+            var made: [String] = []
+            for m in described {
+                let stems = AudioProfile.describedStems.filter(list(m, K.stems).contains)
+                try check(stems.contains("target"), "\(m.id) has described_target but doesn't list the target stem")
+                let seconds = min(2, m.limits?.maxDurationSeconds ?? 2, d.limits?.maxDurationSeconds ?? 2)
+                var r = try await request(p, d, m)
+                r.inputs?[I.audio] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav(seconds: seconds)))
+                r.params?[P.stems] = nil
+                r.params?[P.speaker] = nil
+                r.params?[P.describe] = "speech"
+                let job = try await p.succeed(r)
+                let outs = audioOutputs(job)
+                try check(outs.map(\.name) == stems, "\(m.id) was given a description and returned \(outs.map(\.name)), not \(stems)")
+                for o in outs {
+                    _ = try await audio(p, job, o)
+                    let length = o.durationSeconds ?? 0
+                    try check(abs(length - seconds) <= 1.5 / Double(o.sampleRate ?? 8000) + 0.001,
+                              "\(m.id)'s \(o.name) stem is \(length) s; the mixture is \(seconds) s")
+                }
+                try check(job.result?.effective[P.stems]?.arrayValue?.compactMap(\.stringValue) == stems,
+                          "effective.stems isn't \(stems): \(job.result?.effective[P.stems].map { "\($0)" } ?? "missing")")
+                let ran = job.result?.effective[P.describe]?.stringValue
+                try check(ran?.lowercased().trimmingCharacters(in: .whitespaces) == "speech",
+                          "effective.describe isn't the description: \(ran ?? "missing")")
+                await p.confirm(job)
+                // One of the two alone.
+                r.params?[P.stems] = ["target"]
+                let one = try await p.succeed(r)
+                try check(audioOutputs(one).map(\.name) == ["target"], "\(m.id) was asked for the target alone and returned \(audioOutputs(one).map(\.name))")
+                await p.confirm(one)
+                made.append("\(m.id) \(stems.joined(separator: "+")) (\(m.supports(K.stemMethod)?.stringValue ?? "?"))")
+            }
+            return Note(made.joined(separator: "; "))
+        },
+        ConformanceTest("AUDIO-020", "separate: describe needs described_target (422); target without describe, and describe beside a labelled stem, are 400; a described-only offer without describe is refused",
+                        spec: "Audio §3.6, Base §6.4 rule 3", applies: offers("audio.separate")) { p in
+            let d = p.descriptor("audio.separate")!
+            var checked: [String] = []
+            if let m = d.models.first(where: { !flag($0, K.describedTarget) }) {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = nil
+                r.params?[P.speaker] = nil
+                r.params?[P.describe] = "speech"
+                try await refuse(p, r, 422, "unsupported_parameter", "describe to \(m.id), which has no described_target")
+                checked.append("describe without described_target")
+            }
+            guard let m = d.models.first(where: { flag($0, K.describedTarget) }) else {
+                return Note("refused: \(checked.joined(separator: ", ")); no offer has described_target")
+            }
+            var r = try await request(p, d, m)
+            r.params?[P.speaker] = nil
+            r.params?[P.describe] = nil
+            r.params?[P.stems] = ["target"]
+            try await refuse(p, r, 400, "invalid_request", "the target stem without describe")
+            checked.append("target without describe")
+            r.params?[P.describe] = "speech"
+            if let other = labelled(d.outputs.map(\.name)).first(where: { $0 != "speaker" }) {     // one the descriptor's stems take
+                r.params?[P.stems] = ["target", .string(other)]
+                try await refuse(p, r, 400, "invalid_request", "describe beside the labelled stem '\(other)'")
+                checked.append("describe beside a labelled stem")
+            }
+            if labelled(list(m, K.stems)).isEmpty {
+                r.params?[P.describe] = nil
+                r.params?[P.stems] = nil
+                let reply = try await p.wire.json("POST", "jobs", r)
+                if reply.status == 201, let job = try? reply.decode(Job.self) { _ = try? await p.wire.send("DELETE", "jobs/\(job.id)") }
+                try check(reply.status == 422 || reply.status == 400,
+                          "\(m.id) only separates by description, and a request without describe got \(reply.status), not a refusal")
+                checked.append("a described-only offer without describe")
+            }
+            return Note("refused: " + checked.joined(separator: ", "))
+        },
+        ConformanceTest("AUDIO-021", "separate spans: they run and effective.spans echoes them; they need supports.spans (422) and describe (400); a backwards or overlapping span is 400; one past the mixture is out_of_limits",
+                        spec: "Audio §3.6, §4.1", applies: offers("audio.separate")) { p in
+            let d = p.descriptor("audio.separate")!
+            var checked: [String] = []
+            func span(_ a: Double, _ b: Double, _ present: Bool) -> JSONValue { ["start_s": .number(a), "end_s": .number(b), "present": .bool(present)] }
+            if let m = d.models.first(where: { flag($0, K.describedTarget) && !flag($0, K.spans) }) {
+                var r = try await request(p, d, m)
+                r.params?[P.stems] = nil
+                r.params?[P.describe] = "speech"
+                r.params?[P.spans] = [span(0.25, 0.5, true)]
+                try await refuse(p, r, 422, "unsupported_parameter", "spans to \(m.id), which has no supports.spans")
+                checked.append("spans without the key refused")
+            }
+            guard let m = d.models.first(where: { flag($0, K.spans) }) else {
+                return Note(checked.isEmpty ? "no separate offer takes spans" : checked.joined(separator: ", "))
+            }
+            let seconds = min(2, m.limits?.maxDurationSeconds ?? 2, d.limits?.maxDurationSeconds ?? 2)
+            var r = try await request(p, d, m)
+            r.inputs?[I.audio] = .one(.inline(mediaType: "audio/wav", data: Fixtures.wav(seconds: seconds)))
+            r.params?[P.stems] = nil
+            r.params?[P.speaker] = nil
+            r.params?[P.describe] = "speech"
+            // Sent out of order; they run, and come back in time order.
+            let sent = [span(seconds * 0.5, seconds * 0.75, false), span(seconds * 0.125, seconds * 0.25, true)]
+            r.params?[P.spans] = .array(sent)
+            let job = try await p.succeed(r)
+            let ran = SeparationSpan.list(job.result?.effective[P.spans])
+            try check(ran == SeparationSpan.list(.array(sent)), "effective.spans doesn't echo the spans, in time order: \(job.result?.effective[P.spans].map { "\($0)" } ?? "missing")")
+            for o in audioOutputs(job) {
+                try check(abs((o.durationSeconds ?? 0) - seconds) <= 1.5 / Double(o.sampleRate ?? 8000) + 0.001,
+                          "with spans, \(m.id)'s \(o.name) stem is \(o.durationSeconds ?? 0) s; spans don't cut the outputs (the mixture is \(seconds) s)")
+            }
+            await p.confirm(job)
+            checked.append("\(m.id) ran with spans")
+            var bad = r
+            bad.params?[P.describe] = nil
+            try await refuse(p, bad, 400, "invalid_request", "spans without describe")
+            bad = r
+            bad.params?[P.spans] = [span(seconds * 0.5, seconds * 0.5, true)]
+            try await refuse(p, bad, 400, "invalid_request", "a span that ends where it starts")
+            bad.params?[P.spans] = [span(seconds * 0.5, seconds * 0.25, true)]
+            try await refuse(p, bad, 400, "invalid_request", "a span that ends before it starts")
+            bad.params?[P.spans] = [span(0.25, seconds * 0.5, true), span(seconds * 0.25, seconds * 0.75, false)]
+            try await refuse(p, bad, 400, "invalid_request", "two spans that overlap")
+            checked.append("refused: spans without describe, backwards, overlapping")
+            // Past the mixture's end: the engine's to check, at submission or when the job starts.
+            bad.params?[P.spans] = [span(seconds * 0.5, seconds + 1, true)]
+            let reply = try await p.wire.json("POST", "jobs", bad)
+            if reply.status == 201 {
+                let late = try await p.settle(try reply.decode(Job.self))
+                try check(late.outcome == .failed && late.error?.code == "out_of_limits",
+                          "a span ending \(seconds + 1) s into a \(seconds) s mixture wasn't refused out_of_limits: "
+                          + "\(late.outcome?.rawValue ?? late.state.rawValue) \(late.error?.code ?? "")")
+                await p.confirm(late)
+            } else {
+                try expect(reply, 422, code: "out_of_limits", "a span past the end of the mixture", schemas: p.schemas)
+            }
+            checked.append("a span past the mixture's end")
             return Note(checked.joined(separator: ", "))
         },
     ]

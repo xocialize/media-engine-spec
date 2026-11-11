@@ -6,7 +6,7 @@
 | **Version** | 0.1 (draft) |
 | **Requires** | [Base](../base.md) 0.1, with what each offer supports (§6.4), voices (§6.5), assets (§8.1) and streamed output (§11) |
 | **Schemas** | [`schemas/v0/profiles/audio/`](../../schemas/v0/profiles/audio/) |
-| **Sources** | [`docs/AUDIO-EVALUATION.md`](../../docs/AUDIO-EVALUATION.md) (its Direction of 2026-10-24); RFCs [0001](../../rfcs/0001-assets.md), [0002](../../rfcs/0002-streamed-output.md), [0003](../../rfcs/0003-offer-supports-and-voices.md), [0006](../../rfcs/0006-audio-separate-and-auk-edits.md) (separation; AuK's edits) |
+| **Sources** | [`docs/AUDIO-EVALUATION.md`](../../docs/AUDIO-EVALUATION.md) (its Direction of 2026-10-24); RFCs [0001](../../rfcs/0001-assets.md), [0002](../../rfcs/0002-streamed-output.md), [0003](../../rfcs/0003-offer-supports-and-voices.md), [0006](../../rfcs/0006-audio-separate-and-auk-edits.md) (separation; AuK's edits), [0008](../../rfcs/0008-separate-described-target.md) (separating a described sound) |
 
 The Audio profile defines five generative operations on sound (designing a voice, speaking, editing speech, generating
 a sound, and composing a song) and one tool, separating a recording into its sources. It defines the parameter
@@ -83,6 +83,8 @@ These names MUST be used in descriptors whenever the operation exposes the conce
 | `prompt_enhance` | `auto` · `on` · `off` | `design_voice`: whether the engine may rewrite the description, as Image §1.9 |
 | `stems` | `[stem]`, unique, ≥ 1 | `separate`: the sources to make (§3.6) |
 | `speaker` | `{ordinal}` or `{saying}` | `separate`: which one speaker the `speaker` stem keeps (§3.6) |
+| `describe` | string, 1 – 200 characters | `separate`: the sound to separate, in a few words; the `target` stem holds it (§3.6) |
+| `spans` | `[{start_s, end_s, present}]`, 1 – 32 | `separate`: where the described sound is heard, or is not (§3.6) |
 
 Model-specific knobs (steps, guidance, CFG, emotion weight vectors, an editor's 24 further styles) are never
 vocabulary. Engines expose them, if at all, as extensions (Base §6.2): `x-moss.steps`, `x-indextts.emotion_vector`,
@@ -157,7 +159,7 @@ against it.
 | `audio.edit_speech` | `audio` (required); `transcript` (text, optional) | `edit` (required), `target_duration_s`, `seed`, `quality`, `output` | `audio`; `transcript` (data `{text}`, 0–1) | One edit of a spoken take (§3.3) |
 | `audio.generate` | `prompt` (text, required) | `negative_prompt`, `duration_s`, `seed`, `count`, `quality`, `output` | `sounds` (audio, `count`) | Non-verbal sounds, each exactly `duration_s` long (§3.4) |
 | `audio.compose` | `caption` (text, required); `lyrics` (text, 0–1); `score` (text, 0–1); `reference` (audio, 0–1); `source` (audio, 0–1) | `duration_s`, `language`, `planning`, `edit`, `anchors`, `timestamps`, `seed`, `quality`, `output` | `song` (audio, 1); `score` (text `text/vnd.abc`, 0–1); `timestamps` (data, 0–1) | A song, an instrumental, or a rework of a recording (§3.5) |
-| `audio.separate` | `audio` (required: the mixture) | `stems`, `speaker`, `seed`, `quality`, `output` | One audio output per stem, named by the stem (each 0–1) | The mixture's sources, each the mixture's length (§3.6) |
+| `audio.separate` | `audio` (required: the mixture) | `stems`, `speaker`, `describe`, `spans`, `seed`, `quality`, `output` | One audio output per stem, named by the stem (each 0–1) | The mixture's sources, each the mixture's length (§3.6) |
 
 ### 3.1 Designing a voice
 
@@ -319,8 +321,10 @@ otherwise make new sounds. The profile describes this distinction; it doesn't im
 ### 3.6 Separating sources
 
 `separate` splits one recording, the mixture, into its sources: one speaker of a conversation, the singing, every
-voice, or a song's vocals and its instrumental parts. G5 ships AuK's speech stems; the music stems are designed for
-the fleet's HTDemucs and Mel-Band-RoFormer ([RFC 0006](../../rfcs/0006-audio-separate-and-auk-edits.md)).
+voice, a song's vocals and its instrumental parts, or a sound the request describes in words. G5 ships AuK's speech
+stems; the music stems are designed for the fleet's HTDemucs and Mel-Band-RoFormer
+([RFC 0006](../../rfcs/0006-audio-separate-and-auk-edits.md)); the described sound is SAM-Audio's
+([RFC 0008](../../rfcs/0008-separate-described-target.md)).
 
 **Stems** are a registered label set, like cues (§2.2). A stem is registered when one model produces it.
 
@@ -332,10 +336,13 @@ the fleet's HTDemucs and Mel-Band-RoFormer ([RFC 0006](../../rfcs/0006-audio-sep
 | `vocals` | A song's lead and backing vocals |
 | `instrumental` | A song without its vocals |
 | `drums`, `bass`, `other` | A four-stem split's other three |
+| `target` | The sound `describe` names |
+| `residual` | The mixture without that sound |
 
 **The request.**
 - `stems` lists what to make. Absent: every stem the chosen offer lists in `supports.stems`, except `speaker`, which
-  needs a pick; with a `speaker` pick and no `stems`, just `[speaker]`.
+  needs a pick, and `target` and `residual`, which need `describe`; with a `speaker` pick and no `stems`, just
+  `[speaker]`; with `describe` and no `stems`, those of `target` and `residual` the offer lists, in that order.
 - `speaker` picks one speaker: `{ordinal: n}`, the n-th to start talking, from 1; or `{saying: "…"}`, the one who says
   these words. Exactly one of the two, from the kinds the offer lists in `supports.speaker_selection`.
 - The `speaker` stem without a pick is 400 `invalid_request`, and so are a pick with a `stems` list that doesn't name
@@ -346,17 +353,47 @@ the fleet's HTDemucs and Mel-Band-RoFormer ([RFC 0006](../../rfcs/0006-audio-sep
   job's error when the engine reads the mixture's length only as the job starts (input lengths are the engine's to
   check, §4.1).
 
+**A described sound.** An offer with `supports.described_target` separates what the request names in words.
+- `describe` names the sound in a few words: a noun or verb phrase such as `speech`, `dog barking` or
+  `rain on a window`. It is not an instruction and not a sentence; an offer's `notes` say how its model wants it
+  written. At least one character isn't a space. Case and the spaces around it don't count: an engine folds them for
+  a model that needs lowercase, without a warning, and `effective.describe` is the text the model was given. Where
+  the offer lists `supports.languages`, `describe` is written in one of them.
+- The `target` stem holds the described sound, and `residual` the mixture without it. With `describe`, `stems` may
+  name `target`, `residual` or both, and nothing else: another stem beside `describe` is 400 `invalid_request`
+  (`param: "stems"`), and so is a `speaker` pick (`param: "speaker"`). One request separates by description or by
+  label, not both.
+- `target` or `residual` in `stems` without `describe` is 400 `invalid_request` (`param: "describe"`).
+- `describe` sent to a named offer without `described_target`, or when no offer the engine may choose has it, is 422
+  `unsupported_parameter` with `param: "describe"`.
+- A named offer whose only stems are `target` and `residual`, sent a request without `describe`, has no stem to make:
+  422 `unsupported_parameter` with `param: "stems"`, the answer a `speaker`-only offer gives a request without a pick.
+  With no model named, the engine chooses an offer that has one.
+
+**Spans.** `spans` says where in the mixture the described sound is heard, or is not: 1 to 32 of
+`{start_s, end_s, present}`, for an offer with `supports.spans`.
+- `start_s` and `end_s` are seconds from the mixture's start, `start_s` ≥ 0 and `end_s` > `start_s`. `present: true`
+  says the sound is heard throughout the span, `false` that it isn't heard in it. Time no span covers says nothing.
+- Spans don't overlap; one may start where another ends. Their order doesn't matter.
+- `spans` without `describe`, a span with `end_s` ≤ `start_s`, and two spans that overlap are each 400
+  `invalid_request` (`param: "spans"`). `spans` to an offer without the key is 422 `unsupported_parameter`.
+- A span that ends more than a frame after the mixture does is refused with `out_of_limits` (`param: "spans"`), at
+  submission or as the job's error, as a mixture that is too long is. A span is never clipped to fit.
+- Spans guide the model. They don't cut the outputs: `target` and `residual` are still the mixture's length.
+
 **Outputs.** One audio output per stem made, named by the stem, in the order the request listed them (else the
 offer's). Each reports `sample_rate`, `channels` and `duration_s`, and is the mixture's length to within a frame at
-its own rate. `effective.stems` lists the stems made, `effective.seed` the seed (§1.8), and `effective.speaker` the
-pick. The descriptor lists as outputs every stem its offers produce; each is 0–1.
+its own rate. `effective.stems` lists the stems made, `effective.seed` the seed (§1.8), `effective.speaker` the
+pick, `effective.describe` the description as the model was given it, and `effective.spans` the spans that ran, in
+time order. The descriptor lists as outputs every stem its offers produce; each is 0–1.
 
 **How stems are made.** Every offer states `supports.stem_method`:
 - **`masked`:** each stem is the mixture filtered, sample-aligned with it. Stems may be mixed with the mixture or
   subtracted from it, and an offer may make one stem as the mixture minus another (an instrumental).
 - **`regenerated`:** a generative model makes each stem again at the mixture's length. It isn't phase-aligned with the
   mixture: a client MUST NOT derive anything from it by subtraction, and an engine MUST NOT offer a stem it could only
-  make that way. AuK is `regenerated`.
+  make that way. AuK is `regenerated`, and so is SAM-Audio: its `target` plus its `residual` is not the mixture. A
+  `masked` offer may make `residual` as the mixture minus `target`.
 
 **Progress.** A separator that makes each stem in its own pass reports `step` and `steps` across the stems it makes.
 
@@ -364,13 +401,13 @@ pick. The descriptor lists as outputs every stem its offers produce; each is 0�
 
 ### 4.1 `supports` keys
 
-Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed` and `voices`; the
+Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed`, `voices` and `watermark`; the
 Audio profile defines these. [`supports.schema.json`](../../schemas/v0/profiles/audio/supports.schema.json) types
 them per operation.
 
 | Key | Operations | Type | Absent | Class |
 |---|---|---|---|---|
-| `languages` | all | `[BCP 47]` | any | Gate: `language` (a tag matches its primary language: `en` admits `en-GB`). In `generate`, a Fact: what a prompt may be written in |
+| `languages` | all | `[BCP 47]` | any | Gate: `language` (a tag matches its primary language: `en` admits `en-GB`). In `generate`, a Fact: what a prompt may be written in; in `separate`, what `describe` may be |
 | `sample_rate` | all | integer | — | Fact. REQUIRED on an offer with `stream` |
 | `channels` | all | integer | 1 | Fact |
 | `default_voice` | `speak` | boolean | `false` | Gate: a request with neither `voice` nor `voice_ref` |
@@ -397,11 +434,14 @@ them per operation.
 | `stems` | `separate` | `[stem]` | REQUIRED | Gate: each stem asked (§3.6) |
 | `speaker_selection` | `separate` | `[ordinal · saying]` | `[]` | Gate: the `speaker` pick's kind |
 | `stem_method` | `separate` | `masked` · `regenerated` | REQUIRED | Fact: whether stems may be subtracted from the mixture (§3.6) |
+| `described_target` | `separate` | boolean | `false` | Gate: `describe`. `true` exactly when `stems` lists `target`; `residual` is listed only with `target` |
+| `spans` | `separate` | boolean | `false` | Gate: `spans`. `true` only with `described_target` |
 
 A request implies the offers whose gates admit it (Base §6.4 rule 2); a named offer that doesn't is 422
 `unsupported_parameter`, never a substitute (rule 3). Warn keys never narrow the choice. MESEngineKit applies every
 key in this table for the engine, and every limit it can read from the request itself (text lengths, the durations asked
-for, a repaint span), and produces the Warn keys' warnings. Limits on the length of input media are the engine's to check.
+for, a repaint span), and produces the Warn keys' warnings. Limits on the length of input media are the engine's to check,
+and so is a `separate` span against the mixture's length.
 
 ### 4.2 Limit fields
 
@@ -458,7 +498,7 @@ An engine conforms to Audio 0.1 for the operations it offers when:
 | Test | Checks |
 |---|---|
 | AUDIO-001 | Descriptors match the operations table: required inputs and outputs of the right kinds, only vocabulary parameters, the required `edit`; `separate`'s outputs are registered stems, at least one |
-| AUDIO-002 | Offers' `supports` keys have the profile's types and their limits are the profile's fields; a streaming offer states its `sample_rate`; a `separate` offer states `stems` and `stem_method` |
+| AUDIO-002 | Offers' `supports` keys have the profile's types and their limits are the profile's fields; a streaming offer states its `sample_rate`; a `separate` offer states `stems` and `stem_method`, `described_target` exactly with the `target` stem, `residual` only with `target`, and `spans` only with `described_target` |
 | AUDIO-003 | Audio outputs report `sample_rate`, `channels` and `duration_s`, and a WAV file agrees to within a frame |
 | AUDIO-004 | Every MUST input format is accepted: WAV at 16 and 24 bits and in float, and FLAC |
 | AUDIO-005 | `speak`: `voice`, `voice_ref` and neither each route to an offer that supports them; provenance names a preset voice; `voice` with `voice_ref` is 400 |
@@ -471,10 +511,13 @@ An engine conforms to Audio 0.1 for the operations it offers when:
 | AUDIO-012 | `compose` `extend`: `before_s` + source + `after_s`, to the frame |
 | AUDIO-013 | `compose`: a `score`, `reference` or `edit` to an offer without the key is 422 `unsupported_parameter` |
 | AUDIO-014 | `output.sample_rate` is honoured; an un-offered media type is 422 `unsupported_parameter`; a seed of 2³² is 422 `out_of_limits` |
-| AUDIO-015 | `separate`: each stem an offer lists runs and returns one output named by the stem, with its facts and the mixture's length to within a frame; `effective.stems` lists them |
+| AUDIO-015 | `separate`: each labelled stem an offer lists (`target` and `residual` are AUDIO-019's) runs and returns one output named by the stem, with its facts and the mixture's length to within a frame; `effective.stems` lists them |
 | AUDIO-016 | `separate`: a stem the named offer doesn't list is 422 `unsupported_parameter`; the `speaker` stem without a pick is 400; a pick kind the offer doesn't list is 422 |
 | AUDIO-017 | `separate`: a mixture longer than the offer's `max_duration_s` is refused `out_of_limits`, at submission (422) or as the job's error |
 | AUDIO-018 | `edit_speech`: an `add_cue` placement the offer doesn't list, a `remove_cue` without a cue to an offer with `remove_all_cues: false`, and `target_duration_s` to an offer without `target_duration` are each 422; with `target_duration`, the take is that long or warns `duration_missed` |
+| AUDIO-019 | `separate` by description: an offer with `described_target` runs with `describe` and returns the outputs `target` and `residual` (those it lists), each with its facts and the mixture's length to within a frame; `effective.stems` and `effective.describe` report them; `stems: [target]` returns the one |
+| AUDIO-020 | `separate`: `describe` to a named offer without `described_target` is 422 `unsupported_parameter`; `target` without `describe`, and `describe` beside a labelled stem, are 400; an offer that only separates by description, named without `describe`, is refused |
+| AUDIO-021 | `separate` spans: an offer with `spans` runs with them and `effective.spans` echoes them; `spans` to an offer without the key is 422; `spans` without `describe`, a span with `end_s` ≤ `start_s` and overlapping spans are 400; a span past the mixture's end is refused `out_of_limits`, at submission (422) or as the job's error |
 
 Base's tests of what each offer supports (BASE-014 to BASE-018), assets (BASE-032 to BASE-035) and streamed output
 (BASE-053 to BASE-057) run on the Audio operations an engine offers.

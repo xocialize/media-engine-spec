@@ -294,6 +294,10 @@ package actor JobRegistry {
         if descriptor.operation == "audio.separate" {
             // Audio §3.6: the plan says which stems the job makes, when the request left it to the offer.
             effective[AudioProfile.Param.stems] = .array(AudioProfileRules.stems(request.params ?? [:], model: model).map { .string($0) })
+            // RFC 0008: the spans in time order, as they will run.
+            if let spans = SeparationSpan.list(effective[AudioProfile.Param.spans]) {
+                effective[AudioProfile.Param.spans] = .array(spans.map(\.json))
+            }
         }
         let job = Job(id: id, operation: request.operation, clientRef: request.clientRef, state: .received,
                       warnings: [], retention: .init(recordExpiresAt: now.addingTimeInterval(TimeInterval(config.jobRecordTTLSeconds))),

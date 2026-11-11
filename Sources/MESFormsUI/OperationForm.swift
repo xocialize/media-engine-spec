@@ -111,7 +111,7 @@ public struct OperationFormContent<MediaSlot: View>: View {
     }
 
     func rows(_ fields: [FormField], issues: [String: String]) -> some View {
-        ForEach(fields.map(form.narrowed)) { field in
+        ForEach(fields.filter(form.shows).map(form.narrowed)) { field in
             FieldRow(field: field, value: Binding(get: { form.value(at: [field.name]) }, set: { form.setValue($0, at: [field.name]) }),
                      issue: issues[field.name])
         }
@@ -248,6 +248,7 @@ struct ModelRow: View {
         if let s = offer.speedClass { parts.append(s.rawValue) }
         parts.append(offer.qualityTiers.map(\.rawValue).joined(separator: "/"))
         if let r = offer.remoteProvider { parts.append("remote: \(r.name)\(r.billed ? ", billed" : "")") }
+        if let mark = offer.watermark { parts.append("watermarked (\(mark))") }      // Base §6.4, RFC 0008
         return parts.joined(separator: " · ")
     }
 }

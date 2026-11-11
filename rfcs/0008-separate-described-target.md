@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | Draft (2026-11-11), awaiting the operator's acceptance |
+| **Status** | Accepted (2026-11-11) |
 | **Affects** | Audio 0.1 (§2, §3, §3.6, §4.1, §6); Base 0.1 (§6.4, §10.2 rule 3, §18); `schemas/v0/profiles/audio/` (`operations.json`, `vocabulary.schema.json`, `supports.schema.json`, `job-request.schema.json`); `schemas/v0/base/descriptor.schema.json` |
 | **Author** | xocialize |
 | **Context** | AB-A-0269 (mlx-audio). SAM-Audio base in Swift-MLX: `xocialize/mlx-sam-audio-swift` v0.1.0, weights `mlx-community/sam-audio-base-swift-fp16` (AB-R-0827); operator approval AB-D-0221, licence AB-D-0220, watermark AB-D-0222. The engine contract's side is AB-A-0268 (mlx-engine), open |
-| **Decision** | mlx-apps, as the spec's owner, on AB-A-0269. Not landed: MESKit v0.13.0 follows acceptance |
+| **Decision** | mlx-apps, as the spec's owner, on AB-A-0269. Landed in MESKit v0.13.0 (see [Decision](#decision)) |
 
 ## Problem
 
@@ -171,7 +171,7 @@ It goes in Base because image and video models mark their outputs too, and one k
 | `audio/vocabulary.schema.json` | `stem` gains `target`, `residual`; `stems` `maxItems` 10; new `describe`, `spans` |
 | `audio/operations.json` | `audio.separate`: outputs `target`, `residual` (`stem: true`); vocabulary `describe`, `spans` |
 | `audio/job-request.schema.json` | `audio.separate` params: `describe`, `spans`; `spans` requires `describe` |
-| `audio/supports.schema.json` | `separate_supports`: `described_target`, `spans`; `described_target: true` requires `target` in `stems` and the reverse; `spans: true` requires `described_target: true` |
+| `audio/supports.schema.json` | `separate_supports`: `described_target`, `spans`; `spans: true` requires `described_target: true`. That `described_target` goes with `target`, and `residual` with `target`, is checked by `tools/validate.py` and AUDIO-002: the schemas' keyword subset has no `contains` |
 | `base/descriptor.schema.json` | `supports.watermark`: a string, `^[a-z0-9][a-z0-9._-]*$`, at most 64 characters |
 
 ### MESKit
@@ -188,7 +188,8 @@ It goes in Base because image and video models mark their outputs too, and one k
   spans editor (start, end, heard or not heard) shown only where an offer has `spans` and a description is given; the
   stems picker offers `target` and `residual` only beside a description. The form says before sending what an engine
   would refuse. An offer's `watermark` shows on its model row.
-- **mes-mock-engine:** a `mock-separator-described` offer shaped like the one above.
+- **mes-mock-engine:** a `mock-separator-described` offer shaped like the one above. Its target is silent where a span
+  says the sound isn't, so a client can hear its spans take effect.
 
 ## Compatibility
 
@@ -264,3 +265,16 @@ doesn't. If the contract ships without spans, the offer leaves `supports.spans` 
 - **The watermark in Audio's `supports` only.** Image and video offers would each need their own.
 - **Reporting the watermark on each output.** The offer's fact covers every output it makes; a per-output field can
   follow if an offer ever marks some outputs and not others.
+
+## Decision
+
+Accepted on 2026-11-11 by the operator, as proposed. Landed in MESKit v0.13.0:
+- `AudioProfile.stems` with `target` and `residual`, `describedStems`, the `describe` and `spans` parameters and
+  supports keys, `SeparationSpan`, `JobResult.describedSound` and `separationSpans`, `ModelOffer.watermark` (MESCore).
+- `AudioProfileRules` (MESEngineCore): the 400s, the `described_target` and `spans` gates, the default stems; the plan
+  carries the spans in time order; `RunContext.describe`, `.spans` and `checkSpans(mixtureSeconds:sampleRate:)`.
+- `mes-mock-engine` offers `mock-separator-described`; MESFormsUI shows the description and the spans editor only for
+  offers that take them, and an offer's watermark on its model row.
+- AUDIO-019 to AUDIO-021, and AUDIO-002 for the keys' consistency.
+
+Still open on the engine contract's side: AB-A-0268 (mlx-engine). Nothing here waits on it.

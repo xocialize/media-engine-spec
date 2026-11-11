@@ -723,6 +723,28 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   - 163 tests pass (160 before); `tools/test_validator.py` 92/92. The other part of AB-A-0260, RGB PNGs for opaque
     pictures, is pixel-agency-normalizer v0.3.1.
 
+- **`v0.13.0`** (2026-11-11; AB-A-0269, from mlx-audio's SAM-Audio port, for its Gaea plugin): **`audio.separate` by
+  description, and an offer's watermark** ([RFC 0008](../rfcs/0008-separate-described-target.md)).
+  - **Audio §3.6:** `describe` names the sound to separate in a few words; the stems `target` (that sound) and
+    `residual` (the mixture without it) join the registry; `spans` (`{start_s, end_s, present}`, 1 to 32, not
+    overlapping) say where the sound is heard or isn't. Gates `supports.described_target` and `supports.spans`.
+    `describe` beside a labelled stem or a speaker pick, `target` or `residual` without `describe`, `spans` without
+    `describe`, and a backwards or overlapping span are 400; a span past the mixture's end is `out_of_limits`, at
+    submission or as the job's error, never clipped. `effective.describe` and `effective.spans` report what ran.
+  - **Base §6.4:** `supports.watermark`, a Fact naming the scheme whose watermark every output of an offer carries
+    (`audioseal`). Not a licence notice.
+  - **MESKit:** `SeparationSpan`; `AudioProfileRules` applies the 400s, both gates and the default stems;
+    `RunContext.describe`, `.spans` and `checkSpans(mixtureSeconds:sampleRate:)` (the engine calls it once it has read
+    the mixture); `JobResult.describedSound` and `separationSpans`; `ModelOffer.watermark`; the mock's
+    `mock-separator-described`; MESFormsUI's description field (with the few-words hint), spans editor and watermark
+    on the model row, each only for offers that state them.
+  - **Source changes for consumers:** `FieldWidget` gains `.spans` (an exhaustive `switch` over it needs the case);
+    `AudioProfile.stems` has two more labels.
+  - AUDIO-019 to AUDIO-021; AUDIO-002 checks the new keys against `stems`; AUDIO-015 runs labelled stems only.
+  - 172 tests pass (163 before); `tools/validate.py` OK with 56 examples; `tools/test_validator.py` 101/101; the mock
+    conforms with 104 passed, 6 skipped. The engine contract's side is AB-A-0268 (mlx-engine), open; the MES shape
+    doesn't wait on it.
+
 ## Next: Mesh after 0.1
 
 - **Gaea's plugins** (AB-T-0467): TRELLIS.2 as a `mesh.generate` offer (Y-up export, placement, the attribution, the
@@ -749,5 +771,5 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
   and sample rates per surface, a canonical seed, streaming in the best-tier packages, and a per-asset voice handle.
 - **Later operations:** `audio.speak_dialog`, `audio.enhance` (Audio §7). Separation shipped in `v0.10.0`; the
   fleet's HTDemucs and Mel-Band-RoFormer ports can follow AuK as `separate` offers (`masked`, `vocals` and
-  `instrumental`). The Video profile shares
+  `instrumental`). Separation by description shipped in `v0.13.0`; SAM-Audio's Gaea plugin follows (AB-T-0470). The Video profile shares
   time with Audio (evaluation §7): `duration_s`, `sample_rate`, `media_s` and streamed chunks are in Base now.

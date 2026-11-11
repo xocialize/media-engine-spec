@@ -171,8 +171,29 @@ public enum AudioProfileRules {
                 throw MESError(.invalidRequest, "An add_cue edit places the cue with 'at' or with 'text', not both.", param: P.edit)
             }
         case "audio.separate":
-            // §3.6: each stem once; the speaker stem and its pick go together.
+            // §3.6: each stem once; the speaker stem and its pick go together; target and residual go with describe,
+            // and describe with nothing else; spans go with describe, each ending after it starts, none overlapping.
             let stems = params[P.stems]?.arrayValue?.compactMap(\.stringValue)
+            let described = AudioProfile.describedStems
+            if params[P.describe] != nil {
+                if let other = stems?.first(where: { !described.contains($0) }) {
+                    throw MESError(.invalidRequest, "A description separates the target and the residual; '\(other)' is a labelled stem. Ask for one or the other.",
+                                   param: P.stems)
+                }
+                if params[P.speaker] != nil {
+                    throw MESError(.invalidRequest, "A speaker pick is for the speaker stem, not for a described sound.", param: P.speaker)
+                }
+            } else {
+                if let stem = stems?.first(where: described.contains) {
+                    throw MESError(.invalidRequest, "The \(stem) stem needs 'describe': say what sound to separate.", param: P.describe)
+                }
+                if params[P.spans] != nil {
+                    throw MESError(.invalidRequest, "Spans say where a described sound is; give 'describe' too.", param: P.spans)
+                }
+            }
+            if let spans = SeparationSpan.list(params[P.spans]), let problem = SeparationSpan.problem(spans) {
+                throw MESError(.invalidRequest, problem, param: P.spans)
+            }
             if let stems, let twice = stems.first(where: { s in stems.filter { $0 == s }.count > 1 }) {
                 throw MESError(.invalidRequest, "The stem '\(twice)' is listed twice.", param: P.stems)
             }
@@ -318,16 +339,26 @@ public enum AudioProfileRules {
                 })
             }
         case "audio.separate":
-            // §3.6: each stem asked for, or (asked for none) the stems the offer makes; then the pick's kind.
+            // §3.6: a description and its spans first (RFC 0008), so their refusals name them; then each stem asked
+            // for, or (asked for none) the stems the offer makes; then the pick's kind.
+            if params[P.describe] != nil {
+                out.append(.flag(K.describedTarget, param: P.describe, what: "a described sound (describe)"))
+            }
+            if params[P.spans] != nil {
+                out.append(.flag(K.spans, param: P.spans, what: "spans"))
+            }
             if let stems = params[P.stems]?.arrayValue?.compactMap(\.stringValue) {
                 for stem in stems {
                     out.append(.listed(K.stems, stem, absent: [], param: P.stems, what: "the stem '\(stem)'"))
                 }
             } else if params[P.speaker] != nil {
                 out.append(.listed(K.stems, "speaker", absent: [], param: P.stems, what: "the stem 'speaker'"))
+            } else if params[P.describe] != nil {
+                out.append(.listed(K.stems, "target", absent: [], param: P.stems, what: "the stem 'target'"))
             } else {
-                out.append(OfferRequirement(param: P.stems, what: "a stem that needs no speaker pick") { offer in
-                    (offer.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? []).contains { $0 != "speaker" }
+                out.append(OfferRequirement(param: P.stems, what: "a stem that needs neither a speaker pick nor a description (give 'describe' to an offer that separates a described sound)") { offer in
+                    (offer.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? [])
+                        .contains { $0 != "speaker" && !AudioProfile.describedStems.contains($0) }
                 })
             }
             if let pick = params[P.speaker]?.objectValue, let kind = pick.keys.first(where: AudioProfile.speakerSelections.contains) {
@@ -411,11 +442,14 @@ public enum AudioProfileRules {
     }
 
     /// The stems a `separate` job makes (§3.6): the request's `stems`, in its order; or, asked for none, `[speaker]`
-    /// with a speaker pick and otherwise every stem the offer lists except `speaker`.
+    /// with a speaker pick, those of `target` and `residual` the offer lists with a description (RFC 0008), and
+    /// otherwise every stem the offer lists except `speaker`, `target` and `residual`.
     public static func stems(_ params: [String: JSONValue], model: ModelOffer) -> [String] {
         if let asked = params[P.stems]?.arrayValue?.compactMap(\.stringValue) { return asked }
         if params[P.speaker] != nil { return ["speaker"] }
-        return (model.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? []).filter { $0 != "speaker" }
+        let listed = model.supports(K.stems)?.arrayValue?.compactMap(\.stringValue) ?? []
+        if params[P.describe] != nil { return AudioProfile.describedStems.filter(listed.contains) }
+        return listed.filter { $0 != "speaker" && !AudioProfile.describedStems.contains($0) }
     }
 
     /// `speak` text without the cues the model can't perform (§2.2): each removed cue warns `cue_unsupported` once.
@@ -444,6 +478,24 @@ public enum AudioProfileRules {
 extension RunContext {
     /// Audio `separate` (§3.6): the stems to make, in the order to return them, already checked against the offer.
     public var stems: [String] { AudioProfileRules.stems(params, model: model) }
+
+    /// Audio `separate` by description (§3.6, RFC 0008): the sound to separate as the request wrote it, without the
+    /// spaces around it. Case doesn't count: fold it for a model that needs lowercase, and report what the model was
+    /// given in `effective.describe`.
+    public var describe: String? { params[AudioProfile.Param.describe]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Audio `separate` (§3.6, RFC 0008): where the described sound is heard or isn't, in time order, already checked
+    /// against each other. Check them against the mixture with `checkSpans` once you have read it.
+    public var spans: [SeparationSpan] { SeparationSpan.list(params[AudioProfile.Param.spans]) ?? [] }
+
+    /// Refuses spans that end more than a frame after the mixture does (§3.6): `out_of_limits`, never clipped. The
+    /// kit can't read input media, so the engine calls this when it knows the mixture's length.
+    public func checkSpans(mixtureSeconds: Double, sampleRate: Double) throws {
+        if let span = SeparationSpan.firstPastEnd(spans, mixtureSeconds: mixtureSeconds, sampleRate: sampleRate) {
+            throw MESError(.outOfLimits, String(format: "A span ends at %g s; the mixture is %.2f s long.", span.end, mixtureSeconds),
+                           param: AudioProfile.Param.spans)
+        }
+    }
 }
 
 /// The Video profile's rules (spec/profiles/video.md): request structure (400s), gates and limits per offer (§4), and

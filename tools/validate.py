@@ -74,6 +74,8 @@ MANIFEST = {
     "operations-audio-separate.json": "base/operations-list.schema.json",
     "job-request-separate.json": "profiles/audio/job-request.schema.json",
     "job-holding-separate.json": "base/job.schema.json",
+    "job-request-separate-described.json": "profiles/audio/job-request.schema.json",
+    "job-holding-separate-described.json": "base/job.schema.json",
     "operations-mesh.json": "base/operations-list.schema.json",
     "job-request-mesh-generate.json": "profiles/mesh/job-request.schema.json",
     "job-request-mesh-rig.json": "profiles/mesh/job-request.schema.json",
@@ -283,6 +285,8 @@ def profile_checks():
                 for m in d["models"]:
                     errs += [f"{ex.name} {m['id']} supports: {e}" for e in
                              validate(m.get("supports", {}), supports["$defs"][f"{short}_supports"], supports_file)]
+                    if d["operation"] == "audio.separate":
+                        errs += [f"{ex.name} {m['id']}: {e}" for e in described_target_checks(m.get("supports", {}))]
                     lim = m.get("limits", {}) if d["profile"] in full_limits else {
                         k: v for k, v in m.get("limits", {}).items()
                         if k not in ("max_width", "max_height", "max_megapixels", "max_duration_s", "max_inputs")}
@@ -344,6 +348,18 @@ def mesh_descriptor_checks(d):
             enum = props.get(param, {}).get("enum")
             if key in sup and enum is not None and not set(sup[key]) <= set(enum):
                 errs.append(f"{m['id']}: supports.{key} lists values the descriptor's '{param}' doesn't take")
+    return errs
+
+
+def described_target_checks(sup):
+    """Audio §4.1 (RFC 0008): described_target goes with the target stem, residual with target, spans with described_target."""
+    errs, stems = [], sup.get("stems", [])
+    if ("target" in stems) != (sup.get("described_target") is True):
+        errs.append("supports.described_target must be true exactly when stems lists target")
+    if "residual" in stems and "target" not in stems:
+        errs.append("supports.stems lists residual without target")
+    if sup.get("spans") is True and sup.get("described_target") is not True:
+        errs.append("supports.spans needs described_target")
     return errs
 
 

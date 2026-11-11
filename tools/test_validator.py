@@ -162,6 +162,25 @@ CASES = [
      "an edit fitted to zero seconds"),
     ("job-request-edit-speech-fit.json", "profiles/audio/job-request.schema.json",
      setp(["params", "edit"], {"kind": "add_cue", "cue": "humming"}), "a cue outside the registry (hum is the label)"),
+    # RFC 0008 (v0.13.0): a described target, spans, and an offer's watermark
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json", setp(["params", "describe"], "   "),
+     "a description of spaces"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json", setp(["params", "describe"], ""),
+     "an empty description"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json", delp(["params", "describe"]),
+     "spans without a description"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json", setp(["params", "spans"], []),
+     "an empty spans list"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json",
+     setp(["params", "spans"], [{"start_s": 1, "end_s": 2}]), "a span that doesn't say whether the sound is present"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json",
+     setp(["params", "spans"], [{"start_s": -1, "end_s": 2, "present": True}]), "a span that starts before the mixture"),
+    ("job-request-separate-described.json", "profiles/audio/job-request.schema.json",
+     setp(["params", "spans", 0, "label"], "bark"), "a span with a field the profile doesn't define"),
+    ("operations-audio-separate.json", "base/operations-list.schema.json",
+     setp(["operations", 0, "models", 3, "supports", "watermark"], "AudioSeal v2"), "a watermark that isn't a lowercase scheme id"),
+    ("operations-audio-separate.json", "base/operations-list.schema.json",
+     setp(["operations", 0, "models", 3, "supports", "watermark"], True), "a watermark that isn't a string"),
 ]
 
 

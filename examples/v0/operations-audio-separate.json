@@ -28,19 +28,21 @@
           "stems": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 8,
+            "maxItems": 10,
             "items": {
               "enum": [
                 "speaker",
                 "singing",
                 "voices",
                 "vocals",
-                "instrumental"
+                "instrumental",
+                "target",
+                "residual"
               ]
             },
             "x-mes-ui": {
               "label": "Stems",
-              "help": "Absent: every stem the model makes (the speaker needs a pick)."
+              "help": "Absent: every stem the model makes (the speaker needs a pick; target and residual need a description)."
             }
           },
           "speaker": {
@@ -79,6 +81,49 @@
             "x-mes-ui": {
               "label": "Speaker",
               "help": "The n-th to start talking, or the one who says these words."
+            }
+          },
+          "describe": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "x-mes-ui": {
+              "label": "Sound to separate",
+              "widget": "text",
+              "help": "Name the sound in a few words: speech, dog barking. Sentences don't work."
+            }
+          },
+          "spans": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "required": [
+                "start_s",
+                "end_s",
+                "present"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "end_s": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "present": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "x-mes-ui": {
+              "label": "Where it is heard",
+              "advanced": true,
+              "help": "Stretches of the recording where the described sound is heard, or is not."
             }
           },
           "seed": {
@@ -181,6 +226,26 @@
         },
         {
           "name": "instrumental",
+          "kind": "audio",
+          "media_types": [
+            "audio/wav",
+            "audio/flac"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "name": "target",
+          "kind": "audio",
+          "media_types": [
+            "audio/wav",
+            "audio/flac"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "name": "residual",
           "kind": "audio",
           "media_types": [
             "audio/wav",
@@ -304,6 +369,42 @@
           },
           "limits": {
             "max_duration_s": 30
+          }
+        },
+        {
+          "id": "sam-audio-base",
+          "title": "SAM-Audio Base",
+          "license": {
+            "spdx": "LicenseRef-SAM",
+            "commercial_use": true,
+            "terms_url": "https://github.com/facebookresearch/sam-audio/blob/main/LICENSE",
+            "accepted_required": true,
+            "user_accept_required": true,
+            "notice": "SAM License: the use restrictions in its terms apply to you."
+          },
+          "memory_class": "medium",
+          "speed_class": "standard",
+          "quality_tiers": [
+            "standard"
+          ],
+          "notes": "Name the sound in a few lowercase words: 'speech', 'dog barking'. Sentences don't work. It separates general sounds, speech from music, drums and bass; not guitar-like instruments. Both outputs are made again, so neither can be subtracted from the mixture.",
+          "supports": {
+            "stems": [
+              "target",
+              "residual"
+            ],
+            "described_target": true,
+            "spans": true,
+            "stem_method": "regenerated",
+            "languages": [
+              "en"
+            ],
+            "sample_rate": 48000,
+            "channels": 1,
+            "watermark": "audioseal"
+          },
+          "limits": {
+            "max_duration_s": 10
           }
         }
       ],

@@ -212,15 +212,39 @@
       "description": "design_voice: whether the engine may rewrite the description before the model sees it (as Image §1.9)."
     },
     "stem": {
-      "enum": ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"],
-      "description": "A source of a mixture (§3.6). A stem is registered when one model produces it."
+      "enum": ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other", "target", "residual"],
+      "description": "A source of a mixture (§3.6). A stem is registered when one model produces it. target is the sound describe names and residual the mixture without it (RFC 0008)."
     },
     "stems": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 8,
+      "maxItems": 10,
       "items": { "$ref": "#/$defs/stem" },
-      "description": "separate: the stems to make, each once (a stem listed twice is 400). Absent: every stem the chosen offer lists, except speaker, which needs a pick; with a speaker pick and no stems, just [speaker]."
+      "description": "separate: the stems to make, each once (a stem listed twice is 400). Absent: every stem the chosen offer lists, except speaker, which needs a pick, and target and residual, which need describe; with a speaker pick and no stems, just [speaker]; with describe and no stems, those of target and residual the offer lists."
+    },
+    "describe": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "\\S",
+      "description": "separate: the sound to separate, in a few words: a noun or verb phrase (speech, dog barking), not a sentence. Case and the spaces around it don't count. The target stem holds it and the residual stem the mixture without it (§3.6, RFC 0008). Gate: supports.described_target."
+    },
+    "span": {
+      "type": "object",
+      "required": ["start_s", "end_s", "present"],
+      "additionalProperties": false,
+      "properties": {
+        "start_s": { "type": "number", "minimum": 0, "description": "Seconds from the mixture's start." },
+        "end_s": { "type": "number", "exclusiveMinimum": 0, "description": "Seconds from the mixture's start, after start_s (end_s at or before start_s is 400)." },
+        "present": { "type": "boolean", "description": "true: the described sound is heard throughout the span. false: it isn't heard in it." }
+      }
+    },
+    "spans": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/span" },
+      "description": "separate: where in the mixture the described sound is heard, or is not (§3.6, RFC 0008). Only with describe; spans don't overlap (400). A span that ends after the mixture does is refused out_of_limits. Gate: supports.spans."
     },
     "speaker": {
       "description": "separate: the one speaker the speaker stem keeps: ordinal, the n-th to start talking (from 1), or saying, the one who says these words.",

@@ -1,0 +1,129 @@
+{
+  "id": "job_01JC03",
+  "operation": "audio.separate",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "sam-audio-base",
+      "title": "SAM-Audio Base",
+      "license": {
+        "spdx": "LicenseRef-SAM",
+        "commercial_use": true,
+        "terms_url": "https://github.com/facebookresearch/sam-audio/blob/main/LICENSE",
+        "accepted_required": true,
+        "user_accept_required": true,
+        "notice": "SAM License: the use restrictions in its terms apply to you."
+      }
+    },
+    "effective": {
+      "stems": [
+        "target",
+        "residual"
+      ],
+      "describe": "dog barking",
+      "spans": [
+        {
+          "start_s": 1.2,
+          "end_s": 2.0,
+          "present": true
+        },
+        {
+          "start_s": 6.0,
+          "end_s": 9.5,
+          "present": false
+        }
+      ],
+      "quality": "standard"
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "fraction": 1
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "target",
+        "kind": "audio",
+        "media_type": "audio/wav",
+        "bytes": 960044,
+        "sha256": "23a8310b76f06a84e46ef8108c860ca85d748198aac130c174c2c5049a6cf31c",
+        "href": "/mes/v0/jobs/job_01JC03/outputs/0",
+        "duration_s": 10.0,
+        "sample_rate": 48000,
+        "channels": 1,
+        "bit_depth": 16
+      },
+      {
+        "index": 1,
+        "name": "residual",
+        "kind": "audio",
+        "media_type": "audio/wav",
+        "bytes": 960044,
+        "sha256": "f17ff4571bc7afd6a190565b3a3b377d73eeb988fa6b39a8e479f53cc1c875b8",
+        "href": "/mes/v0/jobs/job_01JC03/outputs/1",
+        "duration_s": 10.0,
+        "sample_rate": 48000,
+        "channels": 1,
+        "bit_depth": 16
+      }
+    ],
+    "effective": {
+      "stems": [
+        "target",
+        "residual"
+      ],
+      "describe": "dog barking",
+      "spans": [
+        {
+          "start_s": 1.2,
+          "end_s": 2.0,
+          "present": true
+        },
+        {
+          "start_s": 6.0,
+          "end_s": 9.5,
+          "present": false
+        }
+      ],
+      "seed": 2890114,
+      "quality": "standard"
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "0.9.0"
+      },
+      "operation": "audio.separate",
+      "profile_version": "0.1",
+      "model": {
+        "id": "sam-audio-base",
+        "title": "SAM-Audio Base",
+        "license": {
+          "spdx": "LicenseRef-SAM",
+          "commercial_use": true,
+          "terms_url": "https://github.com/facebookresearch/sam-audio/blob/main/LICENSE",
+          "accepted_required": true,
+          "user_accept_required": true,
+          "notice": "SAM License: the use restrictions in its terms apply to you."
+        }
+      },
+      "seed": 2890114,
+      "timings": {
+        "received_at": "2026-11-11T21:00:00Z",
+        "run_ms": 3800
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-11-11T22:00:05Z",
+    "record_expires_at": "2026-11-12T21:00:05Z"
+  },
+  "created_at": "2026-11-11T21:00:00Z",
+  "updated_at": "2026-11-11T21:00:05Z"
+}

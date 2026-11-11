@@ -183,7 +183,7 @@
       "type": "object",
       "required": ["stems", "stem_method"],
       "propertyNames": { "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$" },
-      "description": "supports on an audio.separate offer (§3.6, §4). stems and stem_method are REQUIRED. Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "description": "supports on an audio.separate offer (§3.6, §4). stems and stem_method are REQUIRED; described_target and spans gate describe and spans (RFC 0008). Unknown x- keys are allowed; clients ignore keys they don't know.",
       "properties": {
         "stream": { "type": "boolean" },
         "seed": { "type": "boolean" },
@@ -201,9 +201,18 @@
           "items": { "$ref": "vocabulary.schema.json#/$defs/stem" }
         },
         "speaker_selection": { "type": "array", "items": { "enum": ["ordinal", "saying"] } },
-        "stem_method": { "enum": ["masked", "regenerated"] }
+        "stem_method": { "enum": ["masked", "regenerated"] },
+        "described_target": { "type": "boolean", "description": "Gate: describe (RFC 0008). true exactly when stems lists target." },
+        "spans": { "type": "boolean", "description": "Gate: spans (RFC 0008). true only with described_target." }
       },
-      "additionalProperties": { "description": "an x-<vendor>.<name> key" }
+      "additionalProperties": { "description": "an x-<vendor>.<name> key" },
+      "allOf": [
+        {
+          "description": "spans: true only with described_target: true. (described_target goes with the target stem, and residual with target: Audio §4.1, checked by tools/validate.py and AUDIO-002.)",
+          "if": { "properties": { "spans": { "const": true } }, "required": ["spans"] },
+          "then": { "required": ["described_target"], "properties": { "described_target": { "const": true } } }
+        }
+      ]
     },
     "separate_limits": {
       "type": "object",

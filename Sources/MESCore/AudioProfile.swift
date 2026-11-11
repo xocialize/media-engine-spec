@@ -15,6 +15,8 @@ public enum AudioProfile {
         public static let promptEnhance = "prompt_enhance"
         /// `separate` (§3.6, RFC 0006).
         public static let stems = "stems", speaker = "speaker"
+        /// `separate` by description (§3.6, RFC 0008): the sound to separate, and where it is heard or isn't.
+        public static let describe = "describe", spans = "spans"
     }
 
     /// The operations' input names (§3).
@@ -48,8 +50,11 @@ public enum AudioProfile {
     public static let editOptionalFields: [String: [String]] = ["add_cue": ["at", "text"], "remove_cue": ["cue"]]
     /// Where an `add_cue` edit puts its cue (§3.3): `edge` (`at`) or `inline` (`text`).
     public static let cuePlacements = ["edge", "inline"]
-    /// The registered stems (§3.6): AuK's speech stems, then the music separators'.
-    public static let stems = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"]
+    /// The registered stems (§3.6): AuK's speech stems, the music separators', then the described sound and the rest.
+    public static let stems = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other", "target", "residual"]
+    /// The stems a description makes (§3.6, RFC 0008): `target` is the sound `describe` names, `residual` the mixture
+    /// without it. They need `describe`, and `describe` takes no other stem.
+    public static let describedStems = ["target", "residual"]
     /// The ways `separate` picks one speaker (§3.6).
     public static let speakerSelections = ["ordinal", "saying"]
     /// How an offer makes its stems (§3.6): `masked` stems are sample-aligned with the mixture; `regenerated` ones are
@@ -98,6 +103,8 @@ public enum AudioProfile {
         public static let cuePlacement = "cue_placement", removeAllCues = "remove_all_cues"
         /// `separate` (RFC 0006): the stems an offer makes, the speaker picks it takes, and how it makes stems.
         public static let stems = "stems", speakerSelection = "speaker_selection", stemMethod = "stem_method"
+        /// `separate` (RFC 0008): the offer separates a sound the request describes, and takes spans for it.
+        public static let describedTarget = "described_target", spans = "spans"
     }
 
     /// Limit fields the profile defines (§4.2), on a descriptor or an offer.
@@ -186,6 +193,50 @@ public enum AudioProfile {
     }
 }
 
+/// A stretch of a mixture where a described sound is heard, or is not (Audio §3.6, RFC 0008): seconds from the
+/// mixture's start, `end` after `start`.
+public struct SeparationSpan: Codable, Sendable, Equatable {
+    public var start: Double
+    public var end: Double
+    /// `true`: the sound is heard throughout the span. `false`: it isn't heard in it.
+    public var present: Bool
+    public init(start: Double, end: Double, present: Bool) { self.start = start; self.end = end; self.present = present }
+    enum CodingKeys: String, CodingKey { case start = "start_s", end = "end_s", present }
+
+    /// The span as it travels in `spans`.
+    public var json: JSONValue { ["start_s": .number(start), "end_s": .number(end), "present": .bool(present)] }
+
+    /// The spans of a `spans` value, in time order; nil when it isn't a list of whole spans.
+    public static func list(_ value: JSONValue?) -> [SeparationSpan]? {
+        guard let items = value?.arrayValue else { return nil }
+        var out: [SeparationSpan] = []
+        for item in items {
+            guard let start = item["start_s"]?.numberValue, let end = item["end_s"]?.numberValue,
+                  let present = item["present"]?.boolValue else { return nil }
+            out.append(SeparationSpan(start: start, end: end, present: present))
+        }
+        return out.sorted { $0.start < $1.start }
+    }
+
+    /// What is wrong with a list of spans on its own (§3.6: each 400): a span that ends at or before its start, or
+    /// two that overlap. Spans may touch. Nil when the list is sound.
+    public static func problem(_ spans: [SeparationSpan]) -> String? {
+        if let bad = spans.first(where: { $0.end <= $0.start }) {
+            return "A span ends after it starts; one runs from \(bad.start) s to \(bad.end) s."
+        }
+        let ordered = spans.sorted { $0.start < $1.start }
+        for (a, b) in zip(ordered, ordered.dropFirst()) where b.start < a.end {
+            return "Spans don't overlap; \(a.start)–\(a.end) s and \(b.start)–\(b.end) s do."
+        }
+        return nil
+    }
+
+    /// The first span that ends more than a frame after a mixture `seconds` long (§3.6: refused `out_of_limits`).
+    public static func firstPastEnd(_ spans: [SeparationSpan], mixtureSeconds seconds: Double, sampleRate: Double) -> SeparationSpan? {
+        spans.first { $0.end > seconds + 1.0 / max(sampleRate, 1) + 1e-9 }
+    }
+}
+
 extension JobResult {
     /// The output named `name` (its first, for an output with several values).
     public func output(named name: String) -> Output? { outputs.first { $0.name == name } }
@@ -197,4 +248,9 @@ extension JobResult {
             ?? outputs.map(\.name).filter(AudioProfile.stems.contains)
         return order.compactMap { stem in output(named: stem).map { (stem, $0) } }
     }
+
+    /// Audio `separate` by description (RFC 0008): the description the model was given (`effective.describe`), and
+    /// the spans that ran (`effective.spans`).
+    public var describedSound: String? { effective[AudioProfile.Param.describe]?.stringValue }
+    public var separationSpans: [SeparationSpan]? { SeparationSpan.list(effective[AudioProfile.Param.spans]) }
 }

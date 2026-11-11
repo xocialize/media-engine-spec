@@ -331,6 +331,9 @@ public struct ModelOffer: Codable, Sendable, Equatable {
     public var usesSeed: Bool { supports?["seed"]?.boolValue ?? true }
     /// `supports.voices` (absent: 0).
     public var voiceCount: Int { supports?["voices"]?.intValue ?? 0 }
+    /// `supports.watermark` (§6.4, RFC 0008): the scheme whose imperceptible watermark every output of this model
+    /// carries, e.g. `audioseal`. Absent: none stated.
+    public var watermark: String? { supports?["watermark"]?.stringValue }
     public var ref: ModelRef { ModelRef(id: id, title: title, license: license) }
     /// The adapter offer with this id, if this model lists it.
     public func adapter(_ id: String) -> AdapterOffer? { adapters?.first { $0.id == id } }

@@ -158,7 +158,7 @@ against it.
 
 ### 4.1 `supports` keys
 
-Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed` and `voices`; the Mesh
+Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed`, `voices` and `watermark`; the Mesh
 profile defines these. [`supports.schema.json`](../../schemas/v0/profiles/mesh/supports.schema.json) types them per
 operation.
 

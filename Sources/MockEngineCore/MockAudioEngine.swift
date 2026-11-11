@@ -15,7 +15,9 @@ import MESEngineCore
 ///   length: AuK's shape, RFC 0006).
 /// - **separate**: `mock-separator` (the default; masked `vocals` and `instrumental`, the second the mixture minus the
 ///   first), `mock-separator-voices` (`named_only`; regenerated `speaker`, `singing` and `voices`, a speaker picked
-///   either way, ≤ 30 s) and `mock-separator-flash` (regenerated `speaker` and `singing`, picked only by words).
+///   either way, ≤ 30 s), `mock-separator-flash` (regenerated `speaker` and `singing`, picked only by words) and
+///   `mock-separator-described` (regenerated `target` and `residual` for a sound the request describes, with spans,
+///   ≤ 10 s: SAM-Audio's shape, RFC 0008).
 /// - **compose**: `mock-composer` (MIT-like, the default), `mock-composer-research` (`named_only`, non-commercial, with a
 ///   notice and a score) and `mock-composer-notice` (commercial, with a name to display).
 public struct MockAudioEngine: MediaEngine {
@@ -129,6 +131,11 @@ public struct MockAudioEngine: MediaEngine {
                       supports: ["stems": ["speaker", "singing"], "speaker_selection": ["saying"], "stem_method": "regenerated",
                                  "sample_rate": 24000, "channels": 1],
                       limits: .init(maxDurationSeconds: 30)),
+                offer("mock-separator-described", "Mock described-sound separator", tiers: [.draft, .standard],
+                      notes: "Name the sound in a few lowercase words: 'speech', 'dog barking'. Sentences don't work. Both outputs are made again. (The mock marks nothing; the watermark key is there for clients to show.)",
+                      supports: ["stems": ["target", "residual"], "described_target": true, "spans": true, "stem_method": "regenerated",
+                                 "languages": ["en"], "sample_rate": 48000, "channels": 1, "watermark": "mock-mark"],
+                      limits: .init(maxDurationSeconds: 10)),
             ]
         case "audio.generate":
             return [offer("mock-foley", "Mock foley", isDefault: true,
@@ -232,6 +239,15 @@ public struct MockAudioEngine: MediaEngine {
                                           "order": .number(Double(order))]
         if let w = widgets[name] { hints["widget"] = .string(w) }
         if ["seed", "output", "negative_prompt", "prompt_enhance"].contains(name) { hints["advanced"] = true }
+        if name == AudioProfile.Param.describe {           // RFC 0008: what a description is, said where it's typed
+            hints["label"] = "Sound to separate"
+            hints["widget"] = "text"
+            hints["help"] = "Name the sound in a few words: speech, dog barking. Sentences don't work."
+        }
+        if name == AudioProfile.Param.spans {
+            hints["label"] = "Where it is heard"
+            hints["help"] = "Stretches of the recording where the described sound is heard, or is not."
+        }
         return hints
     }
 
@@ -402,6 +418,10 @@ public struct MockAudioEngine: MediaEngine {
                                param: AudioProfile.Input.audio)
             }
             let stems = context.stems
+            // RFC 0008: a described sound. Case doesn't count; spans are checked against the mixture now that it's read.
+            let described = context.describe?.lowercased()
+            let spans = context.spans
+            try context.checkSpans(mixtureSeconds: seconds, sampleRate: Double(outRate))
             let masked = context.model.supports(AudioProfile.SupportsKey.stemMethod)?.stringValue != "regenerated"
             let vocals = Tones.smooth(mixture, window: 8)
             for (i, stem) in stems.enumerated() {
@@ -411,6 +431,17 @@ public struct MockAudioEngine: MediaEngine {
                 let mono: [Float]
                 if masked {
                     mono = stem == "instrumental" ? zip(mixture, vocals).map { $0 - $1 } : vocals
+                } else if let described {
+                    // The target is a tone the description picks, silent where a span says the sound isn't; the
+                    // residual another, silent where a span says it is. Each is made again, the mixture's length.
+                    let pitch = (stem == "target" ? 220.0 : 110.0) + Double(Tones.hash(described) % 200)
+                    var made = Tones.fit(Self.speech(String(repeating: "la ", count: max(1, Int(seconds * 3))), pitch: pitch, rate: outRate,
+                                                     seed: UInt64(seed) ^ Tones.hash(stem + described)), count: mixture.count)
+                    for span in spans where span.present == (stem == "residual") {
+                        let lo = min(made.count, Tones.frames(span.start, rate: outRate)), hi = min(made.count, Tones.frames(span.end, rate: outRate))
+                        for i in lo..<max(lo, hi) { made[i] = 0 }
+                    }
+                    mono = made
                 } else {
                     let pick = context.param(AudioProfile.Param.speaker).map { "\($0)" } ?? ""
                     let pitch = stem == "singing" ? 330.0 : 150.0 + Double(Tones.hash(pick) % 120)
@@ -421,6 +452,10 @@ public struct MockAudioEngine: MediaEngine {
             }
             effective[AudioProfile.Param.stems] = .array(stems.map { .string($0) })
             if let pick = context.param(AudioProfile.Param.speaker) { effective[AudioProfile.Param.speaker] = pick }
+            if let described {
+                effective[AudioProfile.Param.describe] = .string(described)
+                if !spans.isEmpty { effective[AudioProfile.Param.spans] = .array(spans.map(\.json)) }
+            }
 
         case "audio.generate":
             try await step("denoise", 4)

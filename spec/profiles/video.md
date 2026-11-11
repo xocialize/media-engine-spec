@@ -204,7 +204,7 @@ this distinction; it doesn't impose it.
 
 ### 4.1 `supports` keys
 
-Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed` and `voices`; the Video
+Model offers state what they support with `supports` (Base §6.4). Base defines `stream`, `seed`, `voices` and `watermark`; the Video
 profile defines these. [`supports.schema.json`](../../schemas/v0/profiles/video/supports.schema.json) types them per
 operation.
 

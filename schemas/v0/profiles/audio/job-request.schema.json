@@ -157,10 +157,14 @@
             "properties": {
               "stems": { "$ref": "vocabulary.schema.json#/$defs/stems" },
               "speaker": { "$ref": "vocabulary.schema.json#/$defs/speaker" },
+              "describe": { "$ref": "vocabulary.schema.json#/$defs/describe" },
+              "spans": { "$ref": "vocabulary.schema.json#/$defs/spans" },
               "seed": { "$ref": "vocabulary.schema.json#/$defs/seed" },
               "quality": { "$ref": "vocabulary.schema.json#/$defs/quality" },
               "output": { "$ref": "vocabulary.schema.json#/$defs/output" }
-            }
+            },
+            "if": { "required": ["spans"] },
+            "then": { "required": ["describe"] }
           }
         }
       }

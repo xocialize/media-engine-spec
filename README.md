@@ -5,7 +5,7 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1, Video profile 0.1 and Mesh profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0`; Video since `v0.9.0`; Mesh since `v0.11.0`). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1, Video profile 0.1 and Mesh profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0` and separation by description since `v0.13.0`; Video since `v0.9.0`; Mesh since `v0.11.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
 > audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
@@ -34,7 +34,7 @@ client conformance role before Lite is deprecated.
 |---|---|
 | [`spec/base.md`](spec/base.md) | **Base 0.1:**<br/>• discovery, pairing and descriptors;<br/>• model offers and their adapters (e.g. LoRA);<br/>• jobs, uploads, grants and events;<br/>• results, provenance (models, adapters, helpers) and licence policy;<br/>• retention guarantees, errors and the MCP binding. |
 | [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
-| [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs) and `separate` (a speaker, the singing, every voice, or a song's vocals and instrumental, one output per stem; [RFC 0006](rfcs/0006-audio-separate-and-auk-edits.md)), one label set for emotions, styles, nonverbal cues, lyrics sections and stems, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
+| [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs) and `separate` (a speaker, the singing, every voice, a song's vocals and instrumental, or a sound described in words with the rest as a residual, one output per stem; RFCs [0006](rfcs/0006-audio-separate-and-auk-edits.md) and [0008](rfcs/0008-separate-described-target.md)), one label set for emotions, styles, nonverbal cues, lyrics sections and stems, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
 | [`spec/profiles/video.md`](spec/profiles/video.md) | **Video profile 0.1:** 5 operations (`generate` from text, a first and last frame, keyframes at times and a soundtrack; `extend`; `retake`; `upscale`; `interpolate`), seconds in requests and frames in results on each model's grid, one audio track inside a video, the `supports` keys each model offer states, AI-content disclosure, frame previews, warnings, conformance tests. Evaluation: [`docs/VIDEO-EVALUATION.md`](docs/VIDEO-EVALUATION.md) |
 | [`spec/profiles/mesh.md`](spec/profiles/mesh.md) | **Mesh profile 0.1** ([RFC 0007](rfcs/0007-mesh.md)): `mesh.generate` (an image to a textured GLB) and `mesh.rig` (a skeleton and skin weights, the geometry kept), glTF 2.0 binary with fixed axes, placement and scale, the facts every mesh reports, a preview still with every result, a warning (or refusal) for a flat "card", skeleton templates, the `supports` keys each model offer states, and an offer's required attribution ("Built with DINOv3") |
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's, Video's and Mesh's `supports` keys and job requests |
@@ -136,6 +136,14 @@ an output named by it, the mixture's length; `JobResult.stems` and `downloadStem
 
 ```bash
 swift run mes run audio.separate -i audio=take.wav -p stems='["speaker"]' -p speaker='{"saying":"pass the salt"}' -p quality=draft
+```
+
+Separation by description (RFC 0008). `mock-separator-described` is shaped like SAM-Audio: `describe` names the sound
+in a few words, the outputs are `target` and `residual`, and `spans` say where the sound is heard or isn't. The offer
+states its watermark (`supports.watermark`, a Base key), which `mes describe` and the forms show:
+
+```bash
+swift run mes run audio.separate -i audio=take.wav -p describe="dog barking" -p spans='[{"start_s":0.2,"end_s":0.8,"present":true}]'
 ```
 
 Video (Video 0.1, RFC 0005). The mock's offers are shaped like the fleet's: two LTX-like tiers (one stage and two

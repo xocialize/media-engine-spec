@@ -88,6 +88,7 @@ struct FieldEditor: View {
                     .labelsHidden().textFieldStyle(.roundedBorder).frame(maxWidth: 120)
             }
         case .numberList: NumberListEditor(field: field, value: $value)
+        case .spans: SpansEditor(field: field, value: $value)
         case .object(let fields): ObjectEditor(label: field.label, fields: fields, value: $value)
         case .choice(let variants): ChoiceEditor(field: field, variants: variants, value: $value)
         case .json: JSONEditor(label: field.label, value: $value)
@@ -287,6 +288,65 @@ struct NumberListEditor: View {
     static func parse(_ text: String) -> JSONValue? {
         let numbers = text.split(whereSeparator: { $0 == "," || $0 == " " }).compactMap { Double($0) }
         return numbers.isEmpty ? nil : .array(numbers.map { .number($0) })
+    }
+}
+
+/// Audio's `spans` (§3.6, RFC 0008): one row per stretch of the recording, its start and end in seconds and whether
+/// the described sound is heard in it. No rows sends nothing.
+struct SpansEditor: View {
+    let field: FormField
+    @Binding var value: JSONValue?
+
+    var spans: [JSONValue] { value?.arrayValue ?? [] }
+    var limit: Int { field.schema["maxItems"]?.intValue ?? 32 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s) {
+            LabeledContent(field.label) {
+                Button("Add a span") { set(spans + [Self.next(after: spans)]) }
+                    .disabled(spans.count >= limit)
+            }
+            ForEach(spans.indices, id: \.self) { i in
+                HStack(spacing: Tokens.Space.s) {
+                    seconds("Start", "start_s", i)
+                    Text("to").foregroundStyle(Tokens.Color.secondaryLabel)
+                    seconds("End", "end_s", i)
+                    Text("s").foregroundStyle(Tokens.Color.secondaryLabel)
+                    Picker("Span \(i + 1)", selection: Binding(get: { spans[i]["present"]?.boolValue ?? true },
+                                                               set: { update(i, "present", .bool($0)) })) {
+                        Text("Heard").tag(true)
+                        Text("Not heard").tag(false)
+                    }
+                    .labelsHidden().fixedSize()
+                    Button { set(spans.enumerated().filter { $0.offset != i }.map(\.element)) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove span \(i + 1)")
+                }
+                .padding(.leading, Tokens.Space.m)
+            }
+        }
+    }
+
+    func seconds(_ label: String, _ key: String, _ i: Int) -> some View {
+        TextField("\(label) of span \(i + 1), seconds",
+                  value: Binding(get: { spans[i][key]?.numberValue }, set: { update(i, key, .number($0 ?? 0)) }), format: .number)
+            .labelsHidden().textFieldStyle(.roundedBorder).frame(maxWidth: 72)
+    }
+
+    func update(_ i: Int, _ key: String, _ new: JSONValue) {
+        var all = spans
+        guard all.indices.contains(i), case .object(var span) = all[i] else { return }
+        span[key] = new
+        all[i] = .object(span)
+        set(all)
+    }
+
+    func set(_ all: [JSONValue]) { value = all.isEmpty ? nil : .array(all) }
+
+    /// A new span: a second long, starting where the last one ends, the sound heard in it.
+    static func next(after spans: [JSONValue]) -> JSONValue {
+        let start = spans.compactMap { $0["end_s"]?.numberValue }.max() ?? 0
+        return ["start_s": .number(start), "end_s": .number(start + 1), "present": true]
     }
 }
 

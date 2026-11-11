@@ -835,7 +835,11 @@ examples.update({
 
 # RFC 0006 (v0.10.0): audio.separate, with AuK's regenerated speech stems and HTDemucs's masked music stems.
 HTDEMUCS = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://github.com/facebookresearch/demucs/blob/main/LICENSE"}
-STEMS = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other"]
+STEMS = ["speaker", "singing", "voices", "vocals", "instrumental", "drums", "bass", "other", "target", "residual"]
+# RFC 0008: SAM-Audio, under Meta's SAM License (custom terms; commercial use allowed; each user accepts, as for LTX)
+SAM = {"spdx": "LicenseRef-SAM", "commercial_use": True, "terms_url": "https://github.com/facebookresearch/sam-audio/blob/main/LICENSE",
+       "accepted_required": True, "user_accept_required": True,
+       "notice": "SAM License: the use restrictions in its terms apply to you."}
 
 examples.update({
     "operations-audio-separate.json": {
@@ -845,17 +849,28 @@ examples.update({
             "summary": "Split a recording into its sources: one speaker, the singing, every voice, or a song's vocals and instrumental.",
             "inputs": [{"name": "audio", "kind": "audio", "required": True, "max": 1, "media_types": AUDIO_TYPES}],
             "params": {"type": "object", "additionalProperties": False, "properties": {
-                "stems": {"type": "array", "minItems": 1, "maxItems": 8,
-                          "items": {"enum": ["speaker", "singing", "voices", "vocals", "instrumental"]},
-                          "x-mes-ui": {"label": "Stems", "help": "Absent: every stem the model makes (the speaker needs a pick)."}},
+                "stems": {"type": "array", "minItems": 1, "maxItems": 10,
+                          "items": {"enum": ["speaker", "singing", "voices", "vocals", "instrumental", "target", "residual"]},
+                          "x-mes-ui": {"label": "Stems", "help": "Absent: every stem the model makes (the speaker needs a pick; "
+                                                                 "target and residual need a description)."}},
                 "speaker": {"oneOf": [{"title": "By order", "type": "object", "required": ["ordinal"], "additionalProperties": False,
                                        "properties": {"ordinal": {"type": "integer", "minimum": 1, "maximum": 32}}},
                                       {"title": "By words", "type": "object", "required": ["saying"], "additionalProperties": False,
                                        "properties": {"saying": {"type": "string", "minLength": 1, "maxLength": 500}}}],
                             "x-mes-ui": {"label": "Speaker", "help": "The n-th to start talking, or the one who says these words."}},
+                "describe": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S",
+                             "x-mes-ui": {"label": "Sound to separate", "widget": "text",
+                                          "help": "Name the sound in a few words: speech, dog barking. Sentences don't work."}},
+                "spans": {"type": "array", "minItems": 1, "maxItems": 32,
+                          "items": {"type": "object", "required": ["start_s", "end_s", "present"], "additionalProperties": False,
+                                    "properties": {"start_s": {"type": "number", "minimum": 0},
+                                                   "end_s": {"type": "number", "exclusiveMinimum": 0},
+                                                   "present": {"type": "boolean"}}},
+                          "x-mes-ui": {"label": "Where it is heard", "advanced": True,
+                                       "help": "Stretches of the recording where the described sound is heard, or is not."}},
                 "seed": SEED, "quality": QUALITY, "output": OUTPUT}},
             "outputs": [{"name": s, "kind": "audio", "media_types": ["audio/wav", "audio/flac"], "min": 0, "max": 1}
-                        for s in ["speaker", "singing", "voices", "vocals", "instrumental"]],
+                        for s in ["speaker", "singing", "voices", "vocals", "instrumental", "target", "residual"]],
             "limits": {"max_duration_s": 600},
             "quality_tiers": ["draft", "standard"],
             "models": [
@@ -878,9 +893,50 @@ examples.update({
                  "supports": {"stems": ["speaker", "singing", "voices"], "speaker_selection": ["ordinal", "saying"],
                               "stem_method": "regenerated", "languages": ["en", "zh"], "sample_rate": 24000, "channels": 1},
                  "limits": {"max_duration_s": 30}},
+                # RFC 0008 (v0.13.0): the sound a client describes, and everything else
+                {"id": "sam-audio-base", "title": "SAM-Audio Base", "license": SAM, "memory_class": "medium", "speed_class": "standard",
+                 "quality_tiers": ["standard"],
+                 "notes": "Name the sound in a few lowercase words: 'speech', 'dog barking'. Sentences don't work. It separates "
+                          "general sounds, speech from music, drums and bass; not guitar-like instruments. Both outputs are made "
+                          "again, so neither can be subtracted from the mixture.",
+                 "supports": {"stems": ["target", "residual"], "described_target": True, "spans": True, "stem_method": "regenerated",
+                              "languages": ["en"], "sample_rate": 48000, "channels": 1, "watermark": "audioseal"},
+                 "limits": {"max_duration_s": 10}},
             ],
             "remote": {"possible": False},
         }],
+    },
+    "job-request-separate-described.json": {
+        "operation": "audio.separate",
+        "inputs": {"audio": {"upload": "upl_e7"}},
+        "params": {"describe": "dog barking",
+                   "spans": [{"start_s": 1.2, "end_s": 2.0, "present": True}, {"start_s": 6.0, "end_s": 9.5, "present": False}]},
+        "policy": {"accepted": ["LicenseRef-SAM"]},
+    },
+    "job-holding-separate-described.json": {
+        "id": "job_01JC03", "operation": "audio.separate", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "sam-audio-base", "title": "SAM-Audio Base", "license": SAM},
+                 "effective": {"stems": ["target", "residual"], "describe": "dog barking",
+                               "spans": [{"start_s": 1.2, "end_s": 2.0, "present": True}, {"start_s": 6.0, "end_s": 9.5, "present": False}],
+                               "quality": "standard"}},
+        "progress": {"stage": "finishing", "fraction": 1},
+        "warnings": [],
+        "result": {
+            "outputs": [
+                {"index": 0, "name": "target", "kind": "audio", "media_type": "audio/wav", "bytes": 960044, "sha256": H("stem-target"),
+                 "href": "/mes/v0/jobs/job_01JC03/outputs/0", "duration_s": 10.0, "sample_rate": 48000, "channels": 1, "bit_depth": 16},
+                {"index": 1, "name": "residual", "kind": "audio", "media_type": "audio/wav", "bytes": 960044, "sha256": H("stem-residual"),
+                 "href": "/mes/v0/jobs/job_01JC03/outputs/1", "duration_s": 10.0, "sample_rate": 48000, "channels": 1, "bit_depth": 16},
+            ],
+            "effective": {"stems": ["target", "residual"], "describe": "dog barking",
+                          "spans": [{"start_s": 1.2, "end_s": 2.0, "present": True}, {"start_s": 6.0, "end_s": 9.5, "present": False}],
+                          "seed": 2890114, "quality": "standard"},
+            "provenance": {"engine": AUDIO_ENGINE, "operation": "audio.separate", "profile_version": "0.1",
+                           "model": {"id": "sam-audio-base", "title": "SAM-Audio Base", "license": SAM}, "seed": 2890114,
+                           "timings": {"received_at": "2026-11-11T21:00:00Z", "run_ms": 3800}},
+        },
+        "retention": {"outputs_expire_at": "2026-11-11T22:00:05Z", "record_expires_at": "2026-11-12T21:00:05Z"},
+        "created_at": "2026-11-11T21:00:00Z", "updated_at": "2026-11-11T21:00:05Z",
     },
     "job-request-separate.json": {
         "operation": "audio.separate",

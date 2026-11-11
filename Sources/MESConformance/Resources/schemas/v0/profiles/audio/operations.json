@@ -210,11 +210,21 @@
         "other": {
           "kind": "audio",
           "stem": true
+        },
+        "target": {
+          "kind": "audio",
+          "stem": true
+        },
+        "residual": {
+          "kind": "audio",
+          "stem": true
         }
       },
       "vocabulary": [
         "stems",
         "speaker",
+        "describe",
+        "spans",
         "seed",
         "quality",
         "output"

@@ -185,6 +185,7 @@ struct Describe: AsyncParsableCommand {
             if m.streams { facts.append("streams") }
             if m.voiceCount > 0 { facts.append("\(m.voiceCount) voices (mes voices \(d.operation) \(m.id))") }
             if m.license.needsUserAcceptance { facts.append("users accept its terms (--accept \(m.license.spdx))") }
+            if let mark = m.watermark { facts.append("outputs watermarked (\(mark))") }      // Base §6.4, RFC 0008
             print("  \(m.id)\(m.isDefault == true ? " (default)" : "")  \(facts.joined(separator: " · "))")
         }
         let streamable = d.outputs.filter { $0.stream != nil }

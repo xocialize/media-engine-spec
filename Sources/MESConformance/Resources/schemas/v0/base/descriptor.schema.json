@@ -167,7 +167,13 @@
           "properties": {
             "stream": { "type": "boolean" },
             "seed": { "type": "boolean" },
-            "voices": { "type": "integer", "minimum": 0 }
+            "voices": { "type": "integer", "minimum": 0 },
+            "watermark": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "maxLength": 64,
+              "description": "Fact (RFC 0008): every output this model makes carries an imperceptible watermark made by the named scheme, e.g. audioseal. Absent: none stated."
+            }
           }
         },
         "limits": {
