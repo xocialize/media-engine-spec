@@ -46,6 +46,15 @@ public enum ProfileRules {
         descriptor.profile == AudioProfile.id ? AudioProfileRules.normalize(request) : request
     }
 
+    /// Structure a profile checks ahead of the descriptor's `params` schema, so it answers 400 `invalid_request` whatever
+    /// range that schema gives its numbers (a number out of a schema's range is otherwise 422 `out_of_limits`): Mesh's
+    /// `subject_box` (§2, RFC 0009), which is malformed, not over a limit, when it leaves the image or has no area.
+    public static func validateStructure(_ request: JobRequest, descriptor: Descriptor) throws {
+        guard descriptor.profile == MeshProfile.id, descriptor.operation == MeshProfileRules.generatePart,
+              let box = request.params?[MeshProfile.Param.subjectBox], let problem = SubjectBox.problem(box) else { return }
+        throw MESError(.invalidRequest, problem, param: MeshProfile.Param.subjectBox)
+    }
+
     /// The gate keys and limits the request uses (Base §6.4).
     public static func requirements(_ request: JobRequest, descriptor: Descriptor) -> [OfferRequirement] {
         switch descriptor.profile {
@@ -681,7 +690,7 @@ public enum VideoProfileRules {
 }
 
 /// The Mesh profile's rules (spec/profiles/mesh.md): request structure (400s), gates and limits per offer (§4), and what the
-/// kit does to every result: facts read from the GLB (§1.6) and the flatness check (§1.8).
+/// kit does to every result: facts read from the GLB (§1.6) and, for a placed result, the flatness check (§1.8).
 public enum MeshProfileRules {
     typealias P = MeshProfile.Param
     typealias K = MeshProfile.SupportsKey
@@ -690,9 +699,32 @@ public enum MeshProfileRules {
     /// Structural rules beyond the params schema: 400 `invalid_request`.
     public static func validate(_ request: JobRequest, descriptor: Descriptor) throws {
         let params = request.params ?? [:]
-        if params[P.texture]?.stringValue == "vertex_colors", params[P.textureSize] != nil {
-            throw MESError(.invalidRequest, "texture_size is an atlas's size; a vertex-coloured mesh has none.", param: P.textureSize)
+        if let texture = params[P.texture]?.stringValue, texture != "atlas", params[P.textureSize] != nil {
+            throw MESError(.invalidRequest, "texture_size is an atlas's size; \(texture == MeshProfile.noTexture ? "an untextured" : "a vertex-coloured") mesh has none.",
+                           param: P.textureSize)
         }
+        // §3.3 (RFC 0009): a box is four numbers, with some area, inside the image.
+        if descriptor.operation == generatePart, let box = params[P.subjectBox], let problem = SubjectBox.problem(box) {
+            throw MESError(.invalidRequest, problem, param: P.subjectBox)
+        }
+    }
+
+    static let generatePart = "mesh.generate_part"
+
+    /// What `supports.subject_box` says an offer does with a box (§3.3); nil when it always locates the part itself.
+    public static func subjectBoxSupport(_ offer: ModelOffer) -> MeshProfile.SubjectBoxSupport? {
+        offer.supports(K.subjectBox)?.stringValue.flatMap(MeshProfile.SubjectBoxSupport.init(rawValue:))
+    }
+
+    /// What a `mesh.generate_part` request leaves to its offer, said (§3.3): the offer's first part, spring bones where it
+    /// makes them, its first texture. For engines' `effective`.
+    public static func partDefaults(_ request: JobRequest, model: ModelOffer) -> (part: String, physics: Bool, texture: String) {
+        let params = request.params ?? [:]
+        let parts = model.supports(K.parts)?.arrayValue?.compactMap(\.stringValue) ?? []
+        let textures = model.supports(K.textures)?.arrayValue?.compactMap(\.stringValue) ?? ["atlas"]
+        return (params[P.part]?.stringValue ?? parts.first ?? MeshProfile.Part.hair,
+                params[P.physics]?.boolValue ?? (model.supports(K.physics)?.boolValue == true),
+                params[P.texture]?.stringValue ?? textures.first ?? "atlas")
     }
 
     static func listedNumber(_ key: String, _ value: Double, param: String, what: String) -> OfferRequirement {
@@ -713,7 +745,7 @@ public enum MeshProfileRules {
                 out.append(listedNumber(K.resolutions, r, param: P.resolution, what: "a resolution of \(Int(r))"))
             }
             if let t = params[P.texture]?.stringValue {
-                out.append(.listed(K.textures, t, absent: ["atlas"], param: P.texture, what: t == "atlas" ? "a texture atlas" : "vertex colours"))
+                out.append(.listed(K.textures, t, absent: ["atlas"], param: P.texture, what: textureName(t)))
             }
             if let size = params[P.textureSize]?.numberValue {
                 out.append(listedNumber(K.textureSizes, size, param: P.textureSize, what: "a \(Int(size)) px texture"))
@@ -729,14 +761,44 @@ public enum MeshProfileRules {
             } else {
                 out.append(.flag(K.autoSkeleton, absent: true, param: P.skeleton, what: "a skeleton of the model's own (no skeleton named)"))
             }
+        case generatePart:
+            // §3.3, §4.1 (RFC 0009).
+            if let part = params[P.part]?.stringValue {
+                out.append(.listed(K.parts, part, absent: [], param: P.part, what: "the part '\(part)'"))
+            }
+            if params[P.subjectBox] != nil {
+                out.append(OfferRequirement(param: P.subjectBox, what: "a subject_box (it locates the part itself)") {
+                    subjectBoxSupport($0) != nil
+                })
+            } else {
+                // A request without a box is never routed to an offer that requires one.
+                out.append(OfferRequirement(param: P.subjectBox, what: "a request without a subject_box: say where in the picture the part is") {
+                    subjectBoxSupport($0) != .required
+                })
+            }
+            if params[P.physics]?.boolValue == true {
+                out.append(.flag(K.physics, param: P.physics, what: "spring-bone physics"))
+            }
+            if let t = params[P.texture]?.stringValue {
+                out.append(.listed(K.textures, t, absent: ["atlas"], param: P.texture, what: textureName(t)))
+            }
         default: break
         }
         return out
     }
 
+    static func textureName(_ texture: String) -> String {
+        switch texture {
+        case "atlas": "a texture atlas"
+        case MeshProfile.noTexture: "an untextured mesh (texture: none)"
+        default: "vertex colours"
+        }
+    }
+
     /// What the kit does to a Mesh job's outputs before serving them: reads each mesh's facts from its GLB where the
     /// engine left them out (§1.6), and checks a `generate` result for flatness (§1.8): a `flat_result` warning, or with
-    /// `on_flat: fail` a 422 `input_invalid`, reason `degenerate_result`.
+    /// `on_flat: fail` a 422 `input_invalid`, reason `degenerate_result`. Only an operation the table says is placed
+    /// (`places`) is checked: a rig keeps its input, and a part (§3.3) is thin by design and stays as its model made it.
     public static func finish(_ outputs: [ProducedOutput], request: JobRequest, model: ModelOffer) throws -> ([ProducedOutput], [Warning]) {
         var out = outputs, warnings: [Warning] = []
         for i in out.indices where out[i].kind == .mesh {
@@ -752,7 +814,8 @@ public enum MeshProfileRules {
                 out[i].textureSize = facts.textureSize
                 out[i].joints = facts.joints
             }
-            guard request.operation == "mesh.generate", let bounds = out[i].bounds, bounds.thinness < MeshProfile.flatRatio else { continue }
+            guard MeshProfile.operations.operations[request.operation]?.places == true,
+                  let bounds = out[i].bounds, bounds.thinness < MeshProfile.flatRatio else { continue }
             let ratio = String(format: bounds.thinness < 0.001 ? "%.4f" : "%.3f", bounds.thinness)
             if request.params?[P.onFlat]?.stringValue == "fail" {
                 throw MESError(.inputInvalid, "The result is flat: its thinnest extent is \(ratio) of its longest (under \(MeshProfile.flatRatio)). "

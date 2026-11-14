@@ -30,6 +30,9 @@ public indirect enum FieldWidget: Equatable, Sendable {
     /// Stretches of a recording, each `{start_s, end_s, present}` (Audio's `spans`, RFC 0008): rows of start, end
     /// and heard or not heard.
     case spans
+    /// `{x, y, width, height}` in shares of an image input (Base §6.1's `box`, RFC 0009): Mesh's `subject_box`. Drawn on
+    /// the picture with `ImageBoxPicker`; in the form, the four numbers.
+    case box
     /// A nested object, edited field by field.
     case object([FormField])
     /// `oneOf`: pick a variant, then edit it.
@@ -151,6 +154,7 @@ public enum FormSchema {
             return .text
         case "object":
             let props = schema["properties"]?.objectValue ?? [:]
+            if Set(props.keys) == ["x", "y", "width", "height"] { return .box }
             if Set(props.keys) == ["width", "height"] { return .size(minimum: sizeMinimum(schema)) }
             return props.isEmpty ? .json : .object(fields(of: schema))
         default: return .json

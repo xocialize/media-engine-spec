@@ -125,6 +125,10 @@
           "keeps_geometry": {
             "type": "boolean",
             "description": "The output's vertices, faces and bounds equal the input's (§3.2)."
+          },
+          "fits_body": {
+            "type": "boolean",
+            "description": "The result is a part in the coordinates of the body input: never placed, scaled, decimated or checked for flatness (§3.3)."
           }
         }
       }

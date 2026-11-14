@@ -12,7 +12,7 @@ struct MeshCoreTests {
         let canonical = try MESJSON.decoder.decode(ProfileTable.self, from: Data(contentsOf:
             schemas.appendingPathComponent("profiles/mesh/operations.json")))
         #expect(MeshProfile.operations == canonical)
-        #expect(MeshProfile.operations.operations.keys.sorted() == ["mesh.generate", "mesh.rig"])
+        #expect(MeshProfile.operations.operations.keys.sorted() == ["mesh.generate", "mesh.generate_part", "mesh.rig"])
         #expect(MeshProfile.vocabulary == (try json(schemas.appendingPathComponent("profiles/mesh/vocabulary.schema.json"))))
         #expect(MeshProfile.operations.operations["mesh.generate"]?.places == true)
         #expect(MeshProfile.operations.operations["mesh.rig"]?.keepsGeometry == true)

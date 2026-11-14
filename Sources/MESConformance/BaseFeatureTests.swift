@@ -182,11 +182,8 @@ extension BaseTests {
             let base = try await AudioTests.request(p, d, m)
             return ("audio/wav", Fixtures.wav(), { id in var r = base; r.inputs?[AudioProfile.Input.audio] = .one(.asset(id)); return r })
         }
-        for d in p.operations {
-            guard let base = p.minimalRequest(d), let spec = d.inputs.first(where: { $0.kind == .image && $0.required }) else { continue }
-            return ("image/png", Fixtures.png(), { id in var r = base; r.inputs?[spec.name] = .one(.asset(id)); return r })
-        }
-        return nil
+        guard let (d, name, image) = p.imageCarrier, let base = p.minimalRequest(d) else { return nil }
+        return ("image/png", image, { id in var r = base; r.inputs?[name] = .one(.asset(id)); return r })
     }
 
     static func createAsset(_ p: Probe, _ data: Data, mediaType: String, ttl: Int, wire: Wire? = nil) async throws -> Asset {

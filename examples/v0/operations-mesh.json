@@ -333,6 +333,186 @@
       "remote": {
         "possible": false
       }
+    },
+    {
+      "operation": "mesh.generate_part",
+      "profile": "mesh",
+      "profile_version": "0.1",
+      "title": "Make a part for a character",
+      "summary": "Hair for an avatar, read from a picture and placed on the avatar's head, with a preview still.",
+      "inputs": [
+        {
+          "name": "body",
+          "kind": "mesh",
+          "required": true,
+          "max": 1,
+          "media_types": [
+            "model/gltf-binary"
+          ],
+          "notes": "The avatar the part goes on: a .vrm (0.x or 1.0) or another rigged GLB. It is read, never changed."
+        },
+        {
+          "name": "image",
+          "kind": "image",
+          "required": true,
+          "max": 1,
+          "media_types": [
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+          ],
+          "notes": "The character wearing the part. A cut-out PNG is used as it is."
+        }
+      ],
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "hair"
+            ],
+            "x-mes-ui": {
+              "label": "Part",
+              "widget": "picker"
+            }
+          },
+          "subject_box": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "height": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              }
+            },
+            "x-mes-ui": {
+              "label": "Where the part is",
+              "widget": "box",
+              "help": "Drag a box around the head: hair and face."
+            }
+          },
+          "physics": {
+            "type": "boolean",
+            "x-mes-ui": {
+              "label": "Spring bones",
+              "widget": "toggle"
+            }
+          },
+          "texture": {
+            "enum": [
+              "atlas",
+              "none"
+            ],
+            "x-mes-ui": {
+              "label": "Surface",
+              "widget": "picker",
+              "advanced": true
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-mes-ui": {
+              "label": "Seed",
+              "widget": "seed",
+              "advanced": true
+            }
+          },
+          "quality": {
+            "enum": [
+              "standard"
+            ],
+            "default": "standard",
+            "x-mes-ui": {
+              "label": "Quality",
+              "widget": "picker"
+            }
+          }
+        }
+      },
+      "outputs": [
+        {
+          "name": "mesh",
+          "kind": "mesh",
+          "media_types": [
+            "model/gltf-binary"
+          ],
+          "min": 1,
+          "max": 1
+        },
+        {
+          "name": "preview",
+          "kind": "image",
+          "media_types": [
+            "image/png"
+          ],
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "quality_tiers": [
+        "standard"
+      ],
+      "models": [
+        {
+          "id": "hairdeck",
+          "title": "HairDeck",
+          "license": {
+            "spdx": "LicenseRef-DINOv3",
+            "commercial_use": true,
+            "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+            "attribution": "Built with DINOv3",
+            "notice": "Built with DINOv3. HairDeck is Apache-2.0; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+          },
+          "memory_class": "medium",
+          "speed_class": "fast",
+          "quality_tiers": [
+            "standard"
+          ],
+          "default": true,
+          "notes": "Hair for a VRM avatar. Drag the box around the head: hair and face.",
+          "supports": {
+            "parts": [
+              "hair"
+            ],
+            "subject_box": "required",
+            "physics": true,
+            "textures": [
+              "atlas",
+              "none"
+            ],
+            "background_removal": true
+          }
+        }
+      ],
+      "remote": {
+        "possible": false
+      }
     }
   ]
 }

@@ -202,7 +202,8 @@ public enum MeshScene {
 
 // MARK: - Inputs
 
-/// A media slot for a mesh input (`mesh.rig`): choose a GLB (or drop one), see it with its facts, clear it.
+/// A media slot for a mesh input (`mesh.rig`'s mesh, `mesh.generate_part`'s body): choose a GLB or a `.vrm`, which is a
+/// GLB (or drop one), see it with its facts, clear it.
 public struct MeshInputWell: View {
     let spec: InputSpec
     @Binding var file: URL?
@@ -214,6 +215,9 @@ public struct MeshInputWell: View {
     }
 
     static let glb = UTType(mimeType: MeshProfile.mediaType) ?? UTType(filenameExtension: "glb") ?? .data
+    /// The file extensions a mesh input takes: `.glb`, and `.vrm` (VRM 0.x and 1.0 files are GLBs, Mesh §3.3).
+    public static let extensions = ["glb", "vrm"]
+    static let types = [glb] + [UTType(filenameExtension: "vrm")].compactMap { $0 }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.s) {
@@ -221,7 +225,7 @@ public struct MeshInputWell: View {
                 Image(systemName: "cube").foregroundStyle(Tokens.Color.secondaryLabel)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(FormSchema.label(spec.name) + (spec.required ? "" : " (optional)"))
-                    Text(file?.lastPathComponent ?? spec.notes ?? "A GLB file")
+                    Text(file?.lastPathComponent ?? spec.notes ?? "A GLB or VRM file")
                         .font(Tokens.Font.caption).foregroundStyle(Tokens.Color.secondaryLabel).lineLimit(1)
                 }
                 Spacer()
@@ -239,7 +243,7 @@ public struct MeshInputWell: View {
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.control)
             .strokeBorder(Tokens.Color.separator, style: StrokeStyle(lineWidth: Tokens.Layout.hairline, dash: file == nil ? [4, 3] : [])))
         .dropDestination(for: URL.self) { urls, _ in
-            guard let first = urls.first(where: { $0.pathExtension.lowercased() == "glb" }) else { return false }
+            guard let first = urls.first(where: { Self.extensions.contains($0.pathExtension.lowercased()) }) else { return false }
             file = first
             return true
         } isTargeted: { dropping = $0 }
@@ -247,7 +251,7 @@ public struct MeshInputWell: View {
 
     func choose() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [Self.glb]
+        panel.allowedContentTypes = Self.types
         panel.allowsMultipleSelection = false
         panel.message = "Choose \(FormSchema.label(spec.name).lowercased())"
         if panel.runModal() == .OK, let url = panel.url { file = url }

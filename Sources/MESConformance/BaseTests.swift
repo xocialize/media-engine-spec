@@ -312,10 +312,9 @@ enum BaseTests {
         },
         ConformanceTest("BASE-030", "Uploads: 201 with the right size and SHA-256, at most an hour's expiry, and single use", spec: "§8",
                         applies: { p in
-                            p.operations.contains { d in d.inputs.contains { $0.kind == .image && $0.required } && p.minimalRequest(d) != nil }
-                                ? nil : "no operation takes an image input the suite can supply"
+                            p.imageCarrier != nil ? nil : "no operation takes an image input the suite can supply"
                         }) { p in
-            let image = Fixtures.png()
+            let (d, name, image) = p.imageCarrier!
             let digest = Data(Hex.data(Hex.sha256(image))!).base64EncodedString()
             let reply = try await p.wire.send("POST", "uploads", headers: ["Content-Type": "image/png", "Content-Digest": "sha-256=:\(digest):"],
                                               body: image)
@@ -324,8 +323,6 @@ enum BaseTests {
             let upload = try reply.decode(Upload.self)
             try check(upload.bytes == image.count && upload.sha256 == Hex.sha256(image), "size or sha256 differ from what was sent")
             try check(upload.expiresAt <= Date().addingTimeInterval(3_600 + 60), "expires_at is more than an hour away (§8)")
-            let d = p.operations.first { d in d.inputs.contains { $0.kind == .image && $0.required } && p.minimalRequest(d) != nil }!
-            let name = d.inputs.first { $0.kind == .image && $0.required }!.name
             var request = p.minimalRequest(d)!
             request.inputs?[name] = .one(.upload(upload.uploadID))
             let job = try await p.succeed(request)
@@ -348,18 +345,16 @@ enum BaseTests {
                         applies: { p in
                             if let reason = feature(.grants)(p) { return reason }
                             if !p.isLoopback && p.options.grantHost == nil { return "a LAN engine needs --grant-host (this machine's address as the engine sees it)" }
-                            return p.operations.contains { d in d.inputs.contains { $0.kind == .image && $0.required } && p.minimalRequest(d) != nil }
-                                ? nil : "no operation takes an image input the suite can supply"
+                            return p.imageCarrier != nil ? nil : "no operation takes an image input the suite can supply"
                         }) { p in
             let server = GrantServer(loopbackOnly: p.isLoopback)
             _ = try await server.start()
             defer { server.stop() }
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("mes-conformance-\(UUID().uuidString).png")
-            try Fixtures.png().write(to: file)
+            let (d, name, image) = p.imageCarrier!
+            try image.write(to: file)
             defer { try? FileManager.default.removeItem(at: file) }
             let host = p.options.grantHost ?? "127.0.0.1"
-            let d = p.operations.first { d in d.inputs.contains { $0.kind == .image && $0.required } && p.minimalRequest(d) != nil }!
-            let name = d.inputs.first { $0.kind == .image && $0.required }!.name
             var request = p.minimalRequest(d)!
             request.inputs?[name] = .one(.grant(try server.grant(file, mediaType: "image/png", host: host)))
             await p.confirm(try await p.succeed(request))

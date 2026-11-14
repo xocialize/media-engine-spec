@@ -54,6 +54,36 @@
       ],
       "seeded": true,
       "keeps_geometry": true
+    },
+    "mesh.generate_part": {
+      "inputs": {
+        "image": {
+          "kind": "image",
+          "required": true
+        },
+        "body": {
+          "kind": "mesh",
+          "required": true
+        }
+      },
+      "outputs": {
+        "mesh": {
+          "kind": "mesh"
+        },
+        "preview": {
+          "kind": "image"
+        }
+      },
+      "vocabulary": [
+        "part",
+        "subject_box",
+        "physics",
+        "texture",
+        "seed",
+        "quality"
+      ],
+      "seeded": true,
+      "fits_body": true
     }
   }
 }

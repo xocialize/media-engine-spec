@@ -4,7 +4,8 @@
 # with it (the chunks written as they arrive equal the finished output), a preset voice, the asset deleted, the take
 # separated into stems, and into a described sound and the rest; then Video
 # 0.1 — a clip generated under a licence its users accept, refused without that acceptance, then interpolated; then
-# Mesh 0.1 — a GLB generated from the picture, then rigged; then unpair. Everything runs in a temporary directory.
+# Mesh 0.1 — a GLB generated from the picture, then rigged, then hair made for the rigged mesh sent as a .vrm (RFC 0009);
+# then unpair. Everything runs in a temporary directory.
 #
 #   tools/smoke-cli.sh            # builds, then runs
 set -euo pipefail
@@ -129,7 +130,17 @@ glb=$(grep '^saved .*\.glb$' "$work/mesh.txt" | head -1 | cut -c7-)
 mes run mesh.rig -i mesh="$glb" -p skeleton=vrm_humanoid -o "$work/rig" | tee "$work/rig.txt"
 grep -q "642 vertices · 1280 faces .* · 22 joints" "$work/rig.txt"
 
+step "mes run mesh.generate_part (RFC 0009): hair for the rigged mesh, from the picture and a box, with the body as a .vrm"
+cp "$(grep '^saved .*\.glb$' "$work/rig.txt" | head -1 | cut -c7-)" "$work/avatar.vrm"
+mes run mesh.generate_part -i image="$generated" -i body="$work/avatar.vrm" -p subject_box='{"x":0.25,"y":0.1,"width":0.5,"height":0.4}' \
+  -o "$work/hair" | tee "$work/hair.txt"
+grep -q "Built with Mock DINOv3" "$work/hair.txt" && grep -q "output 0 mesh: model/gltf-binary 6 vertices · 4 faces .* · 4 joints" "$work/hair.txt"
+if mes run mesh.generate_part -i image="$generated" -i body="$work/avatar.vrm" --model mock-hairdeck -o "$work/nobox" > "$work/nobox.txt" 2>&1; then
+  print "unexpected: a part ran on a model that needs a box, without one"; exit 1
+fi
+grep -q "subject_box" "$work/nobox.txt" && print "refused without the box the model needs"
+
 step "mes unpair"
 mes unpair "MES Mock"
 if mes ops >/dev/null 2>&1; then print "unexpected: still authorized"; exit 1; fi
-print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → separate by description → video generate (accepted) → interpolate → mesh generate → rig → unpair"
+print "\n✅ mes end to end: discover → pair → generate → matte → fill → download → confirm → voices → design → speak --stream with an asset → preset voice → separate → separate by description → video generate (accepted) → interpolate → mesh generate → rig → a part for it → unpair"

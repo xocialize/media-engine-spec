@@ -49,10 +49,43 @@ enum MeshTests {
             if m.supports(K.autoSkeleton)?.boolValue == false, let template = list(m, K.skeletons).first {
                 params[P.skeleton] = template
             }
+        case partOp:
+            // §3.3: the cut-out ball, which every offer takes; the body; the ball's box where the offer takes one.
+            inputs[MeshProfile.Input.image] = imageInput(Fixtures.ball(transparent: true))
+            inputs[MeshProfile.Input.body] = meshInput(p.bodyFixture ?? Data())
+            if m.supports(K.subjectBox) != nil, has(d, P.subjectBox) { params[P.subjectBox] = Fixtures.ballBox.json }
         default: break
         }
         if has(d, P.quality) { params[P.quality] = .string(tier(m).rawValue) }
         return JobRequest(operation: d.operation, inputs: inputs, params: params, model: named ? m.id : nil, policy: Probe.acceptance(d))
+    }
+
+    static let partOp = "mesh.generate_part"
+
+    /// The body the suite sends (Mesh §6), read: its facts and its head bone, where a hair part hangs.
+    static func body(_ p: Probe) throws -> (facts: GLB.Facts, bone: (node: Int, name: String, world: [Double])) {
+        let glb = try GLB(data: p.bodyFixture ?? Data())
+        guard let bone = glb.bodyBone(for: MeshProfile.Part.hair) else { throw Failure("the suite's body has no head bone") }
+        return (try glb.facts(), bone)
+    }
+
+    /// The offers of `mesh.generate_part` the suite may run.
+    static func partOffers(_ p: Probe) -> (Descriptor, [ModelOffer]) {
+        let d = p.descriptor(partOp)!
+        return (d, d.models.filter { $0.namedOnly != true })
+    }
+
+    /// A refusal that may come at submission (422) or, when the engine reads the media only as the job starts, as the
+    /// job's error (Mesh §3.3).
+    static func refuseLate(_ p: Probe, _ request: JobRequest, _ code: String, _ what: String) async throws {
+        let reply = try await p.wire.json("POST", "jobs", request)
+        if reply.status == 201 {
+            let job = try await p.settle(try reply.decode(Job.self))
+            try check(job.outcome == .failed && job.error?.code == code,
+                      "\(what) ended \(job.outcome?.rawValue ?? job.state.rawValue) \(job.error?.code ?? ""), not failed \(code)")
+        } else {
+            try expect(reply, 422, code: code, what, schemas: p.schemas)
+        }
     }
 
     static func output(_ job: Job, _ name: String) throws -> Output {
@@ -161,7 +194,7 @@ enum MeshTests {
             }
             return nil
         },
-        ConformanceTest("MESH-002", "Offers' supports keys have the profile's types and their limits are the profile's fields",
+        ConformanceTest("MESH-002", "Offers' supports keys have the profile's types and their limits are the profile's fields; a part offer lists parts",
                         spec: "Mesh §4", applies: { p in offers(contentsOf: meshOps)(p) }) { p in
             for d in p.operations where d.profile == MeshProfile.id {
                 let name = d.operation.split(separator: ".")[1]
@@ -170,6 +203,12 @@ enum MeshTests {
                 }
                 for m in d.models {
                     try p.schemas.require(.object(m.supports ?? [:]), "profiles/mesh/supports.schema.json#/$defs/\(name)_supports", "\(d.operation) / \(m.id) supports")
+                    if d.operation == partOp {
+                        try check(!list(m, K.parts).isEmpty, "\(m.id) lists no parts (Mesh §4.1: supports.parts is required)")
+                        for key in [K.subjectBox, K.physics] where m.supports(key) != nil && m.supports(key) != .bool(false) {
+                            try check(has(d, key), "\(m.id) has supports.\(key), but the descriptor takes no '\(key)' (Mesh §3.3)")
+                        }
+                    }
                     if let limits = m.limits {
                         try p.schemas.require(try JSONValue(encoding: limits), "profiles/mesh/supports.schema.json#/$defs/\(name)_limits", "\(d.operation) / \(m.id) limits")
                     }
@@ -309,11 +348,11 @@ enum MeshTests {
             }
             return nil
         },
-        ConformanceTest("MESH-009", "Disclosure and licences: a generated mesh says ai_generated; an offer's attribution is in asset.copyright",
-                        spec: "Mesh §1.11, §1.12, Base §10.2", applies: { p in offers("mesh.generate")(p) }) { p in
-            let d = p.descriptor("mesh.generate")!
+        ConformanceTest("MESH-009", "Disclosure and licences: a generated mesh or part says ai_generated; an offer's attribution is in asset.copyright",
+                        spec: "Mesh §1.11, §1.12, Base §10.2", applies: { p in offers("mesh.generate", partOp)(p) }) { p in
             var notes: [String] = []
-            for m in d.models where m.namedOnly != true {
+            let generated = ["mesh.generate", partOp].compactMap { p.descriptor($0) }
+            for (d, m) in generated.flatMap({ d in d.models.filter { $0.namedOnly != true }.map { (d, $0) } }) {
                 let job = try await p.succeed(request(p, d, m))
                 let (glb, _) = try await mesh(p, job)
                 try check(glb.mesExtras["ai_generated"]?.boolValue == true, "\(m.id): asset.extras.mes.ai_generated isn't true (Mesh §1.11)")
@@ -331,7 +370,7 @@ enum MeshTests {
         },
         ConformanceTest("MESH-010", "seed is reported; the same seed reproduces the same mesh where the offer is deterministic",
                         spec: "Mesh §1.14", applies: { p in offers(contentsOf: meshOps)(p) }) { p in
-            guard let op = ["mesh.generate", "mesh.rig"].first(where: { p.descriptor($0).flatMap(defaultOffer)?.usesSeed == true }),
+            guard let op = ["mesh.generate", "mesh.rig", partOp].first(where: { p.descriptor($0).flatMap(defaultOffer)?.usesSeed == true }),
                   let d = p.descriptor(op), let m = defaultOffer(d) else { return Note("no Mesh offer takes a seed") }
             var r = request(p, d, m)
             r.params?[P.seed] = 7
@@ -429,6 +468,227 @@ enum MeshTests {
                 try expect(reply, 422, code: "input_invalid", "a PNG sent as a GLB", schemas: p.schemas)
             }
             return nil
+        },
+
+        // MARK: A part made to fit a body (§3.3, RFC 0009)
+        ConformanceTest("MESH-013", "generate_part leaves the result on the body: inside the body's bounds grown by half its height, reaching above its head bone, never warned as flat",
+                        spec: "Mesh §3.3, §1.4, §1.8", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            let (bodyFacts, bone) = try body(p)
+            let margin = (bodyFacts.bounds.max[1] - bodyFacts.bounds.min[1]) / 2
+            var notes: [String] = []
+            for m in models {
+                let job = try await p.succeed(request(p, d, m))
+                let (_, o) = try await mesh(p, job)
+                let b = o.bounds!
+                for k in 0..<3 {
+                    try check(b.min[k] >= bodyFacts.bounds.min[k] - margin && b.max[k] <= bodyFacts.bounds.max[k] + margin,
+                              "\(m.id): the part's bounds \(b.min)…\(b.max) leave the body's \(bodyFacts.bounds.min)…\(bodyFacts.bounds.max) by more than \(margin) m: "
+                                  + "it isn't on the body (Mesh §3.3)")
+                }
+                if MeshProfile.humanoidBone(part: job.result?.effective[P.part]?.stringValue ?? MeshProfile.Part.hair) == "head" {
+                    try check(b.max[1] > bone.world[13], "\(m.id): hair that ends at y = \(b.max[1]), below the body's head bone at \(bone.world[13]): "
+                              + "it was moved or scaled (Mesh §3.3)")
+                }
+                try check(!job.warnings.contains { $0.code == MeshProfile.WarningCode.flatResult },
+                          "\(m.id): flat_result on a part, which is never checked for flatness (Mesh §3.3)")
+                notes.append("\(m.id): y \(String(format: "%.2f", b.min[1])) to \(String(format: "%.2f", b.max[1])) m")
+                await p.confirm(job)
+            }
+            return Note(notes.joined(separator: "; "))
+        },
+        ConformanceTest("MESH-014", "generate_part: one skin, joints reported; the root joint is the body's head bone, by name and place; weights on every primitive",
+                        spec: "Mesh §3.3", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            let (_, bone) = try body(p)
+            var notes: [String] = []
+            for m in models {
+                let job = try await p.succeed(request(p, d, m))
+                let (glb, o) = try await mesh(p, job)
+                let skins = glb.array("skins")
+                try check(skins.count == 1, "\(m.id): \(skins.count) skins, not one")
+                let jointNodes = skins[0]["joints"]?.arrayValue?.compactMap(\.intValue) ?? []
+                try check(o.joints == jointNodes.count && !jointNodes.isEmpty, "\(m.id): joints \(o.joints ?? 0), the skin has \(jointNodes.count)")
+                let children = Set(jointNodes.flatMap { glb.object("nodes", $0)?["children"]?.arrayValue?.compactMap(\.intValue) ?? [] })
+                let roots = jointNodes.filter { !children.contains($0) }
+                try check(roots.count == 1, "\(m.id): the skin's joints have \(roots.count) roots, not one")
+                if MeshProfile.humanoidBone(part: job.result?.effective[P.part]?.stringValue ?? MeshProfile.Part.hair) == "head" {
+                    let name = glb.object("nodes", roots[0])?["name"]?.stringValue ?? ""
+                    try check(name == bone.name, "\(m.id): the root joint is named '\(name)', not the body's head bone '\(bone.name)' (Mesh §3.3)")
+                    let at = glb.worldMatrix(node: roots[0])
+                    let off = (12...14).map { abs(at[$0] - bone.world[$0]) }.max() ?? 0
+                    try check(off <= 0.001, "\(m.id): the root joint is \(off) m from the body's head bone (Mesh §3.3: where the body has it)")
+                }
+                for prim in glb.primitives() {
+                    guard let j = prim.attributes["JOINTS_0"], let w = prim.attributes["WEIGHTS_0"] else {
+                        throw Failure("\(m.id): mesh \(prim.mesh) primitive \(prim.index) has no JOINTS_0 and WEIGHTS_0")
+                    }
+                    try check(prim.skin != nil, "\(m.id): mesh \(prim.mesh) is drawn by a node without the skin")
+                    let used = try glb.ints(accessor: j)
+                    for (v, ws) in try glb.floats(accessor: w).enumerated() {
+                        let sum = ws.reduce(0, +)
+                        try check(abs(sum - 1) <= 0.001, "\(m.id): vertex \(v)'s weights sum to \(sum)")
+                        for (k, weight) in ws.enumerated() where weight > 0 {
+                            try check(Int(used[v][k]) < jointNodes.count, "\(m.id): vertex \(v) is bound to joint \(used[v][k]) of \(jointNodes.count)")
+                        }
+                    }
+                }
+                notes.append("\(m.id): \(jointNodes.count) joints under \(bone.name)")
+                await p.confirm(job)
+            }
+            return Note(notes.joined(separator: "; "))
+        },
+        ConformanceTest("MESH-015", "generate_part physics: VRMC_springBone with physics true, none with false; physics true to an offer without it is 422",
+                        spec: "Mesh §3.3, §4.1", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            guard has(d, P.physics) else { return Note("the descriptor takes no physics: no offer makes spring bones") }
+            let ext = MeshProfile.springBoneExtension
+            var notes: [String] = []
+            for m in models {
+                guard m.supports(K.physics)?.boolValue == true else {
+                    var bad = request(p, d, m)
+                    bad.params?[P.physics] = true
+                    try await refuse(p, bad, 422, "unsupported_parameter", "physics: true to \(m.id), which makes no spring bones")
+                    notes.append("\(m.id) refused physics")
+                    continue
+                }
+                for physics in [true, false] {
+                    var r = request(p, d, m)
+                    r.params?[P.physics] = .bool(physics)
+                    let job = try await p.succeed(r)
+                    let (glb, _) = try await mesh(p, job)
+                    let used = glb.json["extensionsUsed"]?.arrayValue?.contains(.string(ext)) == true
+                    let present = glb.json["extensions"]?[ext] != nil
+                    if physics {
+                        try check(present && used, "\(m.id): physics true, but \(ext) is \(present ? "missing from extensionsUsed" : "absent") (Mesh §3.3)")
+                        let springs = glb.json["extensions"]?[ext]?["springs"]?.arrayValue ?? []
+                        try check(!springs.isEmpty, "\(m.id): \(ext) has no springs")
+                    } else {
+                        try check(!present && !used, "\(m.id): physics false, but the file carries \(ext) (Mesh §3.3)")
+                    }
+                    try check(job.result?.effective[P.physics]?.boolValue == physics, "\(m.id): effective doesn't report physics \(physics)")
+                    await p.confirm(job)
+                }
+                notes.append("\(m.id): springs on and off")
+            }
+            return Note(notes.joined(separator: "; "))
+        },
+        ConformanceTest("MESH-016", "generate_part textures: none gives no texture, no COLOR_0 and no texture_size; an unlisted texture is 422; effective reports part, physics, texture, background",
+                        spec: "Mesh §1.5, §3.3, §4.1", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            var notes: [String] = []
+            for m in models {
+                let job = try await p.succeed(request(p, d, m))
+                let (_, o) = try await mesh(p, job)
+                let eff = job.result?.effective ?? [:]
+                for name in [P.part, P.physics, P.texture, P.background] {
+                    try check(eff[name] != nil, "\(m.id): effective doesn't report \(name) (Mesh §3.3)")
+                }
+                try check(list(m, K.parts).contains(eff[P.part] ?? .null), "\(m.id): effective.part \(eff[P.part] ?? .null) isn't one of its parts")
+                try check(eff[P.background]?.stringValue == MeshProfile.alpha,
+                          "\(m.id): a cut-out picture reported background \(eff[P.background]?.stringValue ?? "nothing"), not alpha")
+                try check((eff[P.texture]?.stringValue == "atlas") == (o.textureSize != nil),
+                          "\(m.id): texture \(eff[P.texture]?.stringValue ?? "?") with\(o.textureSize == nil ? "out" : "") a texture_size")
+                await p.confirm(job)
+                guard has(d, P.texture) else { continue }
+                let listed = m.supports(K.textures)?.arrayValue ?? ["atlas"]
+                if listed.contains(.string(MeshProfile.noTexture)) {
+                    var r = request(p, d, m)
+                    r.params?[P.texture] = .string(MeshProfile.noTexture)
+                    let plain = try await p.succeed(r)
+                    let (glb, po) = try await mesh(p, plain)
+                    let facts = try glb.facts()
+                    try check(po.textureSize == nil && facts.textureSize == nil, "\(m.id): texture none, but the result has a texture")
+                    try check(!facts.hasVertexColors, "\(m.id): texture none, but the result has COLOR_0")
+                    try check(plain.result?.effective[P.texture]?.stringValue == MeshProfile.noTexture, "\(m.id): effective.texture isn't none")
+                    notes.append("\(m.id): untextured")
+                    await p.confirm(plain)
+                }
+                if let value = d.params["properties"]?[P.texture]?["enum"]?.arrayValue?.first(where: { !listed.contains($0) }) {
+                    var bad = request(p, d, m)
+                    bad.params?[P.texture] = value
+                    try await refuse(p, bad, 422, "unsupported_parameter", "texture \(value) to \(m.id), which doesn't list it")
+                    notes.append("\(m.id) refused \(value)")
+                }
+            }
+            return Note(notes.isEmpty ? "every offer makes an atlas only" : notes.joined(separator: "; "))
+        },
+        ConformanceTest("MESH-017", "subject_box: outside the image or without area is 400; to an offer that takes none, or missing where one is required, 422; effective echoes it",
+                        spec: "Mesh §2, §3.3, §4.1", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            guard has(d, P.subjectBox) else { return Note("the descriptor takes no subject_box: every offer locates the part itself") }
+            var notes: [String] = []
+            for m in models {
+                switch m.supports(K.subjectBox)?.stringValue.flatMap(MeshProfile.SubjectBoxSupport.init(rawValue:)) {
+                case nil:
+                    var bad = request(p, d, m)
+                    bad.params?[P.subjectBox] = Fixtures.ballBox.json
+                    try await refuse(p, bad, 422, "unsupported_parameter", "a subject_box to \(m.id), which locates the part itself")
+                    notes.append("\(m.id) refused a box")
+                case let support?:
+                    let job = try await p.succeed(request(p, d, m))
+                    let echoed = SubjectBox(job.result?.effective[P.subjectBox])
+                    let sent = Fixtures.ballBox
+                    try check(echoed.map { abs($0.x - sent.x) + abs($0.y - sent.y) + abs($0.width - sent.width) + abs($0.height - sent.height) < 1e-6 } ?? false,
+                              "\(m.id): effective.subject_box is \(job.result?.effective[P.subjectBox] ?? .null), not the box sent")
+                    await p.confirm(job)
+                    let outside: [(String, JSONValue)] = [
+                        ("reaching past the right edge", SubjectBox(x: 0.6, y: 0.1, width: 0.6, height: 0.4).json),
+                        ("reaching past the bottom edge", SubjectBox(x: 0.1, y: 0.7, width: 0.4, height: 0.4).json),
+                        ("with no area", SubjectBox(x: 0.2, y: 0.2, width: 0, height: 0.4).json),
+                        ("starting left of the image", SubjectBox(x: -0.1, y: 0.2, width: 0.4, height: 0.4).json),
+                        ("as four corner numbers", [0.25, 0.1, 0.75, 0.5]),
+                    ]
+                    for (what, box) in outside {
+                        var bad = request(p, d, m)
+                        bad.params?[P.subjectBox] = box
+                        try await refuse(p, bad, 400, "invalid_request", "a subject_box \(what)")
+                    }
+                    if support == .required {
+                        var bad = request(p, d, m)
+                        bad.params?[P.subjectBox] = nil
+                        try await refuse(p, bad, 422, "unsupported_parameter", "no subject_box to \(m.id), which requires one")
+                    }
+                    notes.append("\(m.id): box \(support.rawValue), echoed, five bad boxes 400")
+                }
+            }
+            return Note(notes.joined(separator: "; "))
+        },
+        ConformanceTest("MESH-018", "generate_part inputs: no body is 400; a body that isn't a GLB is input_invalid; an unlisted part is 422; an opaque picture runs or is refused by background_removal",
+                        spec: "Mesh §1.10, §3.3, §4.1", applies: { p in offers(partOp)(p) }) { p in
+            let (d, models) = partOffers(p)
+            guard let first = defaultOffer(d) else { throw Failure("mesh.generate_part has no default offer") }
+            var missing = request(p, d, first)
+            missing.inputs?[MeshProfile.Input.body] = nil
+            try await refuse(p, missing, 400, "invalid_request", "a part without its body")
+            var broken = request(p, d, first)
+            broken.inputs?[MeshProfile.Input.body] = meshInput(Fixtures.png())
+            try await refuseLate(p, broken, "input_invalid", "a PNG sent as the body")
+            var notes: [String] = []
+            for m in models {
+                if has(d, P.part) {
+                    let parts = list(m, K.parts)
+                    let options = d.params["properties"]?[P.part]?["enum"]?.arrayValue
+                    if let other = options.map({ $0.first { !parts.contains($0) } }) ?? "x-mes.conformance" {
+                        var bad = request(p, d, m)
+                        bad.params?[P.part] = other
+                        try await refuse(p, bad, 422, "unsupported_parameter", "part \(other) to \(m.id), which doesn't make it")
+                    }
+                }
+                var opaque = request(p, d, m)
+                opaque.inputs?[MeshProfile.Input.image] = imageInput(Fixtures.ball())
+                if m.supports(K.backgroundRemoval)?.boolValue == true {
+                    let job = try await p.succeed(opaque)
+                    try check(job.result?.effective[P.background]?.stringValue == "remove",
+                              "\(m.id): an opaque picture reported background \(job.result?.effective[P.background]?.stringValue ?? "nothing"), not remove")
+                    await p.confirm(job)
+                    notes.append("\(m.id) cut out an opaque picture")
+                } else {
+                    try await refuseLate(p, opaque, "unsupported_parameter", "an opaque picture to \(m.id), which can't cut it out")
+                    notes.append("\(m.id) refused an opaque picture")
+                }
+            }
+            return Note(notes.joined(separator: "; "))
         },
     ]
 }

@@ -89,6 +89,7 @@ struct FieldEditor: View {
             }
         case .numberList: NumberListEditor(field: field, value: $value)
         case .spans: SpansEditor(field: field, value: $value)
+        case .box: BoxEditor(field: field, value: $value)
         case .object(let fields): ObjectEditor(label: field.label, fields: fields, value: $value)
         case .choice(let variants): ChoiceEditor(field: field, variants: variants, value: $value)
         case .json: JSONEditor(label: field.label, value: $value)

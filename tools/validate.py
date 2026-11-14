@@ -82,6 +82,8 @@ MANIFEST = {
     "job-holding-mesh-generate.json": "base/job.schema.json",
     "job-holding-mesh-rig.json": "base/job.schema.json",
     "job-failed-mesh-flat.json": "base/job.schema.json",
+    "job-request-mesh-generate-part.json": "profiles/mesh/job-request.schema.json",
+    "job-holding-mesh-generate-part.json": "base/job.schema.json",
 }
 
 _cache = {}
@@ -302,6 +304,8 @@ def profile_checks():
         doc = load(ex)
         if doc.get("operation", "").startswith("mesh.") and "state" in doc:
             errs += [f"{ex.name}: {e}" for e in mesh_job_checks(doc)]
+        if doc.get("operation") == "mesh.generate_part" and "state" not in doc:
+            errs += [f"{ex.name}: {e}" for e in subject_box_checks(doc.get("params", {}).get("subject_box"))]
     for ex in sorted(EXAMPLES.glob("*.json")):
         doc = load(ex)
         err = doc.get("error") if isinstance(doc, dict) else None
@@ -344,10 +348,27 @@ def mesh_descriptor_checks(d):
         if sup.get("texture_sizes") and "atlas" not in sup.get("textures", ["atlas"]):
             errs.append(f"{m['id']}: texture_sizes without an atlas texture (Mesh §2)")
         for key, param in (("resolutions", "resolution"), ("texture_sizes", "texture_size"), ("textures", "texture"),
-                           ("skeletons", "skeleton")):
+                           ("skeletons", "skeleton"), ("parts", "part")):
             enum = props.get(param, {}).get("enum")
             if key in sup and enum is not None and not set(sup[key]) <= set(enum):
                 errs.append(f"{m['id']}: supports.{key} lists values the descriptor's '{param}' doesn't take")
+        # §3.3 (RFC 0009): an offer that takes a box or makes spring bones needs the parameter that asks for them.
+        if d["operation"] == "mesh.generate_part":
+            for key in ("subject_box", "physics"):
+                if sup.get(key) and key not in props:
+                    errs.append(f"{m['id']}: supports.{key} without a '{key}' parameter in the descriptor (Mesh §3.3)")
+    return errs
+
+
+def subject_box_checks(box):
+    """Mesh §2, §3.3 (RFC 0009): a subject_box lies inside the image. The schema bounds each number; the sums are checked here."""
+    if not isinstance(box, dict) or not all(isinstance(box.get(k), (int, float)) for k in ("x", "y", "width", "height")):
+        return []
+    errs = []
+    if box["x"] + box["width"] > 1 + 1e-9:
+        errs.append("subject_box reaches past the image's right edge: x + width > 1 (Mesh §2)")
+    if box["y"] + box["height"] > 1 + 1e-9:
+        errs.append("subject_box reaches past the image's bottom edge: y + height > 1 (Mesh §2)")
     return errs
 
 
@@ -365,7 +386,7 @@ def described_target_checks(sup):
 
 def mesh_job_checks(job):
     """Mesh results: a preview per mesh (§1.7), bounds ordered, joints exactly on rig outputs (§3.2), a flat result warned
-    (§1.8) and the placement honoured (§1.4)."""
+    (§1.8) and the placement honoured (§1.4); a part skinned, unplaced and reporting what ran (§3.3)."""
     errs = []
     result = job.get("result")
     if not result:
@@ -386,6 +407,18 @@ def mesh_job_checks(job):
         ext = [b - a for a, b in zip(lo, hi)]
         if job["operation"] == "mesh.rig" and "joints" not in o:
             errs.append(f"output {o['index']}: a rigged mesh without joints (Mesh §3.2)")
+        if job["operation"] == "mesh.generate_part":
+            # §3.3: a part is skinned, stays where its body is, and is never warned as flat
+            if "joints" not in o:
+                errs.append(f"output {o['index']}: a part without joints (Mesh §3.3)")
+            if any(w["code"] == "flat_result" for w in job.get("warnings", [])):
+                errs.append(f"output {o['index']}: flat_result on a part, which is never checked for flatness (Mesh §3.3)")
+            for name in ("part", "physics", "texture", "background"):
+                if name not in eff:
+                    errs.append(f"effective doesn't report {name} (Mesh §3.3)")
+            if eff.get("background") not in (None, "remove", "alpha"):
+                errs.append(f"effective.background is {eff['background']}; a part's picture is cut out or already was (Mesh §3.3)")
+            errs += subject_box_checks(eff.get("subject_box"))
         if job["operation"] == "mesh.generate":
             if "joints" in o:
                 errs.append(f"output {o['index']}: joints on an unskinned generate result")
@@ -400,8 +433,8 @@ def mesh_job_checks(job):
             else:
                 if any(abs((a + b) / 2) > 0.01 * size for a, b in zip(lo, hi)):
                     errs.append(f"output {o['index']}: centered, but the box's centre isn't the origin (Mesh §1.4)")
-        if "texture_size" in o and eff.get("texture") == "vertex_colors":
-            errs.append(f"output {o['index']}: texture_size on a vertex-coloured result")
+        if "texture_size" in o and eff.get("texture") in ("vertex_colors", "none"):
+            errs.append(f"output {o['index']}: texture_size on a result without a texture ({eff['texture']})")
     return errs
 
 

@@ -223,7 +223,9 @@ Rules:
 - `label`, `help`, `group`, `order`;
 - `advanced` (boolean);
 - `widget`: one of `text`, `textarea`, `slider`, `stepper`, `picker`, `toggle`, `seed`, `size`, `aspect`, `color`,
-  `voice` (a picker filled from the chosen model's voice list, §6.5, that can play each `sample`).
+  `voice` (a picker filled from the chosen model's voice list, §6.5, that can play each `sample`), `box` (a rectangle
+  drawn on an image input, for a parameter shaped `{x, y, width, height}` in shares of that image;
+  [RFC 0009](../rfcs/0009-mesh-generate-part.md)).
 
 Clients MAY ignore hints, but SHOULD use them when they render forms from descriptors.
 

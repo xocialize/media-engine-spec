@@ -5,7 +5,7 @@ and other media. A client asks for an operation ("fill this masked region", "ups
 normalizes how a specific model is used, and reports what it actually did. Any compliant client can use any
 compliant engine, on any platform.
 
-> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1, Video profile 0.1 and Mesh profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0` and separation by description since `v0.13.0`; Video since `v0.9.0`; Mesh since `v0.11.0`). **MESKit works:** MESCore; the engine kit in
+> **Status:** Base 0.1, Image profile 0.1, Audio profile 0.1, Video profile 0.1 and Mesh profile 0.1 are **drafts** (Audio since `v0.7.0`, with separation since `v0.10.0` and separation by description since `v0.13.0`; Video since `v0.9.0`; Mesh since `v0.11.0`, with parts made to fit a body since `v0.14.0`). **MESKit works:** MESCore; the engine kit in
 > open and paired modes (TLS, pairing, tokens, DNS-SD) with SSE, the WebSocket channel and the MCP binding; the client
 > kit (discovery, pairing, jobs, events, grants, an engine picker for several servers; assets, voice lists and streamed
 > audio since `v0.8.0`) and an in-process transport; the `mes` CLI; MESFormsUI (SwiftUI forms from descriptors, with
@@ -36,7 +36,7 @@ client conformance role before Lite is deprecated.
 | [`spec/profiles/image.md`](spec/profiles/image.md) | **Image profile 0.1:** 15 operations (including `image.enhance_prompt`, a preview of a prompt rewrite, and `image.decompose`, an image as front-most-first RGBA layers), the shared vocabulary, conventions (sRGB, masks, alpha, prompt enhancement, adapter slots), warnings, conformance tests |
 | [`spec/profiles/audio.md`](spec/profiles/audio.md) | **Audio profile 0.1:** 5 generative operations (`design_voice`, `speak` with a preset or cloned voice, `edit_speech` modelled on AuK, `generate` for sounds, `compose` for songs) and `separate` (a speaker, the singing, every voice, a song's vocals and instrumental, or a sound described in words with the rest as a residual, one output per stem; RFCs [0006](rfcs/0006-audio-separate-and-auk-edits.md) and [0008](rfcs/0008-separate-described-target.md)), one label set for emotions, styles, nonverbal cues, lyrics sections and stems, the `supports` keys each model offer states, streamed speech, warnings, conformance tests |
 | [`spec/profiles/video.md`](spec/profiles/video.md) | **Video profile 0.1:** 5 operations (`generate` from text, a first and last frame, keyframes at times and a soundtrack; `extend`; `retake`; `upscale`; `interpolate`), seconds in requests and frames in results on each model's grid, one audio track inside a video, the `supports` keys each model offer states, AI-content disclosure, frame previews, warnings, conformance tests. Evaluation: [`docs/VIDEO-EVALUATION.md`](docs/VIDEO-EVALUATION.md) |
-| [`spec/profiles/mesh.md`](spec/profiles/mesh.md) | **Mesh profile 0.1** ([RFC 0007](rfcs/0007-mesh.md)): `mesh.generate` (an image to a textured GLB) and `mesh.rig` (a skeleton and skin weights, the geometry kept), glTF 2.0 binary with fixed axes, placement and scale, the facts every mesh reports, a preview still with every result, a warning (or refusal) for a flat "card", skeleton templates, the `supports` keys each model offer states, and an offer's required attribution ("Built with DINOv3") |
+| [`spec/profiles/mesh.md`](spec/profiles/mesh.md) | **Mesh profile 0.1** (RFCs [0007](rfcs/0007-mesh.md) and [0009](rfcs/0009-mesh-generate-part.md)): `mesh.generate` (an image to a textured GLB), `mesh.rig` (a skeleton and skin weights, the geometry kept) and `mesh.generate_part` (a rigged part, hair first, read from a picture and a box and returned where its body is, with spring bones), glTF 2.0 binary with fixed axes, placement and scale, the facts every mesh reports, a preview still with every result, a warning (or refusal) for a flat "card", skeleton templates, the `supports` keys each model offer states, and an offer's required attribution ("Built with DINOv3") |
 | [`schemas/v0/`](schemas/v0/) | JSON Schemas (draft 2020-12) for every Base message, each profile's vocabulary and operations table, and Audio's, Video's and Mesh's `supports` keys and job requests |
 | [`examples/v0/`](examples/v0/) | Realistic messages, each validated against its schema |
 | [`tools/`](tools/) | `validate.py` (schemas + examples + profile rules, no dependencies), `test_validator.py` (negative tests), `make_examples.py` |
@@ -173,10 +173,23 @@ swift run mes run mesh.generate -i image=object.png -p max_faces=5120 -p placeme
 swift run mes run mesh.rig -i mesh=object.glb -p skeleton=vrm_humanoid
 ```
 
-MESCore's `GLB` reads and writes the files and computes their facts, and the kit fills an output's facts from its GLB
-and applies the flatness check for every engine. MESFormsUI's `MeshView` shows a mesh output to orbit, with its facts,
+A part made to fit a body (RFC 0009). `mock-hairdeck` is shaped like HairDeck: it needs the box around the head, makes
+spring bones, an atlas or no texture, and cuts out an opaque picture; `mock-part-finder` takes no box and needs a
+cut-out picture. Each writes a hair card on the body's head bone, in the body's coordinates, hung from a joint named
+as the body's. The body is a `.vrm` or any rigged GLB:
+
+```bash
+swift run mes run mesh.generate_part -i image=character.png -i body=avatar.vrm -p subject_box='{"x":0.25,"y":0.1,"width":0.5,"height":0.4}'
+```
+
+MESCore's `GLB` reads and writes the files and computes their facts, and finds the bone of a body a part hangs from
+(`bodyBone(for:)`: a VRM's humanoid head, else a node named like one); `SubjectBox` is the box as a value. The kit
+fills an output's facts from its GLB and applies the flatness check to every engine's placed results (never to a part
+or a rig). MESFormsUI's `MeshView` shows a mesh output to orbit, with its facts,
 its attribution and the preview as fallback (SceneKit, from MESCore's reader: macOS has no GLB loader of its own), and
-`MeshInputWell` takes a GLB; MESClientKit's `downloadMesh` fetches a result's GLB and preview together.
+`MeshInputWell` takes a GLB or a `.vrm`; `ImageBoxPicker` is the `box` widget, a rectangle dragged on a picture for
+`subject_box`, and the form shows a box or spring bones only where an offer takes them. MESClientKit's `downloadMesh`
+fetches a result's GLB and preview together.
 
 MESFormsUI has a `VideoInputWell` (choose or drop a clip, play it, see its frames), a `VideoPlayerView` with the clip's
 facts, a `FramePreviewStrip` for a file's thumbnails or a running job's stills (`FramePreviews`), and

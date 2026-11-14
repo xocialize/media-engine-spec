@@ -146,6 +146,78 @@
           "minimum": 1
         }
       }
+    },
+    "generate_part_supports": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$"
+      },
+      "description": "supports on a mesh.generate_part offer (§4.1). parts is required. Unknown x- keys are allowed; clients ignore keys they don't know.",
+      "required": [
+        "parts"
+      ],
+      "properties": {
+        "stream": {
+          "type": "boolean"
+        },
+        "seed": {
+          "type": "boolean"
+        },
+        "voices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "background_removal": {
+          "type": "boolean"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "vocabulary.schema.json#/$defs/part"
+          }
+        },
+        "subject_box": {
+          "enum": [
+            "required",
+            "optional"
+          ]
+        },
+        "physics": {
+          "type": "boolean"
+        },
+        "textures": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "vocabulary.schema.json#/$defs/texture"
+          }
+        }
+      },
+      "additionalProperties": {
+        "description": "an x-<vendor>.<name> key"
+      }
+    },
+    "generate_part_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_megapixels": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
     }
   }
 }

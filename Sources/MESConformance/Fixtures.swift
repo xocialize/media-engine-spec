@@ -61,6 +61,13 @@ public enum Fixtures {
     /// A 1,280-face textured sphere, 1 m across, as GLB (Mesh §6): the mesh input.
     public static func glb() throws -> Data { try MockMeshEngine.sphereGLB(faces: 1280) }
 
+    /// The body a part is made for (Mesh §6, RFC 0009): a small VRM 1.0 figure, 1.57 m tall, standing on the ground and
+    /// facing +Z, whose head bone is `J_Bip_C_Head`.
+    public static func body() throws -> Data { try MockMeshEngine.bodyGLB() }
+
+    /// The box of the ball in `ball()` (Mesh §6): the `subject_box` the suite sends.
+    public static let ballBox = SubjectBox(x: 0.15, y: 0.15, width: 0.7, height: 0.7)
+
     /// The same picture in Display P3, with its profile embedded (IMAGE-006).
     public static func displayP3PNG(width: Int = 64, height: Int = 48) -> Data {
         draw(width: width, height: height, space: CGColorSpace(name: CGColorSpace.displayP3)!) { x, y in

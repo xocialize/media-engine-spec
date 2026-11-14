@@ -36,9 +36,12 @@ public struct ProfileOperationSpec: Codable, Sendable, Equatable {
     public var places: Bool?
     /// Mesh: the output's vertices, faces and bounds equal the input's (Mesh §3.2).
     public var keepsGeometry: Bool?
+    /// Mesh: the result is a part in the coordinates of the `body` input, never placed, scaled, decimated or checked for
+    /// flatness (Mesh §3.3, RFC 0009).
+    public var fitsBody: Bool?
     enum CodingKeys: String, CodingKey {
         case inputs, outputs, vocabulary, seeded, places
-        case keepsGeometry = "keeps_geometry"
+        case keepsGeometry = "keeps_geometry", fitsBody = "fits_body"
         case vocabularyDefs = "vocabulary_defs", keepsInputSize = "keeps_input_size"
         case preservesUnmasked = "preserves_unmasked", exactScale = "exact_scale", requiresOneOf = "requires_one_of"
         case adapterInput = "adapter_input", requiredParams = "required_params", exactDuration = "exact_duration"

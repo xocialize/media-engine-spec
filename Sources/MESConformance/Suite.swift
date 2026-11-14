@@ -34,6 +34,8 @@ public final class Probe: @unchecked Sendable {
     public internal(set) var clip: Data?
     /// The mesh fixture (`Fixtures.glb()`, a 1,280-face textured sphere), made at connect when an operation takes a mesh.
     public internal(set) var meshFixture: Data?
+    /// The body fixture (`Fixtures.body()`, a small VRM 1.0 figure), made at connect when `mesh.generate_part` is offered.
+    public internal(set) var bodyFixture: Data?
 
     public struct Options: Sendable {
         /// Observe output expiry (BASE-071) when the engine's outputs TTL is at most this many seconds.
@@ -78,6 +80,7 @@ public final class Probe: @unchecked Sendable {
         }
         if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .video } }) { probe.clip = try await Fixtures.mp4() }
         if probe.operations.contains(where: { $0.inputs.contains { $0.kind == .mesh } }) { probe.meshFixture = try Fixtures.glb() }
+        if probe.descriptor(Probe.generatePart) != nil { probe.bodyFixture = try Fixtures.body() }
         return probe
     }
 
@@ -87,12 +90,17 @@ public final class Probe: @unchecked Sendable {
 
     // MARK: - Requests
 
+    static let generatePart = "mesh.generate_part"
+
     /// A minimal valid request for `d`: text for every text input (an Audio or Video operation's required ones only),
     /// the fixture image, mask, audio or video clip for required media inputs, the parameters its profile requires, and
     /// the acceptance of every licence its users must accept (Base §10.2 rule 4). Nil when it needs something the suite
-    /// can't make (a required data input).
+    /// can't make (a required data input). A part (Mesh §3.3) gets the cut-out ball, which every offer takes, the body
+    /// fixture, and the ball's box where an offer the engine may choose takes one.
     public func minimalRequest(_ d: Descriptor, image: Data = Fixtures.png(), mask: Data = Fixtures.mask()) -> JobRequest? {
         var inputs: [String: RequestInput] = [:]
+        let part = d.operation == Self.generatePart
+        let image = part ? Fixtures.ball(transparent: true) : image
         for spec in d.inputs {
             switch spec.kind {
             case .text where spec.required || ![AudioProfile.id, VideoProfile.id].contains(d.profile):
@@ -105,14 +113,17 @@ public final class Probe: @unchecked Sendable {
                 guard let clip else { return nil }
                 inputs[spec.name] = .one(.inline(mediaType: "video/mp4", data: clip))
             case .mesh where spec.required:
-                guard let meshFixture else { return nil }
-                inputs[spec.name] = .one(.inline(mediaType: MeshProfile.mediaType, data: meshFixture))
+                guard let fixture = part && spec.name == MeshProfile.Input.body ? bodyFixture : meshFixture else { return nil }
+                inputs[spec.name] = .one(.inline(mediaType: MeshProfile.mediaType, data: fixture))
             default: if spec.required { return nil }
             }
         }
         var params: [String: JSONValue]?
         if d.operation == "video.upscale" { params = [VideoProfile.Param.content: "live_action"] }
         if d.operation == "video.retake" { params = [VideoProfile.Param.start: 0.25, VideoProfile.Param.end: 0.5] }
+        if part, d.models.contains(where: { $0.namedOnly != true && $0.supports(MeshProfile.SupportsKey.subjectBox) != nil }) {
+            params = [MeshProfile.Param.subjectBox: Fixtures.ballBox.json]
+        }
         return JobRequest(operation: d.operation, inputs: inputs, params: params, policy: Self.acceptance(d))
     }
 
@@ -125,6 +136,16 @@ public final class Probe: @unchecked Sendable {
         var policy = base ?? Policy()
         policy.accepted = Array(Set((policy.accepted ?? []) + ids)).sorted()
         return policy
+    }
+
+    /// The operation Base's upload, grant and asset tests send a picture to, its image input, and the picture: the opaque
+    /// gradient, or for a part the cut-out ball, which every part offer takes (Mesh §3.3). A part is used only when
+    /// nothing else takes an image.
+    public var imageCarrier: (descriptor: Descriptor, input: String, image: Data)? {
+        let takers = operations.filter { d in d.inputs.contains { $0.kind == .image && $0.required } && minimalRequest(d) != nil }
+        guard let d = takers.first(where: { $0.operation != Self.generatePart }) ?? takers.first,
+              let input = d.inputs.first(where: { $0.kind == .image && $0.required }) else { return nil }
+        return (d, input.name, d.operation == Self.generatePart ? Fixtures.ball(transparent: true) : Fixtures.png())
     }
 
     /// The operation Base tests use: one the suite can drive whose first output is media, preferring text-only inputs.

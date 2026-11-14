@@ -5,17 +5,21 @@ import MESCore
 import MESEngineCore
 import UniformTypeIdentifiers
 
-/// A mock Mesh-profile engine: `mesh.generate` and `mesh.rig` (spec/profiles/mesh.md), with small synthetic meshes that obey
-/// the profile's rules, and offers shaped like the fleet's (TRELLIS.2, SkinTokens), so clients and the conformance suite
-/// can exercise the GLB conventions, facts, previews, placement, gates, flat results and attribution. It runs no model: a
-/// "generated" mesh is an icosphere coloured from the image (vertex colours, or the image as an atlas), and a rig binds
-/// every vertex to the nearest joints of a skeleton laid out in the mesh's box.
+/// A mock Mesh-profile engine: `mesh.generate`, `mesh.rig` and `mesh.generate_part` (spec/profiles/mesh.md), with small
+/// synthetic meshes that obey the profile's rules, and offers shaped like the fleet's (TRELLIS.2, SkinTokens, HairDeck), so
+/// clients and the conformance suite can exercise the GLB conventions, facts, previews, placement, gates, flat results
+/// and attribution. It runs no model: a "generated" mesh is an icosphere coloured from the image (vertex colours, or the
+/// image as an atlas), a rig binds every vertex to the nearest joints of a skeleton laid out in the mesh's box, and a
+/// part is a hair card on the body's head bone (MockMeshPart.swift).
 ///
 /// - **generate:** `mock-trellis` (the default; every tier at 512/1024/1536, background removal, atlas or vertex colours,
 ///   textures to 2048, 100 – 20,480 faces, under a licence with an attribution) and `mock-mesh-open` (Apache-2.0, draft,
 ///   vertex colours only, at most 1,280 faces, no background removal). The extension `x-mock.flat` makes a flat "card".
 /// - **rig:** `mock-skintokens` (the default; `vrm_humanoid` without its fingers, or a skeleton of its own; two influences
 ///   per vertex) and `mock-template-rigger` (`vrm_humanoid` only, all 52 joints, one influence).
+/// - **generate_part:** `mock-hairdeck` (the default; needs a `subject_box`; spring bones; an atlas or no texture; cuts out
+///   an opaque picture; a licence with an attribution) and `mock-part-finder` (takes no box, no physics, needs a cut-out
+///   picture).
 public struct MockMeshEngine: MediaEngine {
     /// Delay per progress step, as the other mocks'.
     public var stepDelay: Duration
@@ -78,20 +82,26 @@ public struct MockMeshEngine: MediaEngine {
                       supports: ["skeletons": ["vrm_humanoid"], "auto_skeleton": false, "max_influences": 1],
                       limits: .init(profile: [L.maxInputFaces: 50000, L.maxJoints: 64])),
             ]
+        case generatePart: return partModels
         default: return []
         }
     }
 
     static func descriptor(_ operation: String) -> Descriptor {
         let spec = MeshProfile.operations.operations[operation]!
+        let part = operation == generatePart
+        let notes = part ? [MeshProfile.Input.body: "The avatar the part goes on: a .vrm or another rigged GLB. It is read, never changed.",
+                            MeshProfile.Input.image: "The character wearing the part. A cut-out PNG is used as it is."] : [:]
         let inputs = spec.inputs.sorted { $0.key < $1.key }.map { name, io in
             InputSpec(name: name, kind: io.kind, required: io.required ?? false, max: 1,
-                      mediaTypes: io.kind == .mesh ? [MeshProfile.mediaType] : imageTypes)
+                      mediaTypes: io.kind == .mesh ? [MeshProfile.mediaType] : imageTypes, notes: notes[name])
         }
         var properties: [String: JSONValue] = [:]
         for (order, name) in spec.vocabulary.enumerated() {
             guard case .object(var schema)? = MeshProfile.vocabularySchema(name, operation: operation) else { continue }
+            if part { schema = partSchema(name, schema) }
             switch name {
+            case P.texture where !part: schema["enum"] = ["atlas", "vertex_colors"]
             case P.resolution: schema = ["enum": [512, 1024, 1536], "description": schema["description"] ?? nil]
             case P.textureSize: schema["enum"] = [256, 512, 1024, 2048]
             case P.maxFaces: schema["minimum"] = 100; schema["maximum"] = 20480; schema["default"] = .number(Double(defaultFaces))
@@ -107,12 +117,12 @@ public struct MockMeshEngine: MediaEngine {
         let generate = operation == "mesh.generate"
         return Descriptor(
             operation: operation, profile: MeshProfile.id, profileVersion: MeshProfile.version,
-            title: generate ? "Image to 3D" : "Rig a mesh",
+            title: generate ? "Image to 3D" : part ? "Make a part for a character" : "Rig a mesh",
             summary: "Mock: synthetic meshes that follow the Mesh profile's rules.", inputs: inputs,
             params: .object(["type": "object", "additionalProperties": false, "properties": .object(properties)]),
             outputs: outputs,
             limits: generate ? .init(profile: [L.minFaces: 100, L.maxFaces: 20480, L.maxTextureSize: 2048])
-                : .init(profile: [L.maxInputFaces: 50000, L.maxJoints: 64]),
+                : part ? nil : .init(profile: [L.maxInputFaces: 50000, L.maxJoints: 64]),
             qualityTiers: generate ? [.draft, .standard, .best] : [.standard], models: models(operation),
             extensions: generate ? [flatExtension] : nil, remote: .init(possible: false))
     }
@@ -120,12 +130,13 @@ public struct MockMeshEngine: MediaEngine {
     static func ui(_ name: String, order: Int) -> [String: JSONValue] {
         let widgets = ["seed": "seed", "quality": "picker", "resolution": "picker", "max_faces": "stepper", "texture": "picker",
                        "texture_size": "picker", "background": "picker", "placement": "picker", "size_m": "stepper",
-                       "on_flat": "picker", "skeleton": "picker"]
+                       "on_flat": "picker", "skeleton": "picker", "part": "picker", "subject_box": "box", "physics": "toggle"]
         let labels = ["max_faces": "Most faces", "texture": "Surface", "texture_size": "Texture size", "size_m": "Size (m)",
-                      "on_flat": "If the result is flat"]
+                      "on_flat": "If the result is flat", "subject_box": "Where the part is", "physics": "Spring bones"]
         var hints: [String: JSONValue] = ["label": .string(labels[name] ?? name.replacingOccurrences(of: "_", with: " ").capitalized),
                                           "order": .number(Double(order))]
         if let w = widgets[name] { hints["widget"] = .string(w) }
+        if name == P.subjectBox { hints["help"] = "Drag a box around the head: hair and face." }
         if ["seed", "resolution", "on_flat"].contains(name) { hints["advanced"] = true }
         return hints
     }
@@ -141,6 +152,7 @@ public struct MockMeshEngine: MediaEngine {
         switch context.operation {
         case "mesh.generate": return try await job.generate()
         case "mesh.rig": return try await job.rig()
+        case MockMeshEngine.generatePart: return try await job.generatePart()
         default: throw MESError(.unknownOperation, "No operation \(context.operation).")
         }
     }

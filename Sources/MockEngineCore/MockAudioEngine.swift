@@ -610,7 +610,7 @@ public struct MockAudioEngine: MediaEngine {
 }
 
 /// The mock engine `mes-mock-engine` serves: the Image mock's fifteen operations, the Audio mock's six, the Video mock's
-/// five and the Mesh mock's two, one engine.
+/// five and the Mesh mock's three, one engine.
 public struct MockMediaEngine: MediaEngine {
     public var image: MockImageEngine
     public var audio: MockAudioEngine

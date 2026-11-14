@@ -1,0 +1,20 @@
+{
+  "operation": "mesh.generate_part",
+  "inputs": {
+    "image": {
+      "upload": "upl_h41r"
+    },
+    "body": {
+      "asset": "ast_avatar7"
+    }
+  },
+  "params": {
+    "subject_box": {
+      "x": 0.25,
+      "y": 0.1,
+      "width": 0.5,
+      "height": 0.4
+    },
+    "seed": 7
+  }
+}

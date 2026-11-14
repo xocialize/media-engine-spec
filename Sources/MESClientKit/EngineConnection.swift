@@ -169,8 +169,10 @@ extension EngineConnection {
 /// Media types for files.
 public enum MediaType {
     /// The media type for a file's extension, spelled as the profiles list them (Audio §1.1: `audio/wav`, not the
-    /// system's `audio/vnd.wave`; `audio/mp4`, not `audio/x-m4a`; Video §1.1: `video/mp4` for `.m4v` too).
+    /// system's `audio/vnd.wave`; `audio/mp4`, not `audio/x-m4a`; Video §1.1: `video/mp4` for `.m4v` too; Mesh §3.3:
+    /// `model/gltf-binary` for a `.vrm`, which is a GLB the system has no type for).
     public static func infer(_ file: URL) -> String {
+        if file.pathExtension.lowercased() == "vrm" { return MeshProfile.mediaType }
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         return profileSpellings[type] ?? type
     }

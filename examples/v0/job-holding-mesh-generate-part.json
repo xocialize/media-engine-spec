@@ -1,0 +1,118 @@
+{
+  "id": "job_01JD0F",
+  "operation": "mesh.generate_part",
+  "state": "holding",
+  "outcome": "succeeded",
+  "plan": {
+    "model": {
+      "id": "hairdeck",
+      "title": "HairDeck",
+      "license": {
+        "spdx": "LicenseRef-DINOv3",
+        "commercial_use": true,
+        "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+        "attribution": "Built with DINOv3",
+        "notice": "Built with DINOv3. HairDeck is Apache-2.0; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+      }
+    },
+    "effective": {
+      "quality": "standard",
+      "seed": 7
+    }
+  },
+  "progress": {
+    "stage": "finishing",
+    "phase": "render",
+    "step": 1,
+    "steps": 1
+  },
+  "warnings": [],
+  "result": {
+    "outputs": [
+      {
+        "index": 0,
+        "name": "mesh",
+        "kind": "mesh",
+        "media_type": "model/gltf-binary",
+        "bytes": 1482752,
+        "sha256": "9bce9f543fc163bc80bd5eb96841de4f44ff43ff52c67d89489ec506b93c48bd",
+        "href": "/mes/v0/jobs/job_01JD0F/outputs/0",
+        "vertices": 21480,
+        "faces": 14320,
+        "bounds": {
+          "min": [
+            -0.131,
+            1.214,
+            -0.142
+          ],
+          "max": [
+            0.129,
+            1.602,
+            0.118
+          ]
+        },
+        "texture_size": 1024,
+        "joints": 35
+      },
+      {
+        "index": 1,
+        "name": "preview",
+        "kind": "image",
+        "media_type": "image/png",
+        "bytes": 212440,
+        "sha256": "fb4801e90fcb87c8eaa8fa67d875d8e4d4fc2fbefa330a6276be7985fdacf4d0",
+        "href": "/mes/v0/jobs/job_01JD0F/outputs/1",
+        "width": 768,
+        "height": 768
+      }
+    ],
+    "effective": {
+      "part": "hair",
+      "subject_box": {
+        "x": 0.25,
+        "y": 0.1,
+        "width": 0.5,
+        "height": 0.4
+      },
+      "physics": true,
+      "texture": "atlas",
+      "background": "remove",
+      "quality": "standard",
+      "seed": 7
+    },
+    "provenance": {
+      "engine": {
+        "id": "eng_gaea01",
+        "name": "Studio Gaea",
+        "implementation": "gaea",
+        "version": "1.7.0"
+      },
+      "operation": "mesh.generate_part",
+      "profile_version": "0.1",
+      "model": {
+        "id": "hairdeck",
+        "title": "HairDeck",
+        "license": {
+          "spdx": "LicenseRef-DINOv3",
+          "commercial_use": true,
+          "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+          "attribution": "Built with DINOv3",
+          "notice": "Built with DINOv3. HairDeck is Apache-2.0; its DINOv3 conditioner is under the DINOv3 License, whose trade-control and prohibited-use terms apply."
+        }
+      },
+      "seed": 7,
+      "timings": {
+        "received_at": "2026-11-13T20:00:00Z",
+        "queue_ms": 3,
+        "prepare_ms": 1900,
+        "run_ms": 1100
+      }
+    }
+  },
+  "retention": {
+    "outputs_expire_at": "2026-11-13T21:00:03Z",
+    "record_expires_at": "2026-11-14T20:00:03Z"
+  },
+  "created_at": "2026-11-13T20:00:00Z",
+  "updated_at": "2026-11-13T20:00:03Z"
+}

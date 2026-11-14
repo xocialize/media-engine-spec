@@ -745,11 +745,42 @@ Minor releases (Base 0.1 gains optional fields; old engines and clients still va
     conforms with 104 passed, 6 skipped. The engine contract's side is AB-A-0268 (mlx-engine), open; the MES shape
     doesn't wait on it.
 
+- **`v0.14.0`** (2026-11-13; AB-A-0280, from Gaea's AB-T-0482, for HairDeck and mlx-3d's `gaea-plugin-hairdeck`): **a
+  part made to fit a body, `mesh.generate_part`** ([RFC 0009](../rfcs/0009-mesh-generate-part.md)).
+  - **Mesh §3.3:** `image` and `body` (the rigged GLB or `.vrm` the part goes on, read and never changed, not held to
+    §1.1–1.2) give a rigged part in the body's coordinates: one skin whose root joint is the body's bone by name and
+    place (for `hair`, the head), chain bones and `VRMC_springBone` with `physics`, never placed, scaled, decimated or
+    checked for flatness. Parameters `part`, `subject_box` (shares of the upright image), `physics`, `texture`, `seed`,
+    `quality`. Gates `supports.parts` (required), `subject_box` (`required` or `optional`), `physics`, `textures`,
+    `background_removal`. `texture` gains `none` for the whole profile.
+  - **Refusals:** a malformed box is 400, ahead of the descriptor's schema; a box to an offer that takes none, no box
+    where one is required, an unlisted part or texture, and `physics: true` without the key are 422; an opaque picture
+    to an offer that can't cut it out, and a body that isn't a GLB or has no head bone, are refused at submission or
+    as the job's error.
+  - **Base §6.1:** the `box` widget.
+  - **MESKit:** `SubjectBox`; `GLB.bodyBone(for:)`, `humanoidBone(_:)` and `worldMatrix(node:)`;
+    `MeshProfileRules`' gates, `partDefaults` and `subjectBoxSupport`; `ProfileRules.validateStructure`; the flat check
+    by the table's `places` flag; the mock's `mock-hairdeck` and `mock-part-finder`, and `MockMeshEngine.bodyGLB()`, a
+    small VRM 1.0 figure; MESFormsUI's `ImageBoxPicker`, the box row, a form that follows the offers, and `.vrm` in
+    `MeshInputWell`; `MediaType.infer` sends a `.vrm` as `model/gltf-binary`.
+  - **Source changes for consumers:** `FieldWidget` gains `.box` (an exhaustive `switch` over it needs the case);
+    `MeshProfile.textures` has a third value; `MeshProfile.operations` has a third operation, so an engine that
+    builds a descriptor per table entry serves it as soon as a model offers it.
+  - MESH-013 to MESH-018; MESH-001 to 003, 005, 009 and 010 run on the new operation; Base's upload, grant and asset
+    tests send a part the cut-out ball when nothing else takes a picture.
+  - 193 tests pass (172 before); `tools/validate.py` OK with 58 examples; `tools/test_validator.py` 122/122; the mock
+    conforms with 110 passed, 6 skipped; `tools/smoke-cli.sh` makes hair for a rigged mesh sent as a `.vrm`. A test
+    engine that centres and scales a part fails MESH-013 and MESH-014 alone. Not run here: Gaea's host and
+    HairDeck against the suite (Gaea 1.7.0 adopts this release; it needs `effective.background` for MESH-016).
+
 ## Next: Mesh after 0.1
 
 - **Gaea's plugins** (AB-T-0467): TRELLIS.2 as a `mesh.generate` offer (Y-up export, placement, the attribution, the
   preview render), SkinTokens as `mesh.rig` when its port lands (its `vroid` class as `vrm_humanoid`; check the joint
-  list against `configs/skeleton/vroid.yaml`).
+  list against `configs/skeleton/vroid.yaml`). HairDeck as the first `mesh.generate_part` offer (AB-T-0482, mlx-3d's
+  `gaea-plugin-hairdeck`), on Gaea 1.7.0.
+- **Parts after hair** (Mesh §3.3): `garment` and `accessory` are reserved; each is registered with its first model
+  and the bones it hangs from. A part from a point cloud (the engine contract's second source) needs its own RFC.
 - **Later** (Mesh §7): several views, a turntable video, Draco and meshopt or USDZ as `output` options, text → 3D,
   `mesh.edit` when TRELLIS.2's mesh encoder runs off CUDA (AB-B-0027), animation.
 

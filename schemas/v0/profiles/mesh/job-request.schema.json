@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MES Mesh 0.1 — POST {path}/jobs for a mesh operation",
-  "description": "A Base JobRequest whose operation is a Mesh 0.1 operation: the operation's inputs by name, its required inputs, and only vocabulary parameters (spec/profiles/mesh.md §2, §3). texture_size goes only with texture: atlas. An engine's own descriptor narrows these further.",
+  "description": "A Base JobRequest whose operation is a Mesh 0.1 operation: the operation's inputs by name, its required inputs, and only vocabulary parameters (spec/profiles/mesh.md §2, §3). texture_size goes only with texture: atlas. That a subject_box's x + width and y + height are at most 1 is checked by engines, not here. An engine's own descriptor narrows these further.",
   "allOf": [
     {
       "$ref": "../../base/job-request.schema.json"
@@ -11,7 +11,8 @@
         "operation": {
           "enum": [
             "mesh.generate",
-            "mesh.rig"
+            "mesh.rig",
+            "mesh.generate_part"
           ]
         }
       }
@@ -81,7 +82,10 @@
             "if": {
               "properties": {
                 "texture": {
-                  "const": "vertex_colors"
+                  "enum": [
+                    "vertex_colors",
+                    "none"
+                  ]
                 }
               },
               "required": [
@@ -130,6 +134,62 @@
             "properties": {
               "skeleton": {
                 "$ref": "vocabulary.schema.json#/$defs/skeleton"
+              },
+              "seed": {
+                "$ref": "vocabulary.schema.json#/$defs/seed"
+              },
+              "quality": {
+                "$ref": "vocabulary.schema.json#/$defs/quality"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "mesh.generate_part"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "image",
+              "body"
+            ],
+            "propertyNames": {
+              "enum": [
+                "image",
+                "body"
+              ]
+            }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "part": {
+                "$ref": "vocabulary.schema.json#/$defs/part"
+              },
+              "subject_box": {
+                "$ref": "vocabulary.schema.json#/$defs/subject_box"
+              },
+              "physics": {
+                "$ref": "vocabulary.schema.json#/$defs/physics"
+              },
+              "texture": {
+                "$ref": "vocabulary.schema.json#/$defs/texture"
               },
               "seed": {
                 "$ref": "vocabulary.schema.json#/$defs/seed"

@@ -34,6 +34,7 @@ extension OperationFormModel {
     /// description is given. A field that holds a value always shows, so what an engine would refuse can be seen and
     /// cleared. Every other field shows.
     public func shows(_ field: FormField) -> Bool {
+        if descriptor.profile == MeshProfile.id { return meshShows(field) }
         guard descriptor.operation == "audio.separate", values[field.name] == nil else { return true }
         switch field.name {
         case AP.describe: return anyOffer(AK.describedTarget)
@@ -44,6 +45,7 @@ extension OperationFormModel {
 
     /// A top-level field as the request's offers take it. Fields of other profiles, and other fields, are unchanged.
     public func narrowed(_ field: FormField) -> FormField {
+        if descriptor.profile == MeshProfile.id { return meshNarrowed(field) }
         guard descriptor.profile == AudioProfile.id else { return field }
         var f = field
         switch (descriptor.operation, field.name, field.widget) {

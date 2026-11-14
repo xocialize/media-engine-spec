@@ -32,9 +32,10 @@
     "texture": {
       "enum": [
         "atlas",
-        "vertex_colors"
+        "vertex_colors",
+        "none"
       ],
-      "description": "generate: a texture atlas, or colour per vertex (§1.5). Gate: supports.textures."
+      "description": "generate, generate_part: a texture atlas, colour per vertex, or neither: a plain material (§1.5). Gate: supports.textures."
     },
     "texture_size": {
       "enum": [
@@ -87,6 +88,54 @@
         "vrm_humanoid"
       ],
       "description": "The registered skeleton templates (§3.2)."
+    },
+    "part": {
+      "type": "string",
+      "pattern": "^([a-z][a-z0-9_]*|x-[a-z0-9]+\\.[a-z0-9_]+)$",
+      "description": "generate_part: which part to make, a registered tag (§3.3) or an x-<vendor>.<name> one. Absent: the offer's first. Gate: supports.parts."
+    },
+    "part_kind": {
+      "enum": [
+        "hair"
+      ],
+      "description": "The registered parts (§3.3). garment and accessory are reserved."
+    },
+    "subject_box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      },
+      "description": "generate_part: where in the picture the part is read from (for hair, the head), in shares of the upright image from its top-left corner. x + width and y + height are at most 1 (§2, §3.3). Gate: supports.subject_box."
+    },
+    "physics": {
+      "type": "boolean",
+      "description": "generate_part: chain bones and VRMC_springBone (§3.3). Absent: true where the offer has supports.physics. Gate: supports.physics, for true."
     },
     "vrm_humanoid_joints": {
       "const": [

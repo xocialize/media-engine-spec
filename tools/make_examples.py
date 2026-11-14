@@ -981,6 +981,17 @@ SKINTOKENS = {"spdx": "MIT", "commercial_use": True, "terms_url": "https://githu
 MSEED = {"type": "integer", "minimum": 0, "maximum": 9007199254740991, "x-mes-ui": {"label": "Seed", "widget": "seed", "advanced": True}}
 MQUALITY = {"enum": ["draft", "standard", "best"], "default": "standard", "x-mes-ui": {"label": "Quality", "widget": "picker"}}
 GLB = ["model/gltf-binary"]
+# RFC 0009 (mesh.generate_part), v0.14.0: HairDeck's offer as AB-A-0280 and AB-A-0278 give it.
+PART_ENGINE = {"id": "eng_gaea01", "name": "Studio Gaea", "implementation": "gaea", "version": "1.7.0"}
+HAIRDECK = {"spdx": "LicenseRef-DINOv3", "commercial_use": True, "terms_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+            "attribution": "Built with DINOv3",
+            "notice": "Built with DINOv3. HairDeck is Apache-2.0; its DINOv3 conditioner is under the DINOv3 License, whose "
+                      "trade-control and prohibited-use terms apply."}
+_SHARE = {"type": "number", "minimum": 0, "maximum": 1}
+_EXTENT = {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+SUBJECT_BOX = {"type": "object", "additionalProperties": False, "required": ["x", "y", "width", "height"],
+               "properties": {"x": _SHARE, "y": _SHARE, "width": _EXTENT, "height": _EXTENT},
+               "x-mes-ui": {"label": "Where the part is", "widget": "box", "help": "Drag a box around the head: hair and face."}}
 PREVIEW_OUT = {"name": "preview", "kind": "image", "media_types": ["image/png"], "min": 1, "max": 1}
 
 examples.update({
@@ -1031,7 +1042,57 @@ examples.update({
                   "limits": {"max_input_faces": 2000000, "max_joints": 128}},
              ],
              "remote": {"possible": False}},
+            {"operation": "mesh.generate_part", "profile": "mesh", "profile_version": "0.1", "title": "Make a part for a character",
+             "summary": "Hair for an avatar, read from a picture and placed on the avatar's head, with a preview still.",
+             "inputs": [{"name": "body", "kind": "mesh", "required": True, "max": 1, "media_types": GLB,
+                         "notes": "The avatar the part goes on: a .vrm (0.x or 1.0) or another rigged GLB. It is read, never changed."},
+                        {"name": "image", "kind": "image", "required": True, "max": 1, "media_types": ["image/png", "image/jpeg", "image/webp"],
+                         "notes": "The character wearing the part. A cut-out PNG is used as it is."}],
+             "params": {"type": "object", "additionalProperties": False, "properties": {
+                 "part": {"type": "string", "enum": ["hair"], "x-mes-ui": {"label": "Part", "widget": "picker"}},
+                 "subject_box": SUBJECT_BOX,
+                 "physics": {"type": "boolean", "x-mes-ui": {"label": "Spring bones", "widget": "toggle"}},
+                 "texture": {"enum": ["atlas", "none"], "x-mes-ui": {"label": "Surface", "widget": "picker", "advanced": True}},
+                 "seed": MSEED, "quality": {"enum": ["standard"], "default": "standard", "x-mes-ui": {"label": "Quality", "widget": "picker"}}}},
+             "outputs": [{"name": "mesh", "kind": "mesh", "media_types": GLB, "min": 1, "max": 1}, PREVIEW_OUT],
+             "quality_tiers": ["standard"],
+             "models": [
+                 {"id": "hairdeck", "title": "HairDeck", "license": HAIRDECK, "memory_class": "medium", "speed_class": "fast",
+                  "quality_tiers": ["standard"], "default": True,
+                  "notes": "Hair for a VRM avatar. Drag the box around the head: hair and face.",
+                  "supports": {"parts": ["hair"], "subject_box": "required", "physics": True, "textures": ["atlas", "none"],
+                               "background_removal": True}},
+             ],
+             "remote": {"possible": False}},
         ],
+    },
+    "job-request-mesh-generate-part.json": {
+        "operation": "mesh.generate_part",
+        "inputs": {"image": {"upload": "upl_h41r"}, "body": {"asset": "ast_avatar7"}},
+        "params": {"subject_box": {"x": 0.25, "y": 0.1, "width": 0.5, "height": 0.4}, "seed": 7},
+    },
+    "job-holding-mesh-generate-part.json": {
+        "id": "job_01JD0F", "operation": "mesh.generate_part", "state": "holding", "outcome": "succeeded",
+        "plan": {"model": {"id": "hairdeck", "title": "HairDeck", "license": HAIRDECK},
+                 "effective": {"quality": "standard", "seed": 7}},
+        "progress": {"stage": "finishing", "phase": "render", "step": 1, "steps": 1},
+        "warnings": [],
+        "result": {
+            "outputs": [
+                {"index": 0, "name": "mesh", "kind": "mesh", "media_type": "model/gltf-binary", "bytes": 1482752, "sha256": H("hair-glb"),
+                 "href": "/mes/v0/jobs/job_01JD0F/outputs/0", "vertices": 21480, "faces": 14320,
+                 "bounds": {"min": [-0.131, 1.214, -0.142], "max": [0.129, 1.602, 0.118]}, "texture_size": 1024, "joints": 35},
+                {"index": 1, "name": "preview", "kind": "image", "media_type": "image/png", "bytes": 212440, "sha256": H("hair-preview"),
+                 "href": "/mes/v0/jobs/job_01JD0F/outputs/1", "width": 768, "height": 768},
+            ],
+            "effective": {"part": "hair", "subject_box": {"x": 0.25, "y": 0.1, "width": 0.5, "height": 0.4}, "physics": True,
+                          "texture": "atlas", "background": "remove", "quality": "standard", "seed": 7},
+            "provenance": {"engine": PART_ENGINE, "operation": "mesh.generate_part", "profile_version": "0.1",
+                           "model": {"id": "hairdeck", "title": "HairDeck", "license": HAIRDECK}, "seed": 7,
+                           "timings": {"received_at": "2026-11-13T20:00:00Z", "queue_ms": 3, "prepare_ms": 1900, "run_ms": 1100}},
+        },
+        "retention": {"outputs_expire_at": "2026-11-13T21:00:03Z", "record_expires_at": "2026-11-14T20:00:03Z"},
+        "created_at": "2026-11-13T20:00:00Z", "updated_at": "2026-11-13T20:00:03Z",
     },
     "job-request-mesh-generate.json": {
         "operation": "mesh.generate",

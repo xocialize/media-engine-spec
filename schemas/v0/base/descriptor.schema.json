@@ -118,7 +118,8 @@
             "size",
             "aspect",
             "color",
-            "voice"
+            "voice",
+            "box"
           ]
         }
       }

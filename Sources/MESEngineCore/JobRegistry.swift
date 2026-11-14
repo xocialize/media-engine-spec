@@ -389,6 +389,7 @@ package actor JobRegistry {
     }
 
     private func validateParams(_ request: JobRequest, descriptor: Descriptor) throws {
+        try ProfileRules.validateStructure(request, descriptor: descriptor)
         let issues = SchemaValidator().validate(.object(request.params ?? [:]), against: descriptor.params)
         guard let first = issues.first else { return }
         if let range = first.message.range(of: "unexpected property '") {
